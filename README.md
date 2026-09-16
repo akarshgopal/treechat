@@ -7,15 +7,15 @@ Built with Vite, React, TypeScript, Tailwind CSS, shadcn/ui, and TanStack AI (`u
 ## Setup
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Open the printed local URL (Vite defaults to http://localhost:5173).
 
 ```bash
-npm run build    # production bundle
-npm run preview  # serve the build (API plugin still handles /api/chat)
+pnpm build    # production bundle
+pnpm preview  # serve the build (API plugin still handles /api/chat)
 ```
 
 ## Environment variables
