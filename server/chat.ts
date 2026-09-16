@@ -1,0 +1,72 @@
+import {
+  chat,
+  chatParamsFromRequest,
+  toServerSentEventsResponse,
+} from '@tanstack/ai'
+import { buildSystemPrompts, getProviderStatus, getTextAdapter } from './adapter.ts'
+import { mockChatStream } from './mock-stream.ts'
+
+export function getStatus() {
+  return getProviderStatus()
+}
+
+export async function handleApiRequest(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  if (url.pathname === '/api/status' && request.method === 'GET') {
+    return Response.json(getStatus())
+  }
+
+  if (url.pathname !== '/api/chat') {
+    return new Response('Not found', { status: 404 })
+  }
+
+  if (request.method === 'GET') {
+    return Response.json(getStatus())
+  }
+
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 })
+  }
+
+  let params: Awaited<ReturnType<typeof chatParamsFromRequest>>
+  try {
+    params = await chatParamsFromRequest(request)
+  } catch (error) {
+    if (error instanceof Response) return error
+    const message = error instanceof Error ? error.message : 'Invalid chat request'
+    return new Response(message, { status: 400 })
+  }
+
+  const abortController = new AbortController()
+  request.signal.addEventListener('abort', () => abortController.abort(), {
+    once: true,
+  })
+
+  const quote =
+    typeof params.forwardedProps.quote === 'string'
+      ? params.forwardedProps.quote
+      : undefined
+  const systemPrompts = buildSystemPrompts(params.forwardedProps)
+  const adapter = getTextAdapter()
+
+  if (!adapter) {
+    const stream = mockChatStream({
+      messages: params.messages,
+      threadId: params.threadId,
+      runId: params.runId,
+      quote,
+      signal: abortController.signal,
+    })
+    return toServerSentEventsResponse(stream, { abortController })
+  }
+
+  const stream = chat({
+    adapter,
+    messages: params.messages,
+    threadId: params.threadId,
+    runId: params.runId,
+    systemPrompts,
+    abortController,
+  })
+  return toServerSentEventsResponse(stream, { abortController })
+}
