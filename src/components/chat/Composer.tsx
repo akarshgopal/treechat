@@ -5,8 +5,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { CornerDownLeft, Square } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Square } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
@@ -17,7 +16,10 @@ type ComposerProps = {
   onStop?: () => void
   isLoading?: boolean
   placeholder?: string
-  banner?: ReactNode
+  /** Rendered to the right of the field — e.g. "Merge into main ↑". */
+  trailing?: ReactNode
+  /** Accent-tinted border, used by branch composers. */
+  accent?: boolean
   disabled?: boolean
   onFocus?: () => void
   className?: string
@@ -32,7 +34,8 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
       onStop,
       isLoading,
       placeholder,
-      banner,
+      trailing,
+      accent,
       disabled,
       onFocus,
       className,
@@ -57,38 +60,49 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
     }
 
     return (
-      <form onSubmit={onSubmit} className={cn('space-y-2', className)}>
-        {banner}
-        <div className="relative rounded-xl border border-border bg-paper shadow-sm focus-within:ring-1 focus-within:ring-ring">
-          <Textarea
-            ref={ref}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            onKeyDown={onKeyDown}
-            onFocus={onFocus}
-            placeholder={placeholder}
-            disabled={disabled}
-            rows={2}
-            className="min-h-[72px] resize-none border-0 bg-transparent pr-24 shadow-none focus-visible:ring-0"
-          />
-          <div className="absolute bottom-2 right-2 flex items-center gap-1">
+      <form onSubmit={onSubmit} className={cn(className)}>
+        <div className="flex items-end gap-[11px]">
+          <div
+            className={cn(
+              'flex flex-1 items-end rounded-lg border bg-paper transition-colors focus-within:border-branch/50',
+              accent ? 'border-branch/25' : 'border-input',
+            )}
+          >
+            <Textarea
+              ref={ref}
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              onKeyDown={onKeyDown}
+              onFocus={onFocus}
+              placeholder={placeholder}
+              disabled={disabled}
+              rows={1}
+              className="min-h-[46px] resize-none border-0 bg-transparent px-[13px] py-3 text-[13.5px] leading-[1.5] shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
+            />
             {isLoading ? (
-              <Button
+              <button
                 type="button"
-                size="sm"
-                variant="secondary"
                 onClick={onStop}
+                className="m-2 flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
-                <Square className="size-3 fill-current" />
+                <Square className="size-2.5 fill-current" />
                 Stop
-              </Button>
+              </button>
+            ) : value.trim() ? (
+              <button
+                type="submit"
+                disabled={disabled}
+                className="m-2 flex shrink-0 items-center gap-1.5 rounded-md border border-branch/30 bg-branch/15 px-2.5 py-1.5 text-[10.5px] font-medium text-branch-bright transition-colors hover:bg-branch/25 disabled:opacity-50"
+              >
+                Send ⏎
+              </button>
             ) : (
-              <Button type="submit" size="sm" disabled={!value.trim() || disabled}>
-                Send
-                <CornerDownLeft className="size-3.5 opacity-70" />
-              </Button>
+              <span className="eyebrow m-3 shrink-0 select-none text-muted-foreground">
+                ⌘⏎
+              </span>
             )}
           </div>
+          {trailing}
         </div>
       </form>
     )
