@@ -9,3 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 export function isModKey(event: KeyboardEvent | ReactKeyboardEvent) {
   return event.metaKey || event.ctrlKey
 }
+
+export function truncate(text: string, max: number) {
+  return text.length > max ? `${text.slice(0, max)}…` : text
+}

@@ -1,6 +1,7 @@
 export async function requestAssistantText(
   userText: string,
   quote?: string,
+  context?: string,
 ): Promise<string> {
   const response = await fetch('/api/chat', {
     method: 'POST',
@@ -17,7 +18,10 @@ export async function requestAssistantText(
       ],
       tools: [],
       context: [],
-      forwardedProps: quote ? { quote } : {},
+      forwardedProps: {
+        ...(quote ? { quote } : {}),
+        ...(context ? { context } : {}),
+      },
     }),
   })
   if (!response.ok) {

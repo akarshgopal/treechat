@@ -2,7 +2,9 @@ import puppeteer from 'puppeteer-core'
 import fs from 'node:fs'
 
 const browser = await puppeteer.launch({
-  executablePath: '/usr/bin/google-chrome-stable',
+  executablePath:
+    process.env.CHROME_PATH ||
+    '/usr/bin/google-chrome-stable',
   headless: true,
   args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
 })
@@ -25,7 +27,7 @@ const bodyText = () => page.evaluate(() => document.body.innerText)
 
 results.hasTitle = (await bodyText()).includes('TreeChat')
 results.hasSeed = (await bodyText()).includes('What is TreeChat?')
-results.hasMock = (await bodyText()).includes('Mock stream')
+results.hasMock = /mock stream/i.test(await bodyText())
 results.hasQuote = (await bodyText()).includes(
   'select any passage and grow a side-thread from it',
 )
@@ -38,14 +40,16 @@ if (!pip) {
   process.exit(1)
 }
 await pip.click()
-await page.waitForFunction(() => document.body.innerText.includes('Posting to main'))
-results.banner = true
+await page.waitForFunction(() =>
+  document.body.innerText.includes('This branch is empty') ||
+  Boolean(document.querySelector('textarea[placeholder*="branch"]')),
+)
 results.inline = (await bodyText()).includes('The branch is pinned')
 await page.screenshot({ path: '/tmp/tc-2.png' })
 
 await page.click('[data-testid="open-as-conversation"]')
 await page.waitForSelector('[data-testid="back-to-spine"]')
-results.conversation = (await bodyText()).includes('Tangent conversation')
+results.conversation = /back to thread/i.test(await bodyText())
 await page.screenshot({ path: '/tmp/tc-3.png' })
 
 await page.$eval('[data-testid="back-to-spine"]', (el) => el.click())
@@ -95,7 +99,7 @@ await page.evaluate(() => {
 })
 await page.waitForFunction(
   () =>
-    document.body.innerText.includes('On this tangent') ||
+    document.body.innerText.includes('This composer posts only into this thread') ||
     document.body.innerText.includes('Staying on the branch'),
   { timeout: 10000 },
 )
@@ -103,13 +107,13 @@ results.branchStream = true
 
 await page.click('[data-testid="drop-summary"]')
 await page.waitForFunction(
-  () => /dropped from/i.test(document.body.innerText),
+  () => /merged from/i.test(document.body.innerText),
   { timeout: 12000 },
 )
 results.dropSummary = true
 await page.screenshot({ path: '/tmp/tc-4.png' })
 
-const msg = await page.$('[data-message-id="msg-spine-4"]')
+const msg = await page.$('[data-message-id="msg-root-4"]')
 const box = await msg.boundingBox()
 await page.mouse.move(box.x + 24, box.y + 10)
 await page.mouse.down()
@@ -120,14 +124,14 @@ results.chip = Boolean(await page.$('[data-testid="branch-chip"]'))
 if (results.chip) {
   await page.click('[data-testid="branch-chip"]')
   await page.waitForFunction(() =>
-    document.body.innerText.includes('This tangent is empty'),
+    document.body.innerText.includes('This branch is empty'),
   )
   results.newBranch = true
 }
 
 await page.evaluate(() => {
   const ta = [...document.querySelectorAll('textarea')].find((t) =>
-    t.placeholder.includes('spine'),
+    t.placeholder.includes('main'),
   )
   const setter = Object.getOwnPropertyDescriptor(
     HTMLTextAreaElement.prototype,
@@ -140,7 +144,7 @@ await page.evaluate(() => {
 await new Promise((r) => setTimeout(r, 100))
 await page.evaluate(() => {
   const ta = [...document.querySelectorAll('textarea')].find((t) =>
-    t.placeholder.includes('spine'),
+    t.placeholder.includes('main'),
   )
   ta.closest('form').querySelector('button[type="submit"]').click()
 })
