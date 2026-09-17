@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { GitMerge, Maximize2, Trash2 } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,67 +9,74 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
-import type { Branch } from '@/types'
+import { QuoteCard } from '@/components/chat/QuoteCard'
+import type { Thread } from '@/types'
 
 type BranchHeaderProps = {
-  branch: Branch
-  dropping?: boolean
-  onDrop: () => void
+  thread: Thread
+  /** e.g. "branch · 2 replies" — defaults to a reply count. */
+  eyebrow?: string
+  merging?: boolean
+  onMerge: () => void
   onDiscard: () => void
-  onOpenConversation?: () => void
+  /** Omitted when this thread already holds the frame. */
+  onFocus?: () => void
 }
 
+const ghost =
+  'rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50'
+
+const accent =
+  'flex items-center gap-1.5 rounded-md border border-branch/30 bg-branch/[0.13] px-2.5 py-[5px] text-[10.5px] font-medium text-branch-bright transition-colors hover:bg-branch/25 disabled:opacity-50'
+
 export function BranchHeader({
-  branch,
-  dropping,
-  onDrop,
+  thread,
+  eyebrow,
+  merging,
+  onMerge,
   onDiscard,
-  onOpenConversation,
+  onFocus,
 }: BranchHeaderProps) {
   const [confirm, setConfirm] = useState(false)
+  const count = thread.messages.length
+  const quote = thread.anchor?.quote ?? ''
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-          Branch · {branch.messages.length}{' '}
-          {branch.messages.length === 1 ? 'reply' : 'replies'}
-        </p>
-        <div className="flex flex-wrap items-center gap-1">
-          <Button
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="eyebrow text-branch">
+            {eyebrow ?? `branch · ${count} ${count === 1 ? 'reply' : 'replies'}`}
+          </span>
+          <QuoteCard quote={quote} />
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <button
             type="button"
-            size="sm"
-            variant="ghost"
-            onClick={onDrop}
-            disabled={dropping}
+            className={accent}
+            onClick={onMerge}
+            disabled={merging}
             data-testid="drop-summary"
           >
-            <GitMerge className="size-3.5" />
-            {dropping ? 'Dropping…' : 'Drop summary into main'}
-          </Button>
-          {onOpenConversation ? (
-            <Button
+            {merging ? 'Merging…' : 'Merge up ↑'}
+          </button>
+          {onFocus ? (
+            <button
               type="button"
-              size="sm"
-              variant="ghost"
-              onClick={onOpenConversation}
+              className={accent}
+              onClick={onFocus}
               data-testid="open-as-conversation"
             >
-              <Maximize2 className="size-3.5" />
-              Open as conversation
-            </Button>
+              Open as chat ⤢
+            </button>
           ) : null}
-          <Button
+          <button
             type="button"
-            size="sm"
-            variant="ghost"
-            className="text-destructive hover:text-destructive"
+            className={`${ghost} hover:text-destructive`}
             onClick={() => setConfirm(true)}
           >
-            <Trash2 className="size-3.5" />
             Discard
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -79,9 +85,9 @@ export function BranchHeader({
           <AlertDialogHeader>
             <AlertDialogTitle>Discard this branch?</AlertDialogTitle>
             <AlertDialogDescription>
-              The tangent on «{branch.quote}» and its {branch.messages.length}{' '}
-              {branch.messages.length === 1 ? 'reply' : 'replies'} will be removed.
-              This cannot be undone.
+              The tangent on “{quote}” and its {count}{' '}
+              {count === 1 ? 'reply' : 'replies'} will be removed, along with any
+              branches growing out of it. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

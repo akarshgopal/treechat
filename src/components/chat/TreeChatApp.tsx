@@ -1,30 +1,27 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
-import { GitBranch, RotateCcw } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { RotateCcw } from 'lucide-react'
+import { BranchCard } from '@/components/chat/BranchCard'
 import { BranchChip } from '@/components/chat/BranchChip'
-import { ConversationView } from '@/components/chat/ConversationView'
-import { SpineView } from '@/components/chat/SpineView'
+import { ThreadView } from '@/components/chat/ThreadView'
+import { TreeRail } from '@/components/chat/TreeRail'
 import { chatConnection } from '@/lib/chat-connection'
 import { createId } from '@/lib/ids'
 import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
 import { requestAssistantText } from '@/lib/request-assistant'
 import { offsetsInRoot } from '@/lib/selection'
-import { isModKey } from '@/lib/utils'
+import { childThreads, pathTo, threadContext } from '@/lib/tree'
+import { isModKey, truncate } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
-import type { ChatMessage, ProviderStatus } from '@/types'
+import type { ProviderStatus, Thread } from '@/types'
 
 const idleStatus: ProviderStatus = {
   mode: 'mock',
@@ -33,6 +30,7 @@ const idleStatus: ProviderStatus = {
 }
 
 type ChipState = {
+  threadId: string
   messageId: string
   start: number
   end: number
@@ -41,61 +39,115 @@ type ChipState = {
   left: number
 }
 
-function SpineEngine({
-  initial,
-  onMessages,
-  children,
-}: {
-  initial: ChatMessage[]
-  onMessages: (messages: ChatMessage[]) => void
-  children: (chat: ReturnType<typeof useChat>) => ReactNode
-}) {
-  const initialRef = useRef(toUIMessages(initial))
-  const chat = useChat({
-    threadId: 'spine',
-    connection: chatConnection,
-    initialMessages: initialRef.current,
-  })
-
-  useEffect(() => {
-    const next = fromUIMessages(chat.messages)
-    if (!sameTranscript(next, initial) && next.length > 0) {
-      onMessages(next)
-    }
-  }, [chat.messages, initial, onMessages])
-
-  return <>{children(chat)}</>
+/**
+ * Handlers shared by every thread in the tree. Threads render recursively, so
+ * drilling these as props would mean re-threading a dozen of them at each level.
+ */
+type ShellValue = {
+  draftFor: (threadId: string) => string
+  setDraft: (threadId: string, value: string) => void
+  registerComposer: (threadId: string, el: HTMLTextAreaElement | null) => void
+  onSelectMessage: (threadId: string, messageId: string) => void
+  onToggleChild: (parentId: string, childId: string) => void
+  onFocus: (threadId: string) => void
+  onMerge: (threadId: string) => void
+  onDiscard: (threadId: string) => void
+  merging: string | null
 }
 
-function BranchEngine({
-  branchId,
-  quote,
-  initial,
-  onMessages,
-  children,
-}: {
-  branchId: string
-  quote: string
-  initial: ChatMessage[]
-  onMessages: (messages: ChatMessage[]) => void
-  children: (chat: ReturnType<typeof useChat>) => ReactNode
-}) {
-  const initialRef = useRef(toUIMessages(initial))
+const ShellContext = createContext<ShellValue | null>(null)
+
+function useShell() {
+  const value = useContext(ShellContext)
+  if (!value) throw new Error('ShellContext missing')
+  return value
+}
+
+/**
+ * One chat engine per rendered thread. Keyed on `rev` by the caller, so an
+ * external write (a merged summary) remounts it and it re-reads the transcript
+ * rather than overwriting it with its own stale copy.
+ */
+function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) {
+  const { state, replaceMessages } = useTree()
+  const shell = useShell()
+  const thread = state.threads[threadId]
+
+  const initialRef = useRef(toUIMessages(thread?.messages ?? []))
   const chat = useChat({
-    threadId: branchId,
+    threadId,
     connection: chatConnection,
     initialMessages: initialRef.current,
-    forwardedProps: { quote },
+    forwardedProps: {
+      quote: thread?.anchor?.quote ?? '',
+      context: threadContext(state, threadId),
+    },
   })
 
+  const initial = useMemo(() => thread?.messages ?? [], [thread])
   useEffect(() => {
     const next = fromUIMessages(chat.messages)
-    if (!sameTranscript(next, initial)) {
-      onMessages(next)
-    }
-  }, [chat.messages, initial, onMessages])
+    if (next.length === 0 && initial.length > 0) return
+    if (!sameTranscript(next, initial)) replaceMessages(threadId, next)
+  }, [chat.messages, initial, replaceMessages, threadId])
 
-  return <>{children(chat)}</>
+  if (!thread) return null
+
+  const send = () => {
+    const text = shell.draftFor(threadId).trim()
+    if (!text) return
+    shell.setDraft(threadId, '')
+    void chat.sendMessage(text)
+  }
+
+  return (
+    <ThreadView
+      thread={thread}
+      state={state}
+      depth={depth}
+      framed={depth === 0}
+      draft={shell.draftFor(threadId)}
+      onDraftChange={(value) => shell.setDraft(threadId, value)}
+      onSend={send}
+      onStop={() => chat.stop()}
+      isLoading={chat.isLoading}
+      onSelectMessage={shell.onSelectMessage}
+      onToggleChild={shell.onToggleChild}
+      onFocusChild={shell.onFocus}
+      composerRef={(el) => shell.registerComposer(threadId, el)}
+      accentComposer={Boolean(thread.anchor)}
+      placeholder={
+        thread.anchor ? 'Ask in this branch…' : 'Reply on the main thread…'
+      }
+      emptyLabel={
+        thread.anchor
+          ? 'This branch is empty. Write below — it stays on this thread, and it already knows everything above it.'
+          : undefined
+      }
+      renderChild={(childId, childDepth) => (
+        <NestedBranch threadId={childId} depth={childDepth} />
+      )}
+    />
+  )
+}
+
+/** An expanded child: the branch card, with that thread's own engine inside. */
+function NestedBranch({ threadId, depth }: { threadId: string; depth: number }) {
+  const { state } = useTree()
+  const shell = useShell()
+  const thread = state.threads[threadId]
+  if (!thread) return null
+  return (
+    <BranchCard
+      thread={thread}
+      merging={shell.merging === threadId}
+      onMerge={() => shell.onMerge(threadId)}
+      onDiscard={() => shell.onDiscard(threadId)}
+      onFocus={() => shell.onFocus(threadId)}
+    >
+      <ThreadEngine key={`${thread.id}:${thread.rev}`} threadId={threadId} depth={depth} />
+    </BranchCard>
+  )
 }
 
 function TreeChatShell({
@@ -107,68 +159,150 @@ function TreeChatShell({
   status: ProviderStatus
   onReset: () => void
 }) {
-  const tree = useTree()
   const {
     state,
-    activeBranch,
-    createBranch,
-    openBranch,
-    discardBranch,
-    openConversation,
-    backToSpine,
-    replaceSpine,
-    replaceBranchMessages,
-  } = tree
+    activeThread,
+    rootThread,
+    createThread,
+    expand,
+    focus,
+    discard,
+    appendMessage,
+  } = useTree()
 
-  const [spineDraft, setSpineDraft] = useState('')
-  const [branchDraft, setBranchDraft] = useState('')
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [chip, setChip] = useState<ChipState | null>(null)
-  const [dropping, setDropping] = useState(false)
-  const spineComposerRef = useRef<HTMLTextAreaElement>(null)
-  const branchComposerRef = useRef<HTMLTextAreaElement>(null)
+  const [merging, setMerging] = useState<string | null>(null)
+  const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const lastRangeRef = useRef<ChipState | null>(null)
+  const focusNextRef = useRef<string | null>(null)
 
-  const openInline =
-    state.view.kind === 'spine'
-      ? (state.branches.find((branch) => branch.id === state.openBranchId) ?? null)
-      : null
+  const draftFor = useCallback((threadId: string) => drafts[threadId] ?? '', [drafts])
+  const setDraft = useCallback((threadId: string, value: string) => {
+    setDrafts((current) => ({ ...current, [threadId]: value }))
+  }, [])
 
-  const captureSelection = useCallback(
-    (messageId: string) => {
-      const root = document.querySelector<HTMLElement>(
-        `[data-message-id="${messageId}"][data-selectable="true"]`,
-      )
-      if (!root) return
-      const offsets = offsetsInRoot(root)
-      if (!offsets) {
-        setChip(null)
-        return
+  const registerComposer = useCallback(
+    (threadId: string, el: HTMLTextAreaElement | null) => {
+      composersRef.current[threadId] = el
+      if (el && focusNextRef.current === threadId) {
+        focusNextRef.current = null
+        setTimeout(() => el.focus(), 0)
       }
-      const selection = window.getSelection()
-      if (!selection || selection.rangeCount === 0) return
-      const rect = selection.getRangeAt(0).getBoundingClientRect()
-      const next: ChipState = {
-        messageId,
-        start: offsets.start,
-        end: offsets.end,
-        quote: offsets.text.trim(),
-        top: rect.top,
-        left: rect.left + rect.width / 2,
-      }
-      lastRangeRef.current = next
-      setChip(next)
     },
     [],
   )
 
+  const onSelectMessage = useCallback((threadId: string, messageId: string) => {
+    const root = document.querySelector<HTMLElement>(
+      `[data-message-id="${messageId}"][data-selectable="true"]`,
+    )
+    if (!root) return
+    const offsets = offsetsInRoot(root)
+    if (!offsets) {
+      setChip(null)
+      return
+    }
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    const rect = selection.getRangeAt(0).getBoundingClientRect()
+    const next: ChipState = {
+      threadId,
+      messageId,
+      start: offsets.start,
+      end: offsets.end,
+      quote: offsets.text.trim(),
+      top: rect.top,
+      left: rect.left + rect.width / 2,
+    }
+    lastRangeRef.current = next
+    setChip(next)
+  }, [])
+
   const branchFromChip = useCallback(
     (range: ChipState) => {
-      createBranch(range.messageId, range.start, range.end, range.quote)
+      const id = createThread(range.threadId, {
+        messageId: range.messageId,
+        start: range.start,
+        end: range.end,
+        quote: range.quote,
+      })
       setChip(null)
       window.getSelection()?.removeAllRanges()
-      setTimeout(() => branchComposerRef.current?.focus(), 40)
+      focusNextRef.current = id
     },
-    [createBranch],
+    [createThread],
+  )
+
+  const onToggleChild = useCallback(
+    (parentId: string, childId: string) => {
+      expand(parentId, state.expanded[parentId] === childId ? null : childId)
+    },
+    [expand, state.expanded],
+  )
+
+  const onMerge = useCallback(
+    async (threadId: string) => {
+      const thread = state.threads[threadId]
+      if (!thread || !thread.parentId || !thread.anchor) return
+      setMerging(threadId)
+      try {
+        const quote = thread.anchor.quote
+        const transcript = thread.messages
+          .map((message) => `${message.role}: ${message.content}`)
+          .join('\n')
+        const prompt = `Summarize this TreeChat side-thread so it can be folded back into its parent thread. Two to four sentences, no preamble. Quote: "${quote}". Transcript:\n${transcript || '(empty branch)'}`
+        let summary = ''
+        try {
+          summary = await requestAssistantText(
+            prompt,
+            quote,
+            threadContext(state, threadId),
+          )
+        } catch {
+          const last = thread.messages.at(-1)?.content ?? 'The tangent was closed.'
+          summary = `From the branch on «${quote}»: ${last}`
+        }
+        appendMessage(thread.parentId, {
+          id: createId('merge'),
+          role: 'assistant',
+          content: summary || 'Summary merged from the branch.',
+          createdAt: Date.now(),
+          kind: 'drop-summary',
+          quote,
+        })
+        expand(thread.parentId, null)
+        if (state.activeThreadId === threadId) focus(thread.parentId)
+      } finally {
+        setMerging(null)
+      }
+    },
+    [appendMessage, expand, focus, state],
+  )
+
+  const shell = useMemo<ShellValue>(
+    () => ({
+      draftFor,
+      setDraft,
+      registerComposer,
+      onSelectMessage,
+      onToggleChild,
+      onFocus: focus,
+      onMerge: (threadId) => void onMerge(threadId),
+      onDiscard: discard,
+      merging,
+    }),
+    [
+      draftFor,
+      setDraft,
+      registerComposer,
+      onSelectMessage,
+      onToggleChild,
+      focus,
+      onMerge,
+      discard,
+      merging,
+    ],
   )
 
   useEffect(() => {
@@ -179,29 +313,26 @@ function TreeChatShell({
         if (range) branchFromChip(range)
         return
       }
-      if (event.key === 'Escape') {
-        if (chip) {
-          setChip(null)
-          return
-        }
-        if (state.view.kind === 'conversation') {
-          const active = document.activeElement
-          const composer = branchComposerRef.current
-          const focused = Boolean(composer && composer === active)
-          const dirty = branchDraft.trim().length > 0
-          if (focused && dirty) {
-            composer?.blur()
-            event.preventDefault()
-            return
-          }
-          event.preventDefault()
-          backToSpine()
-        }
+      if (event.key !== 'Escape') return
+      if (chip) {
+        setChip(null)
+        return
       }
+      const parentId = activeThread.parentId
+      if (!parentId) return
+      const composer = composersRef.current[activeThread.id]
+      const dirty = (drafts[activeThread.id] ?? '').trim().length > 0
+      if (composer && composer === document.activeElement && dirty) {
+        composer.blur()
+        event.preventDefault()
+        return
+      }
+      event.preventDefault()
+      focus(parentId)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [backToSpine, branchDraft, branchFromChip, chip, state.view.kind])
+  }, [activeThread, branchFromChip, chip, drafts, focus])
 
   useEffect(() => {
     const clear = () => setChip(null)
@@ -209,235 +340,111 @@ function TreeChatShell({
     return () => window.removeEventListener('scroll', clear, true)
   }, [])
 
-  const spineSetMessages = useRef<ReturnType<typeof useChat>['setMessages'] | null>(
-    null,
-  )
-  const spineMessages = useRef<ReturnType<typeof useChat>['messages']>([])
-
-  const handleDrop = useCallback(async () => {
-    if (!activeBranch) return
-    setDropping(true)
-    try {
-      const transcript = activeBranch.messages
-        .map((message) => `${message.role}: ${message.content}`)
-        .join('\n')
-      const prompt = `Summarize this TreeChat tangent so it can be dropped into the main spine. Two to four sentences, no preamble. Quote: "${activeBranch.quote}". Transcript:\n${transcript || '(empty branch)'}`
-      let summary = ''
-      try {
-        summary = await requestAssistantText(prompt, activeBranch.quote)
-      } catch {
-        const last = activeBranch.messages.at(-1)?.content ?? 'The tangent was closed.'
-        summary = `From the branch on «${activeBranch.quote}»: ${last}`
-      }
-      const dropId = createId('drop')
-      spineSetMessages.current?.([
-        ...spineMessages.current,
-        {
-          id: dropId,
-          role: 'assistant',
-          parts: [{ type: 'text', content: summary || 'Summary dropped from the branch.' }],
-          createdAt: new Date(),
-          metadata: { kind: 'drop-summary', quote: activeBranch.quote },
-        },
-      ])
-      if (state.view.kind === 'conversation') backToSpine()
-      tree.closeBranch()
-    } finally {
-      setDropping(false)
-    }
-  }, [activeBranch, backToSpine, state.view.kind, tree])
-
-  const banner =
-    openInline && state.view.kind === 'spine' ? (
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-accent/50 px-3 py-1.5 text-sm">
-        <span>
-          Posting to main
-          <span className="text-muted-foreground"> · </span>
-          <button
-            type="button"
-            className="font-medium text-primary underline-offset-2 hover:underline"
-            onClick={() => branchComposerRef.current?.focus()}
-          >
-            switch to branch
-          </button>
-        </span>
-      </div>
-    ) : null
+  const rootTitle = rootThread?.messages[0]?.content ?? 'Main thread'
+  const path = pathTo(state, activeThread.id)
+  const chipExisting = chip
+    ? childThreads(state, chip.threadId).filter(
+        (thread) =>
+          thread.anchor?.messageId === chip.messageId &&
+          thread.anchor.start === chip.start &&
+          thread.anchor.end === chip.end,
+      ).length
+    : 0
 
   return (
-    <div className="flex h-svh flex-col bg-background" data-view={state.view.kind}>
-      <header className="flex items-center justify-between gap-3 bg-header px-4 py-3 text-header-foreground">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary-foreground/10">
-            <GitBranch className="size-4" />
-          </div>
-          <div>
-            <p className="font-display text-lg font-semibold leading-none tracking-tight">
-              TreeChat
-            </p>
-            <p className="mt-1 text-xs text-header-foreground/70">
-              Select a passage to branch · Ctrl/Cmd+Shift+B
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge
-            variant="outline"
-            className="border-header-foreground/20 bg-header-foreground/5 text-header-foreground"
+    <div
+      className="flex h-svh flex-col bg-background"
+      data-view={activeThread.parentId ? 'conversation' : 'spine'}
+    >
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5 sm:px-8">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="accent-glow size-[7px] shrink-0 rounded-sm bg-branch" />
+          <button
+            type="button"
+            onClick={() => focus(state.rootId)}
+            className="shrink-0 text-[12.5px] font-medium text-foreground"
           >
+            TreeChat
+          </button>
+          {path.slice(1).map((thread, index) => {
+            const isLast = index === path.length - 2
+            return (
+              <span key={thread.id} className="flex min-w-0 items-center gap-1.5">
+                <span className="shrink-0 text-[12px] text-muted-foreground">/</span>
+                <button
+                  type="button"
+                  onClick={() => focus(thread.id)}
+                  title={thread.anchor?.quote}
+                  className={`truncate rounded-full px-2 py-[3px] text-[10.5px] font-medium ${
+                    isLast
+                      ? 'bg-branch/15 text-branch-bright'
+                      : 'text-muted-foreground hover:bg-foreground/[0.07]'
+                  }`}
+                >
+                  {truncate(thread.anchor?.quote ?? '', 28)}
+                </button>
+              </span>
+            )
+          })}
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
             {status.mode === 'mock' ? 'Mock stream' : `Live · ${status.provider}`}
-          </Badge>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="text-header-foreground hover:bg-header-foreground/10 hover:text-header-foreground"
-                onClick={onReset}
-                aria-label="Reset demo"
-              >
-                <RotateCcw className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Reset seeded conversation</TooltipContent>
-          </Tooltip>
+          </span>
+          {activeThread.parentId ? (
+            <button
+              type="button"
+              onClick={() => focus(activeThread.parentId!)}
+              data-testid="back-to-spine"
+              className="rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              ← back to thread
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onReset}
+            aria-label="Reset seeded conversation"
+            title="Reset seeded conversation"
+            className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <RotateCcw className="size-3.5" />
+          </button>
         </div>
       </header>
 
-      <SpineEngine
-        key={`spine-${epoch}`}
-        initial={state.spine}
-        onMessages={replaceSpine}
-      >
-        {(spineChat) => {
-          spineSetMessages.current = spineChat.setMessages
-          spineMessages.current = spineChat.messages
-          const sendSpine = () => {
-            const text = spineDraft.trim()
-            if (!text) return
-            setSpineDraft('')
-            void spineChat.sendMessage(text)
-          }
-
-          const conversationBranch =
-            state.view.kind === 'conversation' ? activeBranch : openInline
-
-          const body = (branchChat: ReturnType<typeof useChat> | null) => {
-            const sendBranch = () => {
-              const text = branchDraft.trim()
-              if (!text || !branchChat) return
-              setBranchDraft('')
-              void branchChat.sendMessage(text)
-            }
-
-            if (state.view.kind === 'conversation' && activeBranch) {
-              return (
-                <ConversationView
-                  branch={activeBranch}
-                  draft={branchDraft}
-                  onDraftChange={setBranchDraft}
-                  onSend={sendBranch}
-                  onStop={() => branchChat?.stop()}
-                  isLoading={Boolean(branchChat?.isLoading)}
-                  dropping={dropping}
-                  onDrop={() => void handleDrop()}
-                  onDiscard={() => discardBranch(activeBranch.id)}
-                  onBack={backToSpine}
-                  composerRef={branchComposerRef}
-                />
-              )
-            }
-
-            return (
-              <SpineView
-                messages={
-                  fromUIMessages(spineChat.messages).length > 0
-                    ? fromUIMessages(spineChat.messages)
-                    : state.spine
-                }
-                branches={state.branches}
-                openBranch={openInline}
-                onSelectMessage={captureSelection}
-                onOpenBranch={(id) => {
-                  if (state.openBranchId === id) {
-                    tree.closeBranch()
-                  } else {
-                    openBranch(id)
-                  }
-                }}
-                spineDraft={spineDraft}
-                onSpineDraftChange={setSpineDraft}
-                onSpineSend={sendSpine}
-                onSpineStop={() => spineChat.stop()}
-                spineLoading={spineChat.isLoading}
-                spineComposerRef={spineComposerRef}
-                onSpineFocus={() => undefined}
-                banner={banner}
-                branchDraft={branchDraft}
-                onBranchDraftChange={setBranchDraft}
-                onBranchSend={sendBranch}
-                onBranchStop={() => branchChat?.stop()}
-                branchLoading={Boolean(branchChat?.isLoading)}
-                dropping={dropping}
-                onDrop={() => void handleDrop()}
-                onDiscard={() => openInline && discardBranch(openInline.id)}
-                onOpenConversation={() =>
-                  openInline && openConversation(openInline.id)
-                }
-                branchComposerRef={branchComposerRef}
-                onBranchFocus={() => undefined}
+      <ShellContext.Provider value={shell}>
+        <div className="flex min-h-0 flex-1">
+          <TreeRail state={state} rootTitle={rootTitle} onFocus={focus} />
+          <div className="min-w-0 flex-1">
+            {chip ? (
+              <BranchChip
+                top={chip.top}
+                left={chip.left}
+                existing={chipExisting}
+                onBranch={() => branchFromChip(chip)}
               />
-            )
-          }
-
-          if (!conversationBranch) {
-            return (
-              <div className="min-h-0 flex-1">
-                {chip ? (
-                  <BranchChip
-                    top={chip.top}
-                    left={chip.left}
-                    onBranch={() => branchFromChip(chip)}
-                  />
-                ) : null}
-                {body(null)}
-              </div>
-            )
-          }
-
-          return (
-            <BranchEngine
-              key={`${conversationBranch.id}-${epoch}`}
-              branchId={conversationBranch.id}
-              quote={conversationBranch.quote}
-              initial={conversationBranch.messages}
-              onMessages={(messages) =>
-                replaceBranchMessages(conversationBranch.id, messages)
-              }
-            >
-              {(branchChat) => (
-                <div className="min-h-0 flex-1">
-                  {chip && state.view.kind === 'spine' ? (
-                    <BranchChip
-                      top={chip.top}
-                      left={chip.left}
-                      onBranch={() => branchFromChip(chip)}
-                    />
-                  ) : null}
-                  {body(branchChat)}
-                </div>
-              )}
-            </BranchEngine>
-          )
-        }}
-      </SpineEngine>
+            ) : null}
+            <FramedThread thread={activeThread} epoch={epoch} />
+          </div>
+        </div>
+      </ShellContext.Provider>
     </div>
   )
 }
 
+function FramedThread({ thread, epoch }: { thread: Thread; epoch: number }) {
+  return (
+    <ThreadEngine
+      key={`${thread.id}:${thread.rev}:${epoch}`}
+      threadId={thread.id}
+      depth={0}
+    />
+  )
+}
+
 export function TreeChatApp() {
-  const tree = useTree()
+  const { resetDemo } = useTree()
   const [epoch, setEpoch] = useState(0)
   const [status, setStatus] = useState<ProviderStatus>(idleStatus)
 
@@ -456,17 +463,14 @@ export function TreeChatApp() {
     }
   }, [epoch])
 
-  const onReset = () => {
-    tree.resetDemo()
-    setEpoch((value) => value + 1)
-  }
-
   return (
     <TreeChatShell
-      key={epoch}
       epoch={epoch}
       status={status}
-      onReset={onReset}
+      onReset={() => {
+        resetDemo()
+        setEpoch((value) => value + 1)
+      }}
     />
   )
 }

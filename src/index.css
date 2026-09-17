@@ -4,30 +4,42 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.965 0.016 88);
-  --foreground: oklch(0.24 0.028 155);
-  --card: oklch(0.985 0.008 88);
-  --card-foreground: oklch(0.24 0.028 155);
-  --popover: oklch(0.99 0.006 88);
-  --popover-foreground: oklch(0.24 0.028 155);
-  --primary: oklch(0.4 0.07 155);
-  --primary-foreground: oklch(0.98 0.012 95);
-  --secondary: oklch(0.93 0.02 90);
-  --secondary-foreground: oklch(0.3 0.04 155);
-  --muted: oklch(0.94 0.018 92);
-  --muted-foreground: oklch(0.48 0.03 150);
-  --accent: oklch(0.9 0.04 145);
-  --accent-foreground: oklch(0.28 0.05 155);
-  --destructive: oklch(0.55 0.16 28);
-  --destructive-foreground: oklch(0.98 0.01 90);
-  --border: oklch(0.88 0.02 95);
-  --input: oklch(0.88 0.02 95);
-  --ring: oklch(0.45 0.07 155);
-  --radius: 0.7rem;
-  --header: oklch(0.27 0.035 155);
-  --header-foreground: oklch(0.96 0.015 95);
-  --branch: oklch(0.62 0.11 145);
-  --paper: oklch(0.975 0.012 88);
+  color-scheme: dark;
+
+  /* Surfaces */
+  --background: #15171a;
+  --card: #1d2023;
+  --popover: #1d2023;
+  --paper: #1d2023;
+  --code: #101214;
+
+  /* Ink */
+  --foreground: #e8eae7;
+  --card-foreground: #e8eae7;
+  --popover-foreground: #e8eae7;
+  --muted-foreground: #989a99;
+
+  /* Accent — the branch colour */
+  --primary: oklch(0.68 0.085 163);
+  --primary-foreground: #15171a;
+  --branch: oklch(0.68 0.085 163);
+  --branch-bright: oklch(0.84 0.06 163);
+  --ring: oklch(0.68 0.085 163);
+
+  /* Neutral fills */
+  --secondary: #26292c;
+  --secondary-foreground: #e8eae7;
+  --muted: #212427;
+  --accent: #26292c;
+  --accent-foreground: #e8eae7;
+
+  --destructive: oklch(0.62 0.16 25);
+  --destructive-foreground: #15171a;
+
+  --border: #33363a;
+  --input: #3a3d41;
+
+  --radius: 0.5rem;
 }
 
 @theme inline {
@@ -50,16 +62,16 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-header: var(--header);
-  --color-header-foreground: var(--header-foreground);
   --color-branch: var(--branch);
+  --color-branch-bright: var(--branch-bright);
   --color-paper: var(--paper);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --color-code: var(--code);
+  --radius-sm: calc(var(--radius) - 3px);
+  --radius-md: calc(var(--radius) - 1px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: "Source Sans 3", "Segoe UI", sans-serif;
-  --font-display: "Fraunces", Georgia, serif;
+  --radius-xl: calc(var(--radius) + 3px);
+  --font-sans: "Libre Franklin", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 * {
@@ -72,11 +84,15 @@ body,
   min-height: 100%;
 }
 
+html {
+  background: var(--background);
+}
+
 body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -86,22 +102,93 @@ body {
   min-height: 100svh;
 }
 
+::selection {
+  background: color-mix(in oklch, var(--branch) 34%, transparent);
+  color: var(--foreground);
+}
+
+/* Eyebrow labels — mono, uppercase, wide-tracked. Used everywhere in the design. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+/* A quoted span inside a message that has a branch hanging off it. */
 .branch-mark {
-  background: color-mix(in oklch, var(--branch) 18%, transparent);
-  border-bottom: 1.5px solid color-mix(in oklch, var(--primary) 70%, var(--branch));
-  border-radius: 2px;
+  background: color-mix(in oklch, var(--branch) 14%, transparent);
+  box-shadow: 0 1px 0 color-mix(in oklch, var(--branch) 45%, transparent);
   cursor: pointer;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+  transition:
+    background 300ms ease,
+    box-shadow 300ms ease;
+}
+
+.branch-mark[data-siblings="true"] {
+  /* a stacked underline reads as "more than one thread lives here" */
+  box-shadow:
+    0 1px 0 color-mix(in oklch, var(--branch) 45%, transparent),
+    0 3px 0 color-mix(in oklch, var(--branch) 45%, transparent);
 }
 
 .branch-mark[data-open="true"] {
-  background: color-mix(in oklch, var(--branch) 32%, transparent);
-  border-bottom-width: 2px;
+  background: color-mix(in oklch, var(--branch) 24%, transparent);
+  box-shadow: 0 1px 0 var(--branch);
+}
+
+.branch-mark[data-open="true"][data-siblings="true"] {
+  box-shadow:
+    0 1px 0 var(--branch),
+    0 3px 0 color-mix(in oklch, var(--branch) 45%, transparent);
+}
+
+/* The glowing vertical spine that runs down an open branch. */
+.branch-spine {
+  background: color-mix(in oklch, var(--branch) 65%, transparent);
+  box-shadow: 0 0 14px color-mix(in oklch, var(--branch) 55%, transparent);
+}
+
+.accent-glow {
+  box-shadow: 0 0 12px color-mix(in oklch, var(--branch) 70%, transparent);
 }
 
 .selection-chip {
   box-shadow:
-    0 10px 24px -12px oklch(0.3 0.05 155 / 0.45),
-    0 0 0 1px oklch(0.4 0.07 155 / 0.12);
+    0 8px 24px -10px rgb(0 0 0 / 0.8),
+    0 0 18px color-mix(in oklch, var(--branch) 40%, transparent);
+}
+
+@keyframes tcCaret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.caret {
+  animation: tcCaret 1.1s steps(1) infinite;
+}
+
+@keyframes tcRise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: tcRise 420ms cubic-bezier(0.22, 0.9, 0.24, 1) both;
 }
