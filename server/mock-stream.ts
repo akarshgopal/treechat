@@ -61,39 +61,42 @@ function lastUserText(messages: unknown[]): string {
 function craftReply(userText: string, quote?: string): string {
   const text = userText.toLowerCase()
 
-  if (text.includes('summarize') || text.includes('drop')) {
+  if (text.includes('summarize') || text.includes('merge') || text.includes('drop')) {
     const q = quote ? `«${quote}»` : 'the selected passage'
-    return `Dropped from the branch on ${q}. The tangent stayed attached to that character range, used its own composer, and never stole the spine. Closed branches remain as a quiet underline plus a gutter pip you can reopen.`
+    return `Merged up from the branch on ${q}. The tangent stayed pinned to that character range and used its own composer, so it never stole the thread above it. What is left behind is a quiet underline and a pill you can reopen.`
   }
 
   if (quote) {
-    if (text.includes('composer') || text.includes('post')) {
-      return `On this tangent, this composer posts only here — not to the spine. The quote «${quote}» is the anchor. Esc blurs a dirty composer first, then returns you to the trunk.`
+    if (text.includes('deep') || text.includes('nest') || text.includes('again')) {
+      return `You can branch from here too — this thread is a conversation like any other, so select a passage in it and fork again. Each level carries the whole chain above it as context. Past two levels the cards stop nesting inline and offer "open as chat" instead.`
     }
-    return `Staying on the branch from «${quote}». Ask anything about this passage; Drop summary will fold a short recap onto the spine, Discard removes the tangent, and Open as conversation gives this thread the full frame.`
+    if (text.includes('composer') || text.includes('post')) {
+      return `This composer posts only into this thread. Every thread has its own — the one at the bottom belongs to whichever thread holds the frame. The quote «${quote}» is this thread's anchor, and Esc walks back up one level.`
+    }
+    return `Staying on the branch from «${quote}». I can see the whole chain this grew out of, so ask anything about it. Merge up folds a recap into the parent thread, Discard removes this branch and everything under it, and Open as chat gives it the full frame.`
   }
 
   if (text.includes('select') || text.includes('shortcut') || text.includes('chip')) {
-    return 'Select any span in a message. A Branch chip floats over the highlight — or press ⌘⇧B / Ctrl+Shift+B. The new side-thread is anchored to that character range and stores the quote so the underline survives as the spine grows.'
+    return 'Select any span in any message, in any thread. A "branch from selection" chip floats over the highlight — or press ⌘⇧B / Ctrl+Shift+B. The new thread is anchored to that character range and stores the quote, so the underline survives as the thread grows.'
   }
 
   if (text.includes('pip') || text.includes('underline') || text.includes('closed') || text.includes('hover')) {
-    return 'Closed branches stay quiet: a moss underline on the span, a gutter pip with the reply count. Hover the pip for a preview; click it (or the underline) to open the inline thread. Only one inline branch is open at a time.'
+    return 'Closed branches stay quiet: a moss underline on the span, and a pill on the hairline below the message carrying the quote and a reply count. Click either to open the thread in place. Several branches can share one passage — then the underline doubles and the pill numbers them.'
   }
 
-  if (text.includes('composer') || text.includes('banner') || text.includes('spine') || text.includes('main')) {
-    return 'The bottom composer always posts to the spine. While an inline branch is open you’ll see “Posting to main · switch to branch” — that switch focuses the branch’s own composer. Conversation view is the exception: its composer posts only to the tangent.'
+  if (text.includes('composer') || text.includes('main') || text.includes('thread')) {
+    return 'Every thread has its own composer, so there is never a question of where a message lands. The one at the bottom belongs to the thread holding the frame; an expanded branch carries its own inside its card. Open as chat hands the frame to a branch, and the header shows the path back up.'
   }
 
-  if (text.includes('drop') || text.includes('discard') || text.includes('conversation')) {
-    return 'Every branch header has three moves: Drop summary into main (a recap lands on the spine), Discard (confirm first), and Open as conversation (full-frame tangent with Back to spine, the quote as context, and Esc to leave).'
+  if (text.includes('discard') || text.includes('chat') || text.includes('conversation')) {
+    return 'Every branch header has three moves: Merge up (a recap lands in the parent thread), Discard (confirm first — it takes any branches growing out of it too), and Open as chat (the branch takes the full frame, with the tree rail beside it).'
   }
 
   if (text.includes('what is') || text.includes('treechat') || text.includes('how do')) {
-    return 'TreeChat treats a chat as a tree. The spine is the trunk. Highlight a passage to grow a side-thread, keep it closed as an underline + pip, or open it inline / as its own conversation. Everything — branches and view mode — persists in localStorage.'
+    return 'TreeChat treats a chat as an actual tree. Every thread is a full conversation; the root one is just the thread with no parent. Highlight a passage to grow a side-thread, branch that branch if you want, and each level carries the chain above it as context. The whole tree persists in localStorage.'
   }
 
-  return `Noted. On the spine this becomes another trunk message; on a branch it stays a tangent. Try selecting a phrase above and pressing ⌘⇧B / Ctrl+Shift+B if you want to fork from here.`
+  return `Noted. This lands in whichever thread you are in — nothing retargets. Select a phrase above and press ⌘⇧B / Ctrl+Shift+B if you want to fork from here.`
 }
 
 function tokensOf(reply: string): string[] {

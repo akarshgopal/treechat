@@ -63,12 +63,26 @@ export function getTextAdapter() {
 
 export function buildSystemPrompts(forwardedProps: Record<string, unknown>) {
   const prompts = [
-    'You are TreeChat, a branching conversation assistant. The main thread is the spine; side-threads are branches anchored to a quoted character range. Be concise, concrete, and specific. When the user asks about this product, explain the actual UX: select text to branch, gutter pips for closed branches, Drop summary / Discard / Open as conversation, and that the main composer always posts to the spine.',
+    'You are TreeChat, a branching conversation. Every thread is a full conversation — the root one is simply the thread without a parent. Any passage in any message, in any thread, can be selected and branched, and those branches can themselves be branched, to any depth. Be concise, concrete, and specific. When the user asks about this product, explain the actual UX: select text to branch (several branches can hang off one passage), a pill on the hairline below a message opens a closed branch, and Merge up / Discard / Open as chat act on an open one. Each thread has its own composer.',
   ]
   const quote = typeof forwardedProps.quote === 'string' ? forwardedProps.quote : ''
-  if (quote) {
+  const context =
+    typeof forwardedProps.context === 'string' ? forwardedProps.context : ''
+
+  if (quote && context) {
     prompts.push(
-      `The user is on a tangent branched from this quote:\n«${quote}»\nStay on this side-thread unless they ask to return to the spine.`,
+      `You are in a side-thread. Below is the chain of conversation it grew out of, ` +
+        `outermost first — each section ends with the passage the user selected to ` +
+        `branch deeper. It is background, not something to answer again:\n\n` +
+        `${context}\n\n` +
+        `You are now in the thread branched from «${quote}». Answer the user's ` +
+        `questions here with that whole chain in mind — assume pronouns and ` +
+        `shorthand refer to things established above. Stay in this thread unless ` +
+        `they ask to go back up.`,
+    )
+  } else if (quote) {
+    prompts.push(
+      `You are in a side-thread branched from this passage:\n«${quote}»\nStay in this thread unless the user asks to go back up.`,
     )
   }
   return prompts
