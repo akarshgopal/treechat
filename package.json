@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "tsx --test src/lib/selection.test.ts src/lib/tree.test.ts src/store/tree-reducer.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.23",
@@ -37,6 +37,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
     "puppeteer-core": "^23.11.1",
+    "tsx": "^4.23.13",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   },

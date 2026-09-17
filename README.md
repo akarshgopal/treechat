@@ -7,7 +7,7 @@ Built with Vite, React, TypeScript, Tailwind CSS, shadcn/ui, and TanStack AI (`u
 ## Setup
 
 ```bash
-pnpm install
+ppnpm install
 pnpm dev
 ```
 
