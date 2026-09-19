@@ -77,7 +77,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
               placeholder={placeholder}
               disabled={disabled}
               rows={1}
-              className="min-h-[46px] resize-none border-0 bg-transparent px-[13px] py-3 text-[13.5px] leading-[1.5] shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
+              className="min-h-[42px] resize-none border-0 bg-transparent px-3 py-2.5 text-[13.5px] leading-[1.5] shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
             />
             {isLoading ? (
               <button

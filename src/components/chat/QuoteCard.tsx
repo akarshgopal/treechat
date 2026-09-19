@@ -10,7 +10,7 @@ export function QuoteCard({
   return (
     <p
       className={cn(
-        'text-[14px] italic leading-[1.4] text-muted-foreground text-pretty',
+        'text-[13.5px] italic leading-[1.45] text-muted-foreground text-pretty',
         className,
       )}
     >
