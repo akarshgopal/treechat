@@ -19,8 +19,8 @@ export async function requestAssistantText(
       tools: [],
       context: [],
       forwardedProps: {
-        ...(quote ? { quote } : {}),
-        ...(context ? { context } : {}),
+        quote: quote ?? '',
+        context: context ?? '',
       },
     }),
   })
