@@ -21,13 +21,14 @@ type BranchHeaderProps = {
   onDiscard: () => void
   /** Omitted when this thread already holds the frame. */
   onFocus?: () => void
+  onHide?: () => void
 }
 
-const ghost =
-  'rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50'
+const quiet =
+  'rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50'
 
 const accent =
-  'flex items-center gap-1.5 rounded-md border border-branch/30 bg-branch/[0.13] px-2.5 py-[5px] text-[10.5px] font-medium text-branch-bright transition-colors hover:bg-branch/25 disabled:opacity-50'
+  'rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-branch-bright transition-colors hover:bg-branch/15 disabled:opacity-50'
 
 export function BranchHeader({
   thread,
@@ -36,6 +37,7 @@ export function BranchHeader({
   onMerge,
   onDiscard,
   onFocus,
+  onHide,
 }: BranchHeaderProps) {
   const [confirm, setConfirm] = useState(false)
   const count = thread.messages.length
@@ -43,14 +45,25 @@ export function BranchHeader({
 
   return (
     <>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex items-center justify-between gap-3">
           <span className="eyebrow text-branch">
             {eyebrow ?? `branch · ${count} ${count === 1 ? 'reply' : 'replies'}`}
           </span>
-          <QuoteCard quote={quote} />
+          {onHide ? (
+            <button
+              type="button"
+              className={quiet}
+              onClick={onHide}
+              data-testid="hide-branch"
+              aria-label="Hide this branch"
+            >
+              hide ⌄
+            </button>
+          ) : null}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        <QuoteCard quote={quote} />
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
           <button
             type="button"
             className={accent}
@@ -72,7 +85,7 @@ export function BranchHeader({
           ) : null}
           <button
             type="button"
-            className={`${ghost} hover:text-destructive`}
+            className={`${quiet} hover:text-destructive`}
             onClick={() => setConfirm(true)}
           >
             Discard
