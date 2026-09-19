@@ -11,15 +11,20 @@ import { useChat } from '@tanstack/ai-react'
 import { RotateCcw } from 'lucide-react'
 import { BranchCard } from '@/components/chat/BranchCard'
 import { BranchChip } from '@/components/chat/BranchChip'
-import { ThreadView } from '@/components/chat/ThreadView'
+import { MAX_INLINE_DEPTH, ThreadView } from '@/components/chat/ThreadView'
 import { TreeRail } from '@/components/chat/TreeRail'
 import { chatConnection } from '@/lib/chat-connection'
 import { createId } from '@/lib/ids'
 import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
 import { requestAssistantText } from '@/lib/request-assistant'
 import { offsetsInRoot } from '@/lib/selection'
-import { childThreads, pathTo, threadContext } from '@/lib/tree'
-import { isModKey, truncate } from '@/lib/utils'
+import {
+  branchForwardedProps,
+  childThreads,
+  depthFrom,
+  pathTo,
+} from '@/lib/tree'
+import { isBranchShortcut, truncate } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
 import type { ProviderStatus, Thread } from '@/types'
 
@@ -37,6 +42,7 @@ type ChipState = {
   quote: string
   top: number
   left: number
+  bottom: number
 }
 
 /**
@@ -48,7 +54,7 @@ type ShellValue = {
   setDraft: (threadId: string, value: string) => void
   registerComposer: (threadId: string, el: HTMLTextAreaElement | null) => void
   onSelectMessage: (threadId: string, messageId: string) => void
-  onToggleChild: (parentId: string, childId: string) => void
+  onOpenChild: (parentId: string, childId: string | null) => void
   onFocus: (threadId: string) => void
   onMerge: (threadId: string) => void
   onDiscard: (threadId: string) => void
@@ -74,14 +80,12 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
   const thread = state.threads[threadId]
 
   const initialRef = useRef(toUIMessages(thread?.messages ?? []))
+  const forwarded = branchForwardedProps(state, threadId)
   const chat = useChat({
     threadId,
     connection: chatConnection,
     initialMessages: initialRef.current,
-    forwardedProps: {
-      quote: thread?.anchor?.quote ?? '',
-      context: threadContext(state, threadId),
-    },
+    forwardedProps: forwarded ?? {},
   })
 
   const initial = useMemo(() => thread?.messages ?? [], [thread])
@@ -112,7 +116,7 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
       onStop={() => chat.stop()}
       isLoading={chat.isLoading}
       onSelectMessage={shell.onSelectMessage}
-      onToggleChild={shell.onToggleChild}
+      onOpenChild={shell.onOpenChild}
       onFocusChild={shell.onFocus}
       composerRef={(el) => shell.registerComposer(threadId, el)}
       accentComposer={Boolean(thread.anchor)}
@@ -144,6 +148,11 @@ function NestedBranch({ threadId, depth }: { threadId: string; depth: number }) 
       onMerge={() => shell.onMerge(threadId)}
       onDiscard={() => shell.onDiscard(threadId)}
       onFocus={() => shell.onFocus(threadId)}
+      onHide={
+        thread.parentId
+          ? () => shell.onOpenChild(thread.parentId!, null)
+          : undefined
+      }
     >
       <ThreadEngine key={`${thread.id}:${thread.rev}`} threadId={threadId} depth={depth} />
     </BranchCard>
@@ -176,6 +185,7 @@ function TreeChatShell({
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const lastRangeRef = useRef<ChipState | null>(null)
   const focusNextRef = useRef<string | null>(null)
+  const holdChipRef = useRef(false)
 
   const draftFor = useCallback((threadId: string) => drafts[threadId] ?? '', [drafts])
   const setDraft = useCallback((threadId: string, value: string) => {
@@ -185,27 +195,48 @@ function TreeChatShell({
   const registerComposer = useCallback(
     (threadId: string, el: HTMLTextAreaElement | null) => {
       composersRef.current[threadId] = el
-      if (el && focusNextRef.current === threadId) {
-        focusNextRef.current = null
-        setTimeout(() => el.focus(), 0)
+      if (!el || focusNextRef.current !== threadId) return
+      const tryFocus = (attempt: number) => {
+        const current = composersRef.current[threadId]
+        if (current) {
+          current.focus()
+          if (document.activeElement === current) {
+            focusNextRef.current = null
+            return
+          }
+        }
+        if (attempt < 10) requestAnimationFrame(() => tryFocus(attempt + 1))
       }
+      tryFocus(0)
     },
     [],
   )
 
-  const onSelectMessage = useCallback((threadId: string, messageId: string) => {
-    const root = document.querySelector<HTMLElement>(
-      `[data-message-id="${messageId}"][data-selectable="true"]`,
-    )
-    if (!root) return
-    const offsets = offsetsInRoot(root)
+  const syncChipFromSelection = useCallback(() => {
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      if (!holdChipRef.current) setChip(null)
+      return
+    }
+    holdChipRef.current = false
+    const node = selection.anchorNode
+    const el = (
+      node instanceof Element ? node : node?.parentElement
+    )?.closest<HTMLElement>('[data-message-id][data-selectable="true"]')
+    if (!el) {
+      setChip(null)
+      return
+    }
+    const offsets = offsetsInRoot(el)
     if (!offsets) {
       setChip(null)
       return
     }
-    const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
+    const threadId = el.dataset.threadId
+    const messageId = el.dataset.messageId
+    if (!threadId || !messageId) return
     const rect = selection.getRangeAt(0).getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) return
     const next: ChipState = {
       threadId,
       messageId,
@@ -214,10 +245,18 @@ function TreeChatShell({
       quote: offsets.text.trim(),
       top: rect.top,
       left: rect.left + rect.width / 2,
+      bottom: rect.bottom,
     }
     lastRangeRef.current = next
     setChip(next)
   }, [])
+
+  const onSelectMessage = useCallback(
+    (_threadId: string, _messageId: string) => {
+      syncChipFromSelection()
+    },
+    [syncChipFromSelection],
+  )
 
   const branchFromChip = useCallback(
     (range: ChipState) => {
@@ -228,17 +267,21 @@ function TreeChatShell({
         quote: range.quote,
       })
       setChip(null)
+      lastRangeRef.current = null
+      holdChipRef.current = false
       window.getSelection()?.removeAllRanges()
       focusNextRef.current = id
+      const parentDepth = depthFrom(state, state.activeThreadId, range.threadId)
+      if (parentDepth >= MAX_INLINE_DEPTH) focus(id)
     },
-    [createThread],
+    [createThread, focus, state],
   )
 
-  const onToggleChild = useCallback(
-    (parentId: string, childId: string) => {
-      expand(parentId, state.expanded[parentId] === childId ? null : childId)
+  const onOpenChild = useCallback(
+    (parentId: string, childId: string | null) => {
+      expand(parentId, childId)
     },
-    [expand, state.expanded],
+    [expand],
   )
 
   const onMerge = useCallback(
@@ -254,10 +297,11 @@ function TreeChatShell({
         const prompt = `Summarize this TreeChat side-thread so it can be folded back into its parent thread. Two to four sentences, no preamble. Quote: "${quote}". Transcript:\n${transcript || '(empty branch)'}`
         let summary = ''
         try {
+          const forwarded = branchForwardedProps(state, threadId)
           summary = await requestAssistantText(
             prompt,
-            quote,
-            threadContext(state, threadId),
+            forwarded?.quote ?? quote,
+            forwarded?.context ?? '',
           )
         } catch {
           const last = thread.messages.at(-1)?.content ?? 'The tangent was closed.'
@@ -286,7 +330,7 @@ function TreeChatShell({
       setDraft,
       registerComposer,
       onSelectMessage,
-      onToggleChild,
+      onOpenChild,
       onFocus: focus,
       onMerge: (threadId) => void onMerge(threadId),
       onDiscard: discard,
@@ -297,7 +341,7 @@ function TreeChatShell({
       setDraft,
       registerComposer,
       onSelectMessage,
-      onToggleChild,
+      onOpenChild,
       focus,
       onMerge,
       discard,
@@ -307,15 +351,19 @@ function TreeChatShell({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (isModKey(event) && event.shiftKey && event.key.toLowerCase() === 'b') {
+      if (isBranchShortcut(event)) {
         event.preventDefault()
-        const range = lastRangeRef.current
+        const range = chip ?? lastRangeRef.current
         if (range) branchFromChip(range)
         return
       }
       if (event.key !== 'Escape') return
       if (chip) {
+        event.preventDefault()
         setChip(null)
+        lastRangeRef.current = null
+        holdChipRef.current = false
+        window.getSelection()?.removeAllRanges()
         return
       }
       const parentId = activeThread.parentId
@@ -335,10 +383,24 @@ function TreeChatShell({
   }, [activeThread, branchFromChip, chip, drafts, focus])
 
   useEffect(() => {
-    const clear = () => setChip(null)
-    window.addEventListener('scroll', clear, true)
-    return () => window.removeEventListener('scroll', clear, true)
-  }, [])
+    let frame = 0
+    const sync = () => {
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        syncChipFromSelection()
+      })
+    }
+    document.addEventListener('selectionchange', sync)
+    window.addEventListener('scroll', sync, true)
+    window.addEventListener('resize', sync)
+    return () => {
+      document.removeEventListener('selectionchange', sync)
+      window.removeEventListener('scroll', sync, true)
+      window.removeEventListener('resize', sync)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [syncChipFromSelection])
 
   const rootTitle = rootThread?.messages[0]?.content ?? 'Main thread'
   const path = pathTo(state, activeThread.id)
@@ -356,7 +418,7 @@ function TreeChatShell({
       className="flex h-svh flex-col bg-background"
       data-view={activeThread.parentId ? 'conversation' : 'spine'}
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5 sm:px-8">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3 sm:px-8">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="accent-glow size-[7px] shrink-0 rounded-sm bg-branch" />
           <button
@@ -421,8 +483,12 @@ function TreeChatShell({
               <BranchChip
                 top={chip.top}
                 left={chip.left}
+                bottom={chip.bottom}
                 existing={chipExisting}
                 onBranch={() => branchFromChip(chip)}
+                onHold={() => {
+                  holdChipRef.current = true
+                }}
               />
             ) : null}
             <FramedThread thread={activeThread} epoch={epoch} />

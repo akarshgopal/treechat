@@ -69,21 +69,19 @@ export function buildSystemPrompts(forwardedProps: Record<string, unknown>) {
   const context =
     typeof forwardedProps.context === 'string' ? forwardedProps.context : ''
 
-  if (quote && context) {
-    prompts.push(
-      `You are in a side-thread. Below is the chain of conversation it grew out of, ` +
-        `outermost first — each section ends with the passage the user selected to ` +
-        `branch deeper. It is background, not something to answer again:\n\n` +
-        `${context}\n\n` +
-        `You are now in the thread branched from «${quote}». Answer the user's ` +
-        `questions here with that whole chain in mind — assume pronouns and ` +
-        `shorthand refer to things established above. Stay in this thread unless ` +
-        `they ask to go back up.`,
-    )
-  } else if (quote) {
-    prompts.push(
-      `You are in a side-thread branched from this passage:\n«${quote}»\nStay in this thread unless the user asks to go back up.`,
-    )
-  }
+  if (!quote && !context) return prompts
+
+  const chain =
+    context.trim() ||
+    (quote ? `SELECTED QUOTE\n«${quote}»` : '')
+
+  prompts.push(
+    `You are in a side-thread. The ancestor chain below is structured as MAIN, ` +
+      `then BRANCH depth N for each nested level, then SELECTED QUOTE (the passage ` +
+      `this thread is pinned to). It is background — do not answer it again.\n\n` +
+      `${chain}\n\n` +
+      `Answer in this thread. Pronouns and shorthand refer to things established ` +
+      `above. Stay here unless the user asks to go back up.`,
+  )
   return prompts
 }

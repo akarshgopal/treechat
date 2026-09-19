@@ -1,5 +1,5 @@
 import { createSeedState } from '../lib/seed.ts'
-import { descendantIds } from '../lib/tree.ts'
+import { descendantIds, expansionToReveal } from '../lib/tree.ts'
 import type { ChatMessage, Thread, TreeState } from '@/types'
 
 export type Action =
@@ -35,11 +35,16 @@ export function reducer(state: TreeState, action: Action): TreeState {
     }
     case 'create-thread': {
       const parentId = action.thread.parentId
+      if (!parentId) {
+        return withThread(state, action.thread)
+      }
       return {
         ...withThread(state, action.thread),
-        expanded: parentId
-          ? { ...state.expanded, [parentId]: action.thread.id }
-          : state.expanded,
+        expanded: {
+          ...state.expanded,
+          ...expansionToReveal(state, parentId),
+          [parentId]: action.thread.id,
+        },
       }
     }
     case 'expand':
@@ -47,10 +52,17 @@ export function reducer(state: TreeState, action: Action): TreeState {
         ...state,
         expanded: { ...state.expanded, [action.parentId]: action.childId },
       }
-    case 'focus':
-      return state.threads[action.threadId]
-        ? { ...state, activeThreadId: action.threadId }
-        : state
+    case 'focus': {
+      if (!state.threads[action.threadId]) return state
+      return {
+        ...state,
+        activeThreadId: action.threadId,
+        expanded: {
+          ...state.expanded,
+          ...expansionToReveal(state, action.threadId),
+        },
+      }
+    }
     case 'discard': {
       const thread = state.threads[action.threadId]
       if (!thread || thread.parentId === null) return state

@@ -46,6 +46,16 @@ test('creating a thread expands it inside its parent', () => {
   assert.equal(next.threads.b3.parentId, 'root')
 })
 
+test('creating a nested thread also expands ancestors', () => {
+  const state = { ...base(), expanded: {} }
+  const next = reducer(state, {
+    type: 'create-thread',
+    thread: thread('b1b', 'b1'),
+  })
+  assert.equal(next.expanded.b1, 'b1b')
+  assert.equal(next.expanded.root, 'b1')
+})
+
 test('replace-messages does not bump rev, append-message does', () => {
   const replaced = reducer(base(), {
     type: 'replace-messages',
@@ -88,6 +98,14 @@ test('the root thread cannot be discarded', () => {
 test('focus only moves to a thread that exists', () => {
   assert.equal(reducer(base(), { type: 'focus', threadId: 'b2' }).activeThreadId, 'b2')
   assert.equal(reducer(base(), { type: 'focus', threadId: 'gone' }).activeThreadId, 'root')
+})
+
+test('focus reveals the path by expanding ancestors', () => {
+  const state = { ...base(), expanded: {} }
+  const next = reducer(state, { type: 'focus', threadId: 'b1a' })
+  assert.equal(next.activeThreadId, 'b1a')
+  assert.equal(next.expanded.root, 'b1')
+  assert.equal(next.expanded.b1, 'b1a')
 })
 
 test('expand collapses when passed null', () => {

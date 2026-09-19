@@ -9,6 +9,7 @@ export function BranchCard({
   onMerge,
   onDiscard,
   onFocus,
+  onHide,
   children,
 }: {
   thread: Thread
@@ -16,20 +17,22 @@ export function BranchCard({
   onMerge: () => void
   onDiscard: () => void
   onFocus: () => void
+  onHide?: () => void
   children: ReactNode
 }) {
   return (
-    <div className="relative pb-1 pl-[26px] pt-0.5">
-      <span className="branch-spine absolute bottom-2.5 left-[5px] top-1.5 w-[2px] rounded-sm" />
-      <div className="rise flex flex-col gap-[13px] rounded-[9px] border border-branch/25 bg-branch/[0.07] px-[15px] py-[13px]">
+    <div className="relative pb-0.5 pl-[22px] pt-0.5">
+      <span className="branch-spine absolute bottom-2 left-[4px] top-1 w-[2px] rounded-full" />
+      <div className="rise flex flex-col gap-3 rounded-[9px] border border-branch/20 bg-branch/[0.05] px-3.5 py-3">
         <BranchHeader
           thread={thread}
           merging={merging}
           onMerge={onMerge}
           onDiscard={onDiscard}
           onFocus={onFocus}
+          onHide={onHide}
         />
-        <span className="h-px bg-branch/30" />
+        <span className="h-px bg-branch/20" />
         {children}
       </div>
     </div>
