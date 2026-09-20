@@ -3,17 +3,25 @@ import {
   chatParamsFromRequest,
   toServerSentEventsResponse,
 } from '@tanstack/ai'
-import { buildSystemPrompts, getProviderStatus, getTextAdapter } from './adapter.ts'
-import { mockChatStream } from './mock-stream.ts'
+import {
+  getProviderStatus,
+  getTextAdapter,
+  type RequestEnv,
+} from './adapter.ts'
+import { mockChatStream } from '../shared/mock-stream.ts'
+import { buildSystemPrompts } from '../shared/system-prompts.ts'
 
-export function getStatus() {
-  return getProviderStatus()
+export function getStatus(request?: Request | null, env?: RequestEnv) {
+  return getProviderStatus(request, env)
 }
 
-export async function handleApiRequest(request: Request): Promise<Response> {
+export async function handleApiRequest(
+  request: Request,
+  env?: RequestEnv,
+): Promise<Response> {
   const url = new URL(request.url)
   if (url.pathname === '/api/status' && request.method === 'GET') {
-    return Response.json(getStatus())
+    return Response.json(getStatus(request, env))
   }
 
   if (url.pathname !== '/api/chat') {
@@ -21,7 +29,7 @@ export async function handleApiRequest(request: Request): Promise<Response> {
   }
 
   if (request.method === 'GET') {
-    return Response.json(getStatus())
+    return Response.json(getStatus(request, env))
   }
 
   if (request.method !== 'POST') {
@@ -47,7 +55,7 @@ export async function handleApiRequest(request: Request): Promise<Response> {
       ? params.forwardedProps.quote
       : undefined
   const systemPrompts = buildSystemPrompts(params.forwardedProps)
-  const adapter = getTextAdapter()
+  const adapter = getTextAdapter(request, env)
 
   if (!adapter) {
     const stream = mockChatStream({

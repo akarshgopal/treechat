@@ -1,0 +1,230 @@
+import assert from 'node:assert/strict'
+import { afterEach, beforeEach, test } from 'node:test'
+import { EventType } from '@tanstack/ai'
+import { saveProviderConfig, clearProviderConfig } from './provider.ts'
+import {
+  OPENROUTER_CHAT_URL,
+  buildOpenRouterMessages,
+  collectAssistantText,
+  contentDeltaFromOpenAIData,
+  hasLocalChatApi,
+  openRouterChatStream,
+  openRouterHeaders,
+  resetLocalChatApiProbe,
+  resolveChatBackend,
+  runChat,
+  toOpenAIChatMessages,
+} from './client-chat.ts'
+
+const originalFetch = globalThis.fetch
+
+function installLocalStorage() {
+  const store = new Map<string, string>()
+  const localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value)
+    },
+    removeItem: (key: string) => {
+      store.delete(key)
+    },
+    clear: () => {
+      store.clear()
+    },
+  }
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: localStorage,
+    configurable: true,
+  })
+}
+
+beforeEach(() => {
+  installLocalStorage()
+  resetLocalChatApiProbe()
+  clearProviderConfig()
+})
+
+afterEach(() => {
+  resetLocalChatApiProbe()
+  globalThis.fetch = originalFetch
+})
+
+test('contentDeltaFromOpenAIData reads streaming content and ignores done', () => {
+  assert.equal(
+    contentDeltaFromOpenAIData(
+      '{"choices":[{"delta":{"content":"Hello"}}]}',
+    ),
+    'Hello',
+  )
+  assert.equal(contentDeltaFromOpenAIData('[DONE]'), null)
+  assert.equal(contentDeltaFromOpenAIData('{'), null)
+  assert.equal(
+    contentDeltaFromOpenAIData('{"choices":[{"delta":{"content":""}}]}'),
+    null,
+  )
+})
+
+test('toOpenAIChatMessages keeps user and assistant text', () => {
+  assert.deepEqual(
+    toOpenAIChatMessages([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', parts: [{ type: 'text', content: 'hello' }] },
+      { role: 'tool', content: 'skip' },
+    ]),
+    [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+    ],
+  )
+})
+
+test('buildOpenRouterMessages prepends MAIN and SELECTED QUOTE system prompts', () => {
+  const messages = buildOpenRouterMessages([{ role: 'user', content: 'and then?' }], {
+    quote: 'a moss underline',
+    context: 'MAIN\nhello\n\nSELECTED QUOTE\n«a moss underline»',
+  })
+  assert.equal(messages[0]?.role, 'system')
+  assert.match(messages[0]?.content ?? '', /TreeChat/)
+  assert.equal(messages[1]?.role, 'system')
+  assert.match(messages[1]?.content ?? '', /SELECTED QUOTE/)
+  assert.match(messages[1]?.content ?? '', /MAIN/)
+  assert.equal(messages.at(-1)?.content, 'and then?')
+})
+
+test('openRouterHeaders use Bearer, HTTP-Referer, and X-Title', () => {
+  const headers = openRouterHeaders(
+    { provider: 'openrouter', apiKey: 'sk-or-v1-test', model: 'openai/gpt-4.1-mini' },
+    'https://akarshgopal.github.io',
+  )
+  assert.equal(headers.Authorization, 'Bearer sk-or-v1-test')
+  assert.equal(headers['HTTP-Referer'], 'https://akarshgopal.github.io')
+  assert.equal(headers['X-Title'], 'TreeChat')
+})
+
+test('resolveChatBackend is openrouter when a key is saved', async () => {
+  globalThis.fetch = (async () => new Response('ok', { status: 200 })) as typeof fetch
+  saveProviderConfig({
+    provider: 'openrouter',
+    apiKey: 'sk-or-v1-test',
+    model: 'openai/gpt-4.1-mini',
+  })
+  assert.equal(await resolveChatBackend(), 'openrouter')
+})
+
+test('resolveChatBackend is mock when no key and /api/status is missing', async () => {
+  globalThis.fetch = (async () => new Response('nope', { status: 404 })) as typeof fetch
+  assert.equal(await resolveChatBackend(), 'mock')
+})
+
+test('resolveChatBackend is local-api when /api/status is reachable', async () => {
+  globalThis.fetch = (async (input) => {
+    const url = String(input)
+    if (url.includes('/api/status')) {
+      return new Response(JSON.stringify({ mode: 'mock', provider: 'mock' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    throw new Error(`unexpected ${url}`)
+  }) as typeof fetch
+  assert.equal(await resolveChatBackend(), 'local-api')
+  assert.equal(await hasLocalChatApi(), true)
+})
+
+test('openRouterChatStream converts OpenAI SSE into TEXT_MESSAGE_* events', async () => {
+  const sse = [
+    'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":" world"}}]}',
+    '',
+    'data: [DONE]',
+    '',
+  ].join('\n')
+
+  const urls: string[] = []
+  globalThis.fetch = (async (input, init) => {
+    urls.push(String(input))
+    assert.equal(init?.method, 'POST')
+    const headers = init?.headers as Record<string, string>
+    assert.equal(headers.Authorization, 'Bearer sk-or-v1-test')
+    assert.equal(headers['HTTP-Referer'] != null, true)
+    assert.equal(headers['X-Title'], 'TreeChat')
+    const body = JSON.parse(String(init?.body)) as {
+      stream: boolean
+      model: string
+      messages: Array<{ role: string }>
+    }
+    assert.equal(body.stream, true)
+    assert.equal(body.model, 'openai/gpt-4.1-mini')
+    assert.equal(body.messages[0]?.role, 'system')
+    return new Response(sse, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  const text = await collectAssistantText(
+    openRouterChatStream({
+      messages: [{ role: 'user', content: 'hi' }],
+      config: {
+        provider: 'openrouter',
+        apiKey: 'sk-or-v1-test',
+        model: 'openai/gpt-4.1-mini',
+      },
+      forwardedProps: {},
+      threadId: 't1',
+      runId: 'r1',
+    }),
+  )
+  assert.equal(text, 'Hello world')
+  assert.deepEqual(urls, [OPENROUTER_CHAT_URL])
+})
+
+test('runChat with a saved key never posts to /api/chat', async () => {
+  saveProviderConfig({
+    provider: 'openrouter',
+    apiKey: 'sk-or-v1-live',
+    model: 'openai/gpt-4.1-mini',
+  })
+  const urls: string[] = []
+  globalThis.fetch = (async (input) => {
+    urls.push(String(input))
+    return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  const text = await collectAssistantText(
+    runChat({
+      messages: [{ role: 'user', content: 'hi' }],
+      threadId: 't1',
+      runId: 'r1',
+    }),
+  )
+  assert.equal(text, 'ok')
+  assert.ok(urls.every((url) => url.includes('openrouter.ai')))
+  assert.ok(urls.every((url) => !url.includes('/api/chat')))
+})
+
+test('runChat without a key and without /api uses the client mock', async () => {
+  const urls: string[] = []
+  globalThis.fetch = (async (input) => {
+    urls.push(String(input))
+    return new Response('missing', { status: 404 })
+  }) as typeof fetch
+
+  const chunks = []
+  for await (const chunk of runChat({
+    messages: [{ role: 'user', content: 'What is TreeChat?' }],
+    threadId: 't1',
+    runId: 'r1',
+  })) {
+    chunks.push(chunk)
+    if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break
+  }
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_START))
+  assert.ok(urls.every((url) => url.includes('/api/status')))
+  assert.ok(urls.every((url) => !url.includes('/api/chat')))
+  assert.ok(urls.every((url) => !url.includes('openrouter.ai')))
+})
