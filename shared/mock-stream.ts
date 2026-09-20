@@ -6,6 +6,14 @@ type MockInput = {
   runId: string
   quote?: string
   signal?: AbortSignal
+  /** Skip token delays (tests). Production always paces. */
+  pace?: boolean
+}
+
+function inNodeTest() {
+  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process
+  return Boolean(proc?.env?.NODE_TEST_CONTEXT)
 }
 
 function sleep(ms: number, signal?: AbortSignal) {
@@ -22,7 +30,7 @@ function sleep(ms: number, signal?: AbortSignal) {
   })
 }
 
-function textFromMessage(message: unknown): string {
+export function textFromMessage(message: unknown): string {
   if (!message || typeof message !== 'object') return ''
   const record = message as Record<string, unknown>
   if (typeof record.content === 'string') return record.content
@@ -108,6 +116,7 @@ export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamCh
   const messageId = crypto.randomUUID()
   const reply = craftReply(lastUserText(input.messages), input.quote)
   const now = () => Date.now()
+  const paced = input.pace ?? !inNodeTest()
 
   yield { type: EventType.RUN_STARTED, threadId, runId, timestamp: now() }
   yield {
@@ -120,7 +129,7 @@ export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamCh
   try {
     for (const token of tokensOf(reply)) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      await sleep(16 + Math.min(token.length, 8) * 4, signal)
+      if (paced) await sleep(16 + Math.min(token.length, 8) * 4, signal)
       yield {
         type: EventType.TEXT_MESSAGE_CONTENT,
         messageId,

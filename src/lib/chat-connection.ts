@@ -1,3 +1,3 @@
-import { fetchServerSentEvents } from '@tanstack/ai-react'
+import { treeChatConnection } from './client-chat.ts'
 
-export const chatConnection = fetchServerSentEvents('/api/chat')
+export const chatConnection = treeChatConnection
