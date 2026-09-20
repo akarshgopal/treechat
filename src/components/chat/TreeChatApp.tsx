@@ -11,11 +11,17 @@ import { useChat } from '@tanstack/ai-react'
 import { RotateCcw } from 'lucide-react'
 import { BranchCard } from '@/components/chat/BranchCard'
 import { BranchChip } from '@/components/chat/BranchChip'
+import { SettingsDialog } from '@/components/chat/SettingsDialog'
 import { MAX_INLINE_DEPTH, ThreadView } from '@/components/chat/ThreadView'
 import { TreeRail } from '@/components/chat/TreeRail'
 import { chatConnection } from '@/lib/chat-connection'
 import { createId } from '@/lib/ids'
 import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
+import {
+  loadProviderConfig,
+  providerRequestHeaders,
+  type ClientProviderConfig,
+} from '@/lib/provider'
 import { requestAssistantText } from '@/lib/request-assistant'
 import { offsetsInRoot } from '@/lib/selection'
 import {
@@ -163,10 +169,12 @@ function TreeChatShell({
   epoch,
   status,
   onReset,
+  onProviderConfigChange,
 }: {
   epoch: number
   status: ProviderStatus
   onReset: () => void
+  onProviderConfigChange: (config: ClientProviderConfig | null) => void
 }) {
   const {
     state,
@@ -450,7 +458,10 @@ function TreeChatShell({
           })}
         </div>
         <div className="flex shrink-0 items-center gap-2.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+          <span
+            data-testid="provider-mode"
+            className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground"
+          >
             {status.mode === 'mock' ? 'Mock stream' : `Live · ${status.provider}`}
           </span>
           {activeThread.parentId ? (
@@ -463,6 +474,7 @@ function TreeChatShell({
               ← back to thread
             </button>
           ) : null}
+          <SettingsDialog status={status} onConfigChange={onProviderConfigChange} />
           <button
             type="button"
             onClick={onReset}
@@ -509,30 +521,52 @@ function FramedThread({ thread, epoch }: { thread: Thread; epoch: number }) {
   )
 }
 
+function statusFromConfig(config: ClientProviderConfig | null): ProviderStatus | null {
+  if (!config) return null
+  return {
+    mode: 'live',
+    provider: 'openrouter',
+    model: config.model,
+  }
+}
+
 export function TreeChatApp() {
   const { resetDemo } = useTree()
   const [epoch, setEpoch] = useState(0)
-  const [status, setStatus] = useState<ProviderStatus>(idleStatus)
+  const [clientConfig, setClientConfig] = useState<ClientProviderConfig | null>(
+    () => loadProviderConfig(),
+  )
+  const [serverStatus, setServerStatus] = useState<ProviderStatus>(idleStatus)
+  const status = statusFromConfig(clientConfig) ?? serverStatus
+
+  const onProviderConfigChange = useCallback((config: ClientProviderConfig | null) => {
+    setClientConfig(config)
+  }, [])
 
   useEffect(() => {
+    if (clientConfig) return
     let cancelled = false
-    fetch('/api/status')
-      .then((response) => response.json())
-      .then((data: ProviderStatus) => {
-        if (!cancelled) setStatus(data)
+    fetch('/api/status', { headers: providerRequestHeaders() })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('no local api')
+        return (await response.json()) as ProviderStatus
+      })
+      .then((data) => {
+        if (!cancelled) setServerStatus(data)
       })
       .catch(() => {
-        if (!cancelled) setStatus(idleStatus)
+        if (!cancelled) setServerStatus(idleStatus)
       })
     return () => {
       cancelled = true
     }
-  }, [epoch])
+  }, [epoch, clientConfig])
 
   return (
     <TreeChatShell
       epoch={epoch}
       status={status}
+      onProviderConfigChange={onProviderConfigChange}
       onReset={() => {
         resetDemo()
         setEpoch((value) => value + 1)
