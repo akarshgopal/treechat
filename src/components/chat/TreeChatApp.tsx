@@ -8,18 +8,46 @@ import {
   useState,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
-import { SquarePen } from 'lucide-react'
+import { ChevronDown, SquarePen } from 'lucide-react'
 import { BranchCard } from '@/components/chat/BranchCard'
 import { BranchChip } from '@/components/chat/BranchChip'
+import { HeaderModelPicker } from '@/components/chat/ModelPicker'
+import { SessionList } from '@/components/chat/SessionList'
 import { SettingsDialog } from '@/components/chat/SettingsDialog'
 import { MAX_INLINE_DEPTH, ThreadView } from '@/components/chat/ThreadView'
 import { TreeRail } from '@/components/chat/TreeRail'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { chatConnection } from '@/lib/chat-connection'
 import { createId } from '@/lib/ids'
+import {
+  dropAnchorIdsForEdit,
+  droppedMessageIds,
+  editUserMessage,
+  retryFromAssistant,
+} from '@/lib/message-actions'
 import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
 import {
+  DEFAULT_OPENROUTER_MODEL,
   loadProviderConfig,
+  patchProviderConfig,
   providerRequestHeaders,
+  shortModelName,
   type ClientProviderConfig,
 } from '@/lib/provider'
 import { requestAssistantText } from '@/lib/request-assistant'
@@ -41,7 +69,7 @@ import type { ProviderStatus, Thread } from '@/types'
 const idleStatus: ProviderStatus = {
   mode: 'mock',
   provider: 'mock',
-  model: 'treechat-mock',
+  model: DEFAULT_OPENROUTER_MODEL,
 }
 
 type ChipState = {
@@ -59,10 +87,16 @@ type ChipState = {
  * Handlers shared by every thread in the tree. Threads render recursively, so
  * drilling these as props would mean re-threading a dozen of them at each level.
  */
+type EngineHandle = {
+  stop: () => void
+  isLoading: boolean
+}
+
 type ShellValue = {
   draftFor: (threadId: string) => string
   setDraft: (threadId: string, value: string) => void
   registerComposer: (threadId: string, el: HTMLTextAreaElement | null) => void
+  registerEngine: (threadId: string, handle: EngineHandle | null) => void
   onSelectMessage: (threadId: string, messageId: string) => void
   onOpenChild: (parentId: string, childId: string | null) => void
   onFocus: (threadId: string) => void
@@ -85,7 +119,7 @@ function useShell() {
  * rather than overwriting it with its own stale copy.
  */
 function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) {
-  const { state, replaceMessages } = useTree()
+  const { state, replaceMessages, rewriteThread } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
 
@@ -105,13 +139,46 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
     if (!sameTranscript(next, initial)) replaceMessages(threadId, next)
   }, [chat.messages, initial, replaceMessages, threadId])
 
+  useEffect(() => {
+    shell.registerEngine(threadId, {
+      stop: () => chat.stop(),
+      isLoading: chat.isLoading,
+    })
+    return () => shell.registerEngine(threadId, null)
+  }, [chat, shell, threadId])
+
   if (!thread) return null
+
+  const snapshot = () => {
+    const live = fromUIMessages(chat.messages)
+    return live.length > 0 ? live : thread.messages
+  }
 
   const send = () => {
     const text = shell.draftFor(threadId).trim()
     if (!text) return
     shell.setDraft(threadId, '')
     void chat.sendMessage(text)
+  }
+
+  const retryAssistant = (messageId: string) => {
+    if (chat.isLoading) chat.stop()
+    const before = snapshot()
+    const next = retryFromAssistant(before, messageId)
+    if (!next) return
+    chat.setMessages(toUIMessages(next))
+    rewriteThread(threadId, next, droppedMessageIds(before, next))
+    void chat.reload()
+  }
+
+  const editUser = (messageId: string, content: string) => {
+    if (chat.isLoading) chat.stop()
+    const before = snapshot()
+    const next = editUserMessage(before, messageId, content)
+    if (!next) return
+    chat.setMessages(toUIMessages(next))
+    rewriteThread(threadId, next, dropAnchorIdsForEdit(before, next, messageId))
+    void chat.reload()
   }
 
   return (
@@ -128,6 +195,8 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
       onSelectMessage={shell.onSelectMessage}
       onOpenChild={shell.onOpenChild}
       onFocusChild={shell.onFocus}
+      onRetryAssistant={retryAssistant}
+      onEditUser={editUser}
       composerRef={(el) => shell.registerComposer(threadId, el)}
       accentComposer={Boolean(thread.anchor)}
       placeholder={
@@ -179,28 +248,38 @@ function TreeChatShell({
   onNewChat,
   onRestoreDemo,
   onProviderConfigChange,
+  onModelChange,
 }: {
   epoch: number
   status: ProviderStatus
   onNewChat: () => void
   onRestoreDemo: () => void
   onProviderConfigChange: (config: ClientProviderConfig | null) => void
+  onModelChange: (model: string) => void
 }) {
   const {
     state,
+    sessions,
+    activeSessionId,
+    activeSession,
     activeThread,
-    rootThread,
     createThread,
     expand,
     focus,
     discard,
     appendMessage,
+    switchSession,
+    renameSession,
+    deleteSession,
   } = useTree()
 
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [chip, setChip] = useState<ChipState | null>(null)
   const [merging, setMerging] = useState<string | null>(null)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
+  const enginesRef = useRef<Record<string, EngineHandle>>({})
   const lastRangeRef = useRef<ChipState | null>(null)
   const focusNextRef = useRef<string | null>(null)
   const holdChipRef = useRef(false)
@@ -229,6 +308,27 @@ function TreeChatShell({
     },
     [],
   )
+
+  const registerEngine = useCallback(
+    (threadId: string, handle: EngineHandle | null) => {
+      if (!handle) {
+        delete enginesRef.current[threadId]
+        return
+      }
+      enginesRef.current[threadId] = handle
+    },
+    [],
+  )
+
+  const stopGenerating = useCallback(() => {
+    let stopped = false
+    for (const handle of Object.values(enginesRef.current)) {
+      if (!handle.isLoading) continue
+      handle.stop()
+      stopped = true
+    }
+    return stopped
+  }, [])
 
   const syncChipFromSelection = useCallback(() => {
     const selection = window.getSelection()
@@ -349,6 +449,7 @@ function TreeChatShell({
       draftFor,
       setDraft,
       registerComposer,
+      registerEngine,
       onSelectMessage,
       onOpenChild,
       onFocus: focus,
@@ -360,6 +461,7 @@ function TreeChatShell({
       draftFor,
       setDraft,
       registerComposer,
+      registerEngine,
       onSelectMessage,
       onOpenChild,
       focus,
@@ -378,6 +480,10 @@ function TreeChatShell({
         return
       }
       if (event.key !== 'Escape') return
+      if (stopGenerating()) {
+        event.preventDefault()
+        return
+      }
       if (chip) {
         event.preventDefault()
         setChip(null)
@@ -400,7 +506,7 @@ function TreeChatShell({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeThread, branchFromChip, chip, drafts, focus])
+  }, [activeThread, branchFromChip, chip, drafts, focus, stopGenerating])
 
   useEffect(() => {
     let frame = 0
@@ -422,8 +528,19 @@ function TreeChatShell({
     }
   }, [syncChipFromSelection])
 
-  const rootTitle = rootThread?.messages[0]?.content ?? 'Main thread'
   const path = pathTo(state, activeThread.id)
+  const pendingDelete = sessions.find((session) => session.id === pendingDeleteId)
+  const onSelectSession = useCallback(
+    (sessionId: string) => {
+      switchSession(sessionId)
+      setLibraryOpen(false)
+    },
+    [switchSession],
+  )
+  const onCreateSession = useCallback(() => {
+    onNewChat()
+    setLibraryOpen(false)
+  }, [onNewChat])
   const chipExisting = chip
     ? childThreads(state, chip.threadId).filter(
         (thread) =>
@@ -438,8 +555,8 @@ function TreeChatShell({
       className="flex h-svh flex-col bg-background"
       data-view={activeThread.parentId ? 'conversation' : 'spine'}
     >
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3 sm:px-8">
-        <div className="flex min-w-0 items-center gap-2.5">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-3 sm:gap-3 sm:px-8">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
           <span className="accent-glow size-[7px] shrink-0 rounded-sm bg-branch" />
           <button
             type="button"
@@ -447,6 +564,25 @@ function TreeChatShell({
             className="shrink-0 text-[12.5px] font-medium text-foreground"
           >
             TreeChat
+          </button>
+          <span className="hidden shrink-0 text-[12px] text-muted-foreground md:inline">/</span>
+          <span
+            className="hidden min-w-0 truncate text-[12px] text-muted-foreground md:inline"
+            title={activeSession.title}
+            data-testid="session-title"
+          >
+            {activeSession.title}
+          </span>
+          <button
+            type="button"
+            onClick={() => setLibraryOpen(true)}
+            aria-label="Switch chat"
+            title={activeSession.title}
+            data-testid="session-switcher"
+            className="flex min-w-0 max-w-[52vw] items-center gap-1 truncate rounded-md px-1.5 py-[3px] text-[12px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:hidden"
+          >
+            <span className="truncate">{activeSession.title}</span>
+            <ChevronDown className="size-3.5 shrink-0" />
           </button>
           {path.slice(1).map((thread, index) => {
             const isLast = index === path.length - 2
@@ -469,13 +605,23 @@ function TreeChatShell({
             )
           })}
         </div>
-        <div className="flex shrink-0 items-center gap-2.5">
+        <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
           <span
             data-testid="provider-mode"
-            className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground"
+            className="hidden font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground sm:inline"
           >
             {status.mode === 'mock' ? 'Mock stream' : `Live · ${status.provider}`}
           </span>
+          <span
+            data-testid="active-model"
+            title={status.model}
+            className="max-w-[7.5rem] truncate font-mono text-[10px] text-muted-foreground sm:max-w-[10rem]"
+          >
+            {shortModelName(status.model)}
+          </span>
+          <div className="hidden md:block">
+            <HeaderModelPicker model={status.model} onCommit={onModelChange} />
+          </div>
           {activeThread.parentId ? (
             <button
               type="button"
@@ -500,14 +646,38 @@ function TreeChatShell({
             className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <SquarePen className="size-3.5" />
-            New chat
+            <span className="hidden sm:inline">New chat</span>
           </button>
         </div>
       </header>
 
       <ShellContext.Provider value={shell}>
         <div className="flex min-h-0 flex-1">
-          <TreeRail state={state} rootTitle={rootTitle} onFocus={focus} />
+          <aside
+            className="hidden min-h-0 w-[252px] shrink-0 flex-col border-r border-border bg-rail md:flex"
+            data-testid="chat-sidebar"
+          >
+            <TreeRail
+              state={state}
+              sessionId={activeSessionId}
+              rootTitle={activeSession.title}
+              onFocus={focus}
+            />
+            <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-3">
+              <SessionList
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                onSelect={onSelectSession}
+                onCreate={onCreateSession}
+                onRename={renameSession}
+                onDelete={setPendingDeleteId}
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-2 border-t border-border px-3.5 py-2.5">
+              <span className="text-[12px] leading-none text-branch">+</span>
+              <span className="eyebrow text-muted-foreground">select text to branch</span>
+            </div>
+          </aside>
           <div className="min-w-0 flex-1">
             {chip ? (
               <BranchChip
@@ -525,6 +695,57 @@ function TreeChatShell({
           </div>
         </div>
       </ShellContext.Provider>
+
+      <Dialog open={libraryOpen} onOpenChange={setLibraryOpen}>
+        <DialogContent className="max-w-sm gap-4 sm:rounded-lg" data-testid="session-library">
+          <DialogHeader>
+            <DialogTitle>Chats</DialogTitle>
+            <DialogDescription>Switch, rename, or start a new chat.</DialogDescription>
+          </DialogHeader>
+          <SessionList
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onSelect={onSelectSession}
+            onCreate={onCreateSession}
+            onRename={renameSession}
+            onDelete={(sessionId) => {
+              setLibraryOpen(false)
+              setPendingDeleteId(sessionId)
+            }}
+            alwaysShowActions
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteId(null)
+        }}
+      >
+        <AlertDialogContent data-testid="session-delete-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{pendingDelete?.title}” and its branches will be removed. This cannot
+              be undone. Other chats stay as they are.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep chat</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="session-delete-confirm-action"
+              onClick={() => {
+                if (pendingDelete) deleteSession(pendingDelete.id)
+                setPendingDeleteId(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -539,26 +760,42 @@ function FramedThread({ thread, epoch }: { thread: Thread; epoch: number }) {
   )
 }
 
-function statusFromConfig(config: ClientProviderConfig | null): ProviderStatus | null {
-  if (!config) return null
+function resolveStatus(
+  clientConfig: ClientProviderConfig | null,
+  serverStatus: ProviderStatus,
+): ProviderStatus {
+  if (clientConfig?.apiKey) {
+    return {
+      mode: 'live',
+      provider: 'openrouter',
+      model: clientConfig.model || DEFAULT_OPENROUTER_MODEL,
+    }
+  }
   return {
-    mode: 'live',
-    provider: 'openrouter',
-    model: config.model,
+    mode: serverStatus.mode,
+    provider: serverStatus.provider,
+    model:
+      clientConfig?.model ||
+      (serverStatus.provider === 'mock' ? DEFAULT_OPENROUTER_MODEL : serverStatus.model),
   }
 }
 
 export function TreeChatApp() {
-  const { reset, restoreDemo } = useTree()
+  const { restoreDemo, createSession, activeSessionId } = useTree()
   const [epoch, setEpoch] = useState(0)
   const [clientConfig, setClientConfig] = useState<ClientProviderConfig | null>(
     () => loadProviderConfig(),
   )
   const [serverStatus, setServerStatus] = useState<ProviderStatus>(idleStatus)
-  const status = statusFromConfig(clientConfig) ?? serverStatus
+  const status = resolveStatus(clientConfig, serverStatus)
 
   const onProviderConfigChange = useCallback((config: ClientProviderConfig | null) => {
     setClientConfig(config)
+  }, [])
+
+  const onModelChange = useCallback((model: string) => {
+    const next = patchProviderConfig({ model })
+    setClientConfig(next)
   }, [])
 
   const bumpEpoch = useCallback(() => {
@@ -566,9 +803,8 @@ export function TreeChatApp() {
   }, [])
 
   const onNewChat = useCallback(() => {
-    reset()
-    bumpEpoch()
-  }, [bumpEpoch, reset])
+    createSession()
+  }, [createSession])
 
   const onRestoreDemo = useCallback(() => {
     restoreDemo()
@@ -576,7 +812,7 @@ export function TreeChatApp() {
   }, [bumpEpoch, restoreDemo])
 
   useEffect(() => {
-    if (clientConfig) return
+    if (clientConfig?.apiKey) return
     let cancelled = false
     fetch('/api/status', { headers: providerRequestHeaders() })
       .then(async (response) => {
@@ -596,10 +832,11 @@ export function TreeChatApp() {
 
   return (
     <TreeChatShell
-      key={epoch}
+      key={`${activeSessionId}:${epoch}`}
       epoch={epoch}
       status={status}
       onProviderConfigChange={onProviderConfigChange}
+      onModelChange={onModelChange}
       onNewChat={onNewChat}
       onRestoreDemo={onRestoreDemo}
     />

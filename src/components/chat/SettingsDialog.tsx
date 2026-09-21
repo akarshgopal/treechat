@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Settings } from 'lucide-react'
+import { ModelPicker, ModelPresetChips } from '@/components/chat/ModelPicker'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -13,6 +14,7 @@ import {
   DEFAULT_OPENROUTER_MODEL,
   clearProviderConfig,
   loadProviderConfig,
+  normalizeProviderConfig,
   saveProviderConfig,
   type ClientProviderConfig,
 } from '@/lib/provider'
@@ -36,27 +38,35 @@ export function SettingsDialog({
   const [open, setOpen] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(DEFAULT_OPENROUTER_MODEL)
+  const [temperature, setTemperature] = useState('')
+  const [maxTokens, setMaxTokens] = useState('')
   const [saved, setSaved] = useState(false)
 
   const hydrate = () => {
     const current = loadProviderConfig()
     setApiKey(current?.apiKey ?? '')
     setModel(current?.model || DEFAULT_OPENROUTER_MODEL)
+    setTemperature(
+      current?.temperature !== undefined ? String(current.temperature) : '',
+    )
+    setMaxTokens(current?.maxTokens !== undefined ? String(current.maxTokens) : '')
     setSaved(false)
   }
 
   const persist = (event: FormEvent) => {
     event.preventDefault()
-    const nextKey = apiKey.trim()
-    if (!nextKey) return
-    const next: ClientProviderConfig = {
-      provider: 'openrouter',
-      apiKey: nextKey,
-      model: model.trim() || DEFAULT_OPENROUTER_MODEL,
-    }
+    const next = normalizeProviderConfig({
+      apiKey,
+      model,
+      temperature: temperature.trim() === '' ? undefined : temperature,
+      maxTokens: maxTokens.trim() === '' ? undefined : maxTokens,
+    })
     saveProviderConfig(next)
     onConfigChange(next)
+    setApiKey(next.apiKey)
     setModel(next.model)
+    setTemperature(next.temperature !== undefined ? String(next.temperature) : '')
+    setMaxTokens(next.maxTokens !== undefined ? String(next.maxTokens) : '')
     setSaved(true)
   }
 
@@ -64,6 +74,8 @@ export function SettingsDialog({
     clearProviderConfig()
     setApiKey('')
     setModel(DEFAULT_OPENROUTER_MODEL)
+    setTemperature('')
+    setMaxTokens('')
     setSaved(false)
     onConfigChange(null)
   }
@@ -96,10 +108,11 @@ export function SettingsDialog({
         <DialogHeader>
           <DialogTitle>Provider</DialogTitle>
           <DialogDescription>
-            Paste an OpenRouter key to run live from this browser. It stays in
-            this device's localStorage (treat it like a password) and is sent
-            from the browser to OpenRouter on each chat request — never stored
-            on TreeChat's host.
+            Paste an OpenRouter key to run live from this browser. Model and
+            generation params are saved even without a key — chat stays mock
+            until you add one. The key stays in this device's localStorage
+            (treat it like a password) and is sent from the browser to
+            OpenRouter on each chat request — never stored on TreeChat's host.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={persist} className="grid gap-4" autoComplete="off">
@@ -136,22 +149,70 @@ export function SettingsDialog({
               className={fieldClass}
             />
           </label>
-          <label className="grid gap-1.5">
-            <span className="text-[12px] font-medium text-foreground">Model</span>
-            <input
-              type="text"
+          <div className="grid gap-1.5">
+            <ModelPicker
+              id="settings-model"
               name="openrouter-model"
               value={model}
-              onChange={(event) => {
-                setModel(event.target.value)
+              onChange={(next) => {
+                setModel(next)
                 setSaved(false)
               }}
-              placeholder={DEFAULT_OPENROUTER_MODEL}
-              spellCheck={false}
-              data-testid="settings-model"
-              className={fieldClass}
             />
-          </label>
+            <ModelPresetChips
+              value={model}
+              onSelect={(next) => {
+                setModel(next)
+                setSaved(false)
+              }}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Pick a preset or paste any OpenRouter model id.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-foreground">
+                Temperature
+              </span>
+              <input
+                type="number"
+                name="openrouter-temperature"
+                min={0}
+                max={2}
+                step={0.1}
+                value={temperature}
+                onChange={(event) => {
+                  setTemperature(event.target.value)
+                  setSaved(false)
+                }}
+                placeholder="default"
+                data-testid="settings-temperature"
+                className={fieldClass}
+              />
+              <span className="text-[11px] text-muted-foreground">Optional · 0–2</span>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-foreground">
+                Max tokens
+              </span>
+              <input
+                type="number"
+                name="openrouter-max-tokens"
+                min={1}
+                step={1}
+                value={maxTokens}
+                onChange={(event) => {
+                  setMaxTokens(event.target.value)
+                  setSaved(false)
+                }}
+                placeholder="default"
+                data-testid="settings-max-tokens"
+                className={fieldClass}
+              />
+              <span className="text-[11px] text-muted-foreground">Optional</span>
+            </label>
+          </div>
           <DialogFooter className="gap-2 sm:justify-between">
             <Button
               type="button"
@@ -166,12 +227,7 @@ export function SettingsDialog({
               {saved ? (
                 <span className="text-[11px] text-muted-foreground">Saved in this browser</span>
               ) : null}
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!apiKey.trim()}
-                data-testid="settings-save"
-              >
+              <Button type="submit" size="sm" data-testid="settings-save">
                 Save
               </Button>
             </div>
@@ -181,7 +237,8 @@ export function SettingsDialog({
           <div className="grid gap-0.5">
             <span className="text-[12px] font-medium text-foreground">Demo conversation</span>
             <span className="text-[11px] text-muted-foreground">
-              Load the seeded “What is TreeChat?” walkthrough.
+              Load the seeded “What is TreeChat?” walkthrough into this chat.
+              Other chats are left alone.
             </span>
           </div>
           <Button

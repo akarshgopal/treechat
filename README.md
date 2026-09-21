@@ -70,8 +70,17 @@ No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 3. An open branch is an indented inline thread under the source. Only one inline thread is open at a time.
 4. The bottom composer always posts to the spine. While a branch is open, a banner reads **Posting to main · switch to branch**. The branch has its own composer.
 5. Branch header: **Drop summary into main**, **Discard** (confirm), **Open as conversation**.
-6. Conversation view is a full-frame tangent: Back to spine, quote as context, Drop/Discard. Its composer posts only to that tangent. **Esc** blurs a dirty composer first, then returns to the spine.
-7. Branches and view mode persist in `localStorage` (`treechat:v2`). The OpenRouter key is stored separately (`treechat:provider:v1`). **New chat** in the header starts a blank spine. Restore the seeded “What is TreeChat?” demo from Settings (it does not clear the key).
+6. Conversation view is a full-frame tangent: Back to spine, quote as context, Drop/Discard. Its composer posts only to that tangent. **Esc** stops an in-flight reply first, then blurs a dirty composer, then returns to the spine.
+7. Chats persist in `localStorage` (`treechat:v3`) as a session library: each named chat has its own tree. An older `treechat:v2` single tree (or `treechat:v1` spine) is migrated into one session on first load. The sidebar lists chats; **New chat** opens a blank spine in a **new** session and leaves the others alone. Restore the seeded “What is TreeChat?” demo from Settings — it replaces the **active** chat only (it does not clear the key or other sessions). The OpenRouter key is stored separately (`treechat:provider:v1`).
+
+## Stop, retry, and edit
+
+These act on the **active session’s active thread** (spine or branch), not across chats.
+
+- **Stop** — the composer’s Stop button (while streaming) and **Esc** abort the in-flight mock or OpenRouter stream. Partial text stays; loading UI clears. Abort is not shown as an error.
+- **Retry** — hover an assistant message and regenerate from the preceding user turn on that thread. The assistant and everything after it are trimmed, then the turn is resent.
+- **Edit** — hover a user message, edit in place, confirm. Later messages on that thread are truncated and the turn is resent.
+- **Branches** — child threads pinned to the edited message, or to any truncated message, are **discarded** (anchors would be stale). Nested descendants go with them. Other threads and sessions are untouched.
 
 ## Stack
 

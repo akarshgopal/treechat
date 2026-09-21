@@ -1,6 +1,20 @@
 import { createEmptyState } from '@/lib/seed'
-import type { Anchor, ChatMessage, Thread, TreeState } from '@/types'
-import { LEGACY_STORAGE_KEY, STORAGE_KEY } from '@/types'
+import {
+  capSessions,
+  createEmptyLibrary,
+  libraryFromTree,
+  replaceActiveTree,
+  titleFromTree,
+} from '@/lib/sessions'
+import type {
+  Anchor,
+  ChatMessage,
+  ChatSession,
+  SessionLibrary,
+  Thread,
+  TreeState,
+} from '@/types'
+import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
 
 function isRole(value: unknown): value is ChatMessage['role'] {
   return value === 'user' || value === 'assistant'
@@ -152,38 +166,148 @@ function parseV2(record: Record<string, unknown>): TreeState | null {
   return { threads, rootId: root.id, activeThreadId, expanded }
 }
 
-export function loadTreeState(): TreeState {
-  if (typeof localStorage === 'undefined') return createEmptyState()
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as unknown
-      if (parsed && typeof parsed === 'object') {
-        const state = parseV2(parsed as Record<string, unknown>)
-        if (state) return state
-      }
-      return createEmptyState()
-    }
+/** Parse a v2-shaped tree blob (also the `treeState` of a v3 session). */
+export function parseTreeState(value: unknown): TreeState | null {
+  if (!value || typeof value !== 'object') return null
+  return parseV2(value as Record<string, unknown>)
+}
 
-    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
-    if (legacy) {
-      const parsed = JSON.parse(legacy) as unknown
-      if (parsed && typeof parsed === 'object') {
-        const state = migrateV1(parsed as Record<string, unknown>)
-        if (state) return state
-      }
-    }
-    return createEmptyState()
-  } catch {
-    return createEmptyState()
+function parseSession(value: unknown): ChatSession | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (typeof record.id !== 'string' || !record.id) return null
+  const treeState = parseTreeState(record.treeState)
+  if (!treeState) return null
+  const createdAt = typeof record.createdAt === 'number' ? record.createdAt : Date.now()
+  const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : createdAt
+  const titleLocked = record.titleLocked === true
+  const title =
+    typeof record.title === 'string' && record.title.trim()
+      ? record.title.trim()
+      : titleFromTree(treeState)
+  return {
+    id: record.id,
+    title,
+    createdAt,
+    updatedAt,
+    treeState,
+    titleLocked,
   }
 }
 
-export function saveTreeState(state: TreeState) {
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    // quota / private mode
+function parseLibrary(value: unknown): SessionLibrary | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (!Array.isArray(record.sessions)) return null
+  const sessions: ChatSession[] = []
+  for (const entry of record.sessions) {
+    const session = parseSession(entry)
+    if (session) sessions.push(session)
   }
+  if (sessions.length === 0) return null
+  const activeSessionId =
+    typeof record.activeSessionId === 'string' &&
+    sessions.some((session) => session.id === record.activeSessionId)
+      ? record.activeSessionId
+      : sessions[0].id
+  return { sessions, activeSessionId }
+}
+
+function readTreeFromKey(key: string): TreeState | null {
+  const raw = localStorage.getItem(key)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    const record = parsed as Record<string, unknown>
+    if (key === LEGACY_STORAGE_KEY) return migrateV1(record)
+    return parseV2(record)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Load the session library. A v2 single-tree blob (or v1 spine) becomes one
+ * session on first load; that migrated library is written to v3 immediately.
+ */
+export function loadLibrary(): SessionLibrary {
+  if (typeof localStorage === 'undefined') return createEmptyLibrary()
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as unknown
+        const library = parseLibrary(parsed)
+        if (library) return library
+        const tree = parseTreeState(parsed)
+        if (tree) {
+          const migrated = libraryFromTree(tree)
+          saveLibrary(migrated)
+          return migrated
+        }
+      } catch {
+        // unreadable v3 — fall through to v2 / v1
+      }
+    }
+
+    const v2 = readTreeFromKey(V2_STORAGE_KEY)
+    if (v2) {
+      const migrated = libraryFromTree(v2)
+      saveLibrary(migrated)
+      return migrated
+    }
+
+    const v1 = readTreeFromKey(LEGACY_STORAGE_KEY)
+    if (v1) {
+      const migrated = libraryFromTree(v1)
+      saveLibrary(migrated)
+      return migrated
+    }
+
+    return createEmptyLibrary()
+  } catch {
+    return createEmptyLibrary()
+  }
+}
+
+export function saveLibrary(library: SessionLibrary) {
+  if (typeof localStorage === 'undefined') return
+  const activeId = library.activeSessionId
+  let sessions = capSessions(library.sessions, activeId)
+  if (sessions.length === 0) {
+    const empty = createEmptyLibrary()
+    sessions = empty.sessions
+  }
+  const activeStill =
+    sessions.some((session) => session.id === activeId) ? activeId : sessions[0]!.id
+  const payload: SessionLibrary = { sessions, activeSessionId: activeStill }
+
+  while (payload.sessions.length > 0) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+      return
+    } catch {
+      if (payload.sessions.length <= 1) return
+      const drop = payload.sessions
+        .filter((session) => session.id !== payload.activeSessionId)
+        .sort((a, b) => a.updatedAt - b.updatedAt)[0]
+      if (!drop) return
+      payload.sessions = payload.sessions.filter((session) => session.id !== drop.id)
+    }
+  }
+}
+
+/** Active session's tree — used by tests and anything that still thinks in trees. */
+export function loadTreeState(): TreeState {
+  const library = loadLibrary()
+  const active =
+    library.sessions.find((session) => session.id === library.activeSessionId) ??
+    library.sessions[0]
+  return active?.treeState ?? createEmptyState()
+}
+
+export function saveTreeState(state: TreeState) {
+  const library = loadLibrary()
+  saveLibrary(replaceActiveTree(library, state))
 }

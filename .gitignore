@@ -30,3 +30,4 @@ dist-ssr
 *.sw?
 
 package-lock.json
+.grok-briefs/

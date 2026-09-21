@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { ChevronRight } from 'lucide-react'
+import {
+  loadExpandedIds,
+  revealThreadInRail,
+  saveExpandedIds,
+  setsEqual,
+  toggleExpandedId,
+  visibleRailThreads,
+} from '@/lib/rail-collapse'
 import { childThreads, depthOf, subtreeSize } from '@/lib/tree'
+import { cn } from '@/lib/utils'
 import type { Thread, TreeState } from '@/types'
-
-function flatten(state: TreeState, threadId: string): Thread[] {
-  const thread = state.threads[threadId]
-  if (!thread) return []
-  return [thread, ...childThreads(state, threadId).flatMap((child) => flatten(state, child.id))]
-}
 
 /** One row per thread, recursing into children — the whole tree, any depth. */
 function Row({
@@ -16,8 +20,10 @@ function Row({
   focusedId,
   rootTitle,
   last,
+  expandedIds,
   onFocus,
   onPointerFocus,
+  onToggle,
 }: {
   thread: Thread
   state: TreeState
@@ -25,8 +31,10 @@ function Row({
   focusedId: string
   rootTitle: string
   last: boolean
+  expandedIds: ReadonlySet<string>
   onFocus: (threadId: string) => void
   onPointerFocus: (threadId: string) => void
+  onToggle: (threadId: string) => void
 }) {
   const children = childThreads(state, thread.id)
   const active = thread.id === activeId
@@ -34,6 +42,14 @@ function Row({
   const depth = depthOf(state, thread.id)
   const label = isRoot ? rootTitle : (thread.anchor?.quote ?? 'branch')
   const count = subtreeSize(state, thread.id)
+  const hasChildren = children.length > 0
+  const open = hasChildren && expandedIds.has(thread.id)
+
+  const onCaret = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onToggle(thread.id)
+  }
 
   return (
     <div className="flex min-w-0 flex-col">
@@ -52,23 +68,25 @@ function Row({
             />
           </span>
         ) : null}
-        <button
-          type="button"
+        <div
           role="treeitem"
           aria-level={depth + 1}
           aria-selected={active}
+          aria-expanded={hasChildren ? open : undefined}
           aria-current={active ? 'true' : undefined}
           data-depth={depth}
           data-thread-id={thread.id}
+          data-expanded={hasChildren ? (open ? 'true' : 'false') : undefined}
           tabIndex={thread.id === focusedId ? 0 : -1}
           onClick={() => onFocus(thread.id)}
           onFocus={() => onPointerFocus(thread.id)}
           title={isRoot ? label : `Depth ${depth} · ${label}`}
-          className={`relative flex min-w-0 flex-1 items-center gap-2 rounded-[7px] px-2 py-[5px] text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-branch/70 ${
+          className={cn(
+            'relative flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[7px] py-[5px] pr-2 pl-1 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-branch/70',
             active
               ? 'bg-branch/[0.16] text-foreground'
-              : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
-          }`}
+              : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground',
+          )}
         >
           {active ? (
             <span
@@ -76,29 +94,45 @@ function Row({
               className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-branch accent-glow"
             />
           ) : null}
-          <span
-            className={`size-[8px] shrink-0 rounded-full ${
-              active ? 'accent-glow bg-branch' : 'bg-foreground/35'
-            }`}
-          />
-          {!isRoot ? (
-            <span className="eyebrow w-3 shrink-0 text-center text-muted-foreground/70">
-              {depth}
+          {hasChildren ? (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+              data-testid="tree-caret"
+              onClick={onCaret}
+              className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+            >
+              <ChevronRight
+                className={cn('size-3 transition-transform', open && 'rotate-90')}
+              />
+            </button>
+          ) : (
+            <span
+              className="flex size-5 shrink-0 items-center justify-center"
+              aria-hidden
+            >
+              <span
+                className={`size-[8px] rounded-full ${
+                  active ? 'accent-glow bg-branch' : 'bg-foreground/35'
+                }`}
+              />
             </span>
-          ) : null}
+          )}
           <span
-            className={`min-w-0 truncate text-[12px] leading-tight ${
-              active ? 'font-medium text-foreground' : ''
-            }`}
+            className={cn(
+              'min-w-0 truncate text-[12px] leading-tight',
+              active && 'font-medium text-foreground',
+            )}
           >
             {label}
           </span>
           {count > 0 ? (
             <span className="eyebrow ml-auto shrink-0 text-muted-foreground">{count}</span>
           ) : null}
-        </button>
+        </div>
       </div>
-      {children.length > 0 ? (
+      {hasChildren && open ? (
         <div className={isRoot ? '' : 'ml-2.5'} role="group">
           {children.map((child, index) => (
             <Row
@@ -109,8 +143,10 @@ function Row({
               focusedId={focusedId}
               rootTitle={rootTitle}
               last={index === children.length - 1}
+              expandedIds={expandedIds}
               onFocus={onFocus}
               onPointerFocus={onPointerFocus}
+              onToggle={onToggle}
             />
           ))}
         </div>
@@ -121,45 +157,58 @@ function Row({
 
 export function TreeRail({
   state,
+  sessionId,
   rootTitle,
   onFocus,
 }: {
   state: TreeState
+  sessionId: string
   rootTitle: string
   onFocus: (threadId: string) => void
 }) {
   const root = state.threads[state.rootId]
-  const nodes = useMemo(
-    () => (root ? flatten(state, root.id) : []),
-    [root, state],
-  )
+  const [expandedIds, setExpandedIds] = useState(() => {
+    const loaded = loadExpandedIds(
+      sessionId,
+      new Set(Object.keys(state.threads)),
+      state.rootId,
+    )
+    return revealThreadInRail(state, loaded, state.activeThreadId)
+  })
   const [focusedId, setFocusedId] = useState(state.activeThreadId)
+  const [seenActiveId, setSeenActiveId] = useState(state.activeThreadId)
 
-  useEffect(() => {
+  if (seenActiveId !== state.activeThreadId) {
+    setSeenActiveId(state.activeThreadId)
     setFocusedId(state.activeThreadId)
-  }, [state.activeThreadId])
+    const revealed = revealThreadInRail(state, expandedIds, state.activeThreadId)
+    if (!setsEqual(revealed, expandedIds)) {
+      setExpandedIds(revealed)
+      saveExpandedIds(sessionId, revealed)
+    }
+  }
+
+  const nodes = useMemo(
+    () => (root ? visibleRailThreads(state, expandedIds) : []),
+    [root, state, expandedIds],
+  )
+  const rowFocusId = nodes.some((thread) => thread.id === focusedId)
+    ? focusedId
+    : nodes.some((thread) => thread.id === state.activeThreadId)
+      ? state.activeThreadId
+      : (nodes[0]?.id ?? state.activeThreadId)
 
   if (!root) return null
 
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    const index = nodes.findIndex((thread) => thread.id === focusedId)
-    const current = index < 0 ? 0 : index
-    let next = current
-    if (event.key === 'ArrowDown') next = Math.min(nodes.length - 1, current + 1)
-    else if (event.key === 'ArrowUp') next = Math.max(0, current - 1)
-    else if (event.key === 'Home') next = 0
-    else if (event.key === 'End') next = nodes.length - 1
-    else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      const id = nodes[current]?.id
-      if (id) onFocus(id)
-      return
-    } else {
-      return
-    }
-    event.preventDefault()
-    const id = nodes[next]?.id
-    if (!id) return
+  const onToggle = (threadId: string) => {
+    setExpandedIds((current) => {
+      const next = toggleExpandedId(current, threadId)
+      saveExpandedIds(sessionId, next)
+      return next
+    })
+  }
+
+  const focusRow = (id: string) => {
     setFocusedId(id)
     requestAnimationFrame(() => {
       const el = document.querySelector<HTMLElement>(
@@ -169,9 +218,57 @@ export function TreeRail({
     })
   }
 
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const index = nodes.findIndex((thread) => thread.id === rowFocusId)
+    const current = index < 0 ? 0 : index
+    const thread = nodes[current]
+    let next = current
+
+    if (event.key === 'ArrowDown') next = Math.min(nodes.length - 1, current + 1)
+    else if (event.key === 'ArrowUp') next = Math.max(0, current - 1)
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = nodes.length - 1
+    else if (event.key === 'ArrowRight') {
+      if (!thread) return
+      const kids = childThreads(state, thread.id)
+      if (kids.length === 0) return
+      event.preventDefault()
+      if (!expandedIds.has(thread.id)) {
+        onToggle(thread.id)
+        return
+      }
+      next = Math.min(nodes.length - 1, current + 1)
+    } else if (event.key === 'ArrowLeft') {
+      if (!thread) return
+      const kids = childThreads(state, thread.id)
+      if (expandedIds.has(thread.id) && kids.length > 0) {
+        event.preventDefault()
+        onToggle(thread.id)
+        return
+      }
+      if (!thread.parentId) return
+      const parentIndex = nodes.findIndex((item) => item.id === thread.parentId)
+      if (parentIndex < 0) return
+      event.preventDefault()
+      focusRow(nodes[parentIndex].id)
+      return
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      const id = thread?.id
+      if (id) onFocus(id)
+      return
+    } else {
+      return
+    }
+    event.preventDefault()
+    const id = nodes[next]?.id
+    if (!id) return
+    focusRow(id)
+  }
+
   return (
     <nav
-      className="hidden w-[236px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-rail px-3.5 py-4 md:flex"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3.5 py-3"
       aria-label="Conversation tree"
       data-testid="tree-rail"
       onKeyDown={onKeyDown}
@@ -182,16 +279,14 @@ export function TreeRail({
           thread={root}
           state={state}
           activeId={state.activeThreadId}
-          focusedId={focusedId}
+          focusedId={rowFocusId}
           rootTitle={rootTitle}
           last
+          expandedIds={expandedIds}
           onFocus={onFocus}
           onPointerFocus={setFocusedId}
+          onToggle={onToggle}
         />
-      </div>
-      <div className="mt-auto flex shrink-0 items-center gap-2 rounded-[7px] border border-dashed border-border/80 px-2.5 py-2">
-        <span className="text-[12px] leading-none text-branch">+</span>
-        <span className="eyebrow text-muted-foreground">select text to branch</span>
       </div>
     </nav>
   )

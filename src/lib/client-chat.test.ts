@@ -10,6 +10,7 @@ import {
   hasLocalChatApi,
   openRouterChatStream,
   openRouterHeaders,
+  openRouterRequestBody,
   resetLocalChatApiProbe,
   resolveChatBackend,
   runChat,
@@ -101,6 +102,36 @@ test('openRouterHeaders use Bearer, HTTP-Referer, and X-Title', () => {
   assert.equal(headers['X-Title'], 'TreeChat')
 })
 
+test('openRouterRequestBody includes model and optional generation params', () => {
+  const messages = [{ role: 'user' as const, content: 'hi' }]
+  assert.deepEqual(
+    openRouterRequestBody(
+      { provider: 'openrouter', apiKey: 'k', model: 'x-ai/grok-4' },
+      messages,
+    ),
+    { model: 'x-ai/grok-4', messages, stream: true },
+  )
+  assert.deepEqual(
+    openRouterRequestBody(
+      {
+        provider: 'openrouter',
+        apiKey: 'k',
+        model: 'anthropic/claude-sonnet-4',
+        temperature: 0,
+        maxTokens: 256,
+      },
+      messages,
+    ),
+    {
+      model: 'anthropic/claude-sonnet-4',
+      messages,
+      stream: true,
+      temperature: 0,
+      max_tokens: 256,
+    },
+  )
+})
+
 test('resolveChatBackend is openrouter when a key is saved', async () => {
   globalThis.fetch = (async () => new Response('ok', { status: 200 })) as typeof fetch
   saveProviderConfig({
@@ -152,10 +183,14 @@ test('openRouterChatStream converts OpenAI SSE into TEXT_MESSAGE_* events', asyn
     const body = JSON.parse(String(init?.body)) as {
       stream: boolean
       model: string
+      temperature?: number
+      max_tokens?: number
       messages: Array<{ role: string }>
     }
     assert.equal(body.stream, true)
-    assert.equal(body.model, 'openai/gpt-4.1-mini')
+    assert.equal(body.model, 'google/gemini-2.5-flash')
+    assert.equal(body.temperature, 0.4)
+    assert.equal(body.max_tokens, 800)
     assert.equal(body.messages[0]?.role, 'system')
     return new Response(sse, {
       status: 200,
@@ -169,7 +204,9 @@ test('openRouterChatStream converts OpenAI SSE into TEXT_MESSAGE_* events', asyn
       config: {
         provider: 'openrouter',
         apiKey: 'sk-or-v1-test',
-        model: 'openai/gpt-4.1-mini',
+        model: 'google/gemini-2.5-flash',
+        temperature: 0.4,
+        maxTokens: 800,
       },
       forwardedProps: {},
       threadId: 't1',
@@ -205,6 +242,121 @@ test('runChat with a saved key never posts to /api/chat', async () => {
   assert.equal(text, 'ok')
   assert.ok(urls.every((url) => url.includes('openrouter.ai')))
   assert.ok(urls.every((url) => !url.includes('/api/chat')))
+})
+
+test('runChat with model prefs but no key stays on the mock', async () => {
+  saveProviderConfig({
+    provider: 'openrouter',
+    apiKey: '',
+    model: 'x-ai/grok-4',
+    temperature: 0.2,
+    maxTokens: 128,
+  })
+  const urls: string[] = []
+  globalThis.fetch = (async (input) => {
+    urls.push(String(input))
+    return new Response('missing', { status: 404 })
+  }) as typeof fetch
+
+  const chunks = []
+  for await (const chunk of runChat({
+    messages: [{ role: 'user', content: 'What is TreeChat?' }],
+    threadId: 't1',
+    runId: 'r1',
+  })) {
+    chunks.push(chunk)
+    if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break
+  }
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_START))
+  assert.ok(urls.every((url) => !url.includes('openrouter.ai')))
+  assert.ok(urls.every((url) => !url.includes('/api/chat')))
+})
+
+test('openRouterChatStream abort after start does not emit RUN_ERROR', async () => {
+  const controller = new AbortController()
+  const encoder = new TextEncoder()
+  globalThis.fetch = (async (_input, init) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'),
+        )
+        const signal = init?.signal
+        if (signal) {
+          if (signal.aborted) {
+            stream.close()
+            return
+          }
+          signal.addEventListener(
+            'abort',
+            () => {
+              stream.error(new DOMException('Aborted', 'AbortError'))
+            },
+            { once: true },
+          )
+        }
+      },
+    })
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  const chunks = []
+  const stream = openRouterChatStream({
+    messages: [{ role: 'user', content: 'hi' }],
+    config: {
+      provider: 'openrouter',
+      apiKey: 'sk-or-v1-test',
+      model: 'openai/gpt-4.1-mini',
+    },
+    forwardedProps: {},
+    threadId: 't1',
+    runId: 'r1',
+    signal: controller.signal,
+  })
+  for await (const chunk of stream) {
+    chunks.push(chunk)
+    if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) controller.abort()
+  }
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT))
+  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
+  assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
+})
+
+test('openRouterChatStream abort before response is silent', async () => {
+  const controller = new AbortController()
+  globalThis.fetch = (async (_input, init) => {
+    const signal = init?.signal
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    await new Promise<void>((_, reject) => {
+      signal?.addEventListener(
+        'abort',
+        () => reject(new DOMException('Aborted', 'AbortError')),
+        { once: true },
+      )
+    })
+    return new Response('', { status: 200 })
+  }) as typeof fetch
+
+  controller.abort()
+  const chunks = []
+  for await (const chunk of openRouterChatStream({
+    messages: [{ role: 'user', content: 'hi' }],
+    config: {
+      provider: 'openrouter',
+      apiKey: 'sk-or-v1-test',
+      model: 'openai/gpt-4.1-mini',
+    },
+    threadId: 't1',
+    runId: 'r1',
+    signal: controller.signal,
+  })) {
+    chunks.push(chunk)
+  }
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.RUN_STARTED))
+  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
 })
 
 test('runChat without a key and without /api uses the client mock', async () => {
