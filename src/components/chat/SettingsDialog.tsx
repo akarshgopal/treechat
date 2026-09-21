@@ -181,7 +181,8 @@ export function SettingsDialog({
           <div className="grid gap-0.5">
             <span className="text-[12px] font-medium text-foreground">Demo conversation</span>
             <span className="text-[11px] text-muted-foreground">
-              Load the seeded “What is TreeChat?” walkthrough.
+              Load the seeded “What is TreeChat?” walkthrough into this chat.
+              Other chats are left alone.
             </span>
           </div>
           <Button

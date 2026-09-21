@@ -171,7 +171,7 @@ export function TreeRail({
 
   return (
     <nav
-      className="hidden w-[236px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-rail px-3.5 py-4 md:flex"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3.5 py-3"
       aria-label="Conversation tree"
       data-testid="tree-rail"
       onKeyDown={onKeyDown}
