@@ -357,7 +357,7 @@ test('openRouterChatStream abort before response is silent', async () => {
   }
   assert.ok(chunks.some((chunk) => chunk.type === EventType.RUN_STARTED))
   assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
-
+})
 
 test('runChat without a key and without /api uses the client mock', async () => {
   const urls: string[] = []
