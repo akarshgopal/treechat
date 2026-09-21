@@ -7,7 +7,7 @@ import {
 } from 'react'
 import { Square } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { cn, sendShortcutLabel } from '@/lib/utils'
 
 type ComposerProps = {
   value: string
@@ -97,8 +97,11 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                 Send ⏎
               </button>
             ) : (
-              <span className="eyebrow m-3 shrink-0 select-none text-muted-foreground">
-                ⌘⏎
+              <span
+                data-testid="send-shortcut-hint"
+                className="m-2 shrink-0 select-none px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground"
+              >
+                {sendShortcutLabel()}
               </span>
             )}
           </div>

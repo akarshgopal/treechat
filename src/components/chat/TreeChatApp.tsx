@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
-import { RotateCcw } from 'lucide-react'
+import { SquarePen } from 'lucide-react'
 import { BranchCard } from '@/components/chat/BranchCard'
 import { BranchChip } from '@/components/chat/BranchChip'
 import { SettingsDialog } from '@/components/chat/SettingsDialog'
@@ -127,7 +127,11 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
       composerRef={(el) => shell.registerComposer(threadId, el)}
       accentComposer={Boolean(thread.anchor)}
       placeholder={
-        thread.anchor ? 'Ask in this branch…' : 'Reply on the main thread…'
+        thread.anchor
+          ? 'Ask in this branch…'
+          : thread.messages.length === 0
+            ? 'Message…'
+            : 'Reply on the main thread…'
       }
       emptyLabel={
         thread.anchor
@@ -168,12 +172,14 @@ function NestedBranch({ threadId, depth }: { threadId: string; depth: number }) 
 function TreeChatShell({
   epoch,
   status,
-  onReset,
+  onNewChat,
+  onRestoreDemo,
   onProviderConfigChange,
 }: {
   epoch: number
   status: ProviderStatus
-  onReset: () => void
+  onNewChat: () => void
+  onRestoreDemo: () => void
   onProviderConfigChange: (config: ClientProviderConfig | null) => void
 }) {
   const {
@@ -474,15 +480,21 @@ function TreeChatShell({
               ← back to thread
             </button>
           ) : null}
-          <SettingsDialog status={status} onConfigChange={onProviderConfigChange} />
+          <SettingsDialog
+            status={status}
+            onConfigChange={onProviderConfigChange}
+            onRestoreDemo={onRestoreDemo}
+          />
           <button
             type="button"
-            onClick={onReset}
-            aria-label="Reset seeded conversation"
-            title="Reset seeded conversation"
-            className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            onClick={onNewChat}
+            aria-label="New chat"
+            title="New chat"
+            data-testid="new-chat"
+            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
-            <RotateCcw className="size-3.5" />
+            <SquarePen className="size-3.5" />
+            New chat
           </button>
         </div>
       </header>
@@ -531,7 +543,7 @@ function statusFromConfig(config: ClientProviderConfig | null): ProviderStatus |
 }
 
 export function TreeChatApp() {
-  const { resetDemo } = useTree()
+  const { reset, restoreDemo } = useTree()
   const [epoch, setEpoch] = useState(0)
   const [clientConfig, setClientConfig] = useState<ClientProviderConfig | null>(
     () => loadProviderConfig(),
@@ -542,6 +554,20 @@ export function TreeChatApp() {
   const onProviderConfigChange = useCallback((config: ClientProviderConfig | null) => {
     setClientConfig(config)
   }, [])
+
+  const bumpEpoch = useCallback(() => {
+    setEpoch((value) => value + 1)
+  }, [])
+
+  const onNewChat = useCallback(() => {
+    reset()
+    bumpEpoch()
+  }, [bumpEpoch, reset])
+
+  const onRestoreDemo = useCallback(() => {
+    restoreDemo()
+    bumpEpoch()
+  }, [bumpEpoch, restoreDemo])
 
   useEffect(() => {
     if (clientConfig) return
@@ -564,13 +590,12 @@ export function TreeChatApp() {
 
   return (
     <TreeChatShell
+      key={epoch}
       epoch={epoch}
       status={status}
       onProviderConfigChange={onProviderConfigChange}
-      onReset={() => {
-        resetDemo()
-        setEpoch((value) => value + 1)
-      }}
+      onNewChat={onNewChat}
+      onRestoreDemo={onRestoreDemo}
     />
   )
 }

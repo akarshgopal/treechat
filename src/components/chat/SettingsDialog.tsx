@@ -25,9 +25,14 @@ const fieldClass =
 type SettingsDialogProps = {
   status: ProviderStatus
   onConfigChange: (config: ClientProviderConfig | null) => void
+  onRestoreDemo: () => void
 }
 
-export function SettingsDialog({ status, onConfigChange }: SettingsDialogProps) {
+export function SettingsDialog({
+  status,
+  onConfigChange,
+  onRestoreDemo,
+}: SettingsDialogProps) {
   const [open, setOpen] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(DEFAULT_OPENROUTER_MODEL)
@@ -172,6 +177,26 @@ export function SettingsDialog({ status, onConfigChange }: SettingsDialogProps) 
             </div>
           </DialogFooter>
         </form>
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+          <div className="grid gap-0.5">
+            <span className="text-[12px] font-medium text-foreground">Demo conversation</span>
+            <span className="text-[11px] text-muted-foreground">
+              Load the seeded “What is TreeChat?” walkthrough.
+            </span>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              onRestoreDemo()
+              setOpen(false)
+            }}
+            data-testid="settings-restore-demo"
+          >
+            Restore demo
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )
