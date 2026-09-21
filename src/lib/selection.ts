@@ -5,12 +5,18 @@ export type TextRange = {
 }
 
 
+const NODE_ELEMENT = 1
+const NODE_TEXT = 3
+const FILTER_ACCEPT = 1
+const FILTER_REJECT = 2
+const SHOW_TEXT = 4
+
 /** Fence chrome, copy buttons, mark counts — excluded from branch offsets. */
 export const OFFSET_IGNORE_ATTR = 'data-offset-ignore'
 
 function closestOffsetIgnore(node: Node, root: Node): Element | null {
   let el: Element | null =
-    node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
+    node.nodeType === NODE_ELEMENT ? (node as Element) : node.parentElement
   while (el) {
     if (el.hasAttribute(OFFSET_IGNORE_ATTR)) return el
     if (el === root) return null
@@ -21,16 +27,16 @@ function closestOffsetIgnore(node: Node, root: Node): Element | null {
 
 /** Visible message text: text nodes minus `[data-offset-ignore]` subtrees. */
 export function plainTextSkippingIgnore(root: Node): string {
-  if (root.nodeType === Node.TEXT_NODE) {
+  if (root.nodeType === NODE_TEXT) {
     return closestOffsetIgnore(root, root) ? '' : (root.nodeValue ?? '')
   }
   const doc = root.ownerDocument
   if (!doc) return root.textContent ?? ''
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+  const walker = doc.createTreeWalker(root, SHOW_TEXT, {
     acceptNode(node) {
       return closestOffsetIgnore(node, root)
-        ? NodeFilter.FILTER_REJECT
-        : NodeFilter.FILTER_ACCEPT
+        ? FILTER_REJECT
+        : FILTER_ACCEPT
     },
   })
   let out = ''
@@ -46,7 +52,6 @@ export const MAX_BRANCH_SELECTION = 8_000
 
 export const SELECTABLE_MESSAGE = '[data-message-id][data-selectable="true"]'
 
-const SHOW_TEXT = 4
 const DOCUMENT_POSITION_PRECEDING = 2
 const DOCUMENT_POSITION_FOLLOWING = 4
 
@@ -157,8 +162,8 @@ function prefixTextLength(root: Node, target: Node): number {
   const walker = doc.createTreeWalker(root, SHOW_TEXT, {
     acceptNode(node) {
       return closestOffsetIgnore(node, root)
-        ? NodeFilter.FILTER_REJECT
-        : NodeFilter.FILTER_ACCEPT
+        ? FILTER_REJECT
+        : FILTER_ACCEPT
     },
   })
   let n = 0
