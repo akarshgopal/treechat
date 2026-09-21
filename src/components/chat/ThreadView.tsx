@@ -42,6 +42,8 @@ type ThreadViewProps = {
   framed?: boolean
   /** Rendered above the transcript in the framed view. */
   lede?: ReactNode
+  onRetryAssistant?: (messageId: string) => void
+  onEditUser?: (messageId: string, content: string) => void
 }
 
 /** Hairline rule with a pill — opens / cycles the branch(es) anchored above it. */
@@ -133,6 +135,8 @@ export function ThreadView({
   emptyLabel,
   framed,
   lede,
+  onRetryAssistant,
+  onEditUser,
 }: ThreadViewProps) {
   const expandedChildId = state.expanded[thread.id] ?? null
 
@@ -161,6 +165,12 @@ export function ThreadView({
                 onSelectMessage(thread.id, messageId)
               }
               onOpenBranch={(childId) => onOpenChild(thread.id, childId)}
+              onRetry={
+                message.role === 'assistant' && message.kind !== 'drop-summary'
+                  ? onRetryAssistant
+                  : undefined
+              }
+              onEdit={message.role === 'user' ? onEditUser : undefined}
             />
             {groups.map((group) => {
               const ids = group.map((child) => child.id)

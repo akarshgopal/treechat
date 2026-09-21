@@ -34,6 +34,28 @@ test('mockChatStream emits TanStack text events without a server', async () => {
   assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
 })
 
+test('mockChatStream abort keeps streamed text and does not emit RUN_ERROR', async () => {
+  const controller = new AbortController()
+  const chunks = []
+  const stream = mockChatStream({
+    messages: [{ role: 'user', content: 'hello there' }],
+    threadId: 't1',
+    runId: 'r1',
+    pace: true,
+    signal: controller.signal,
+  })
+  for await (const chunk of stream) {
+    chunks.push(chunk)
+    if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) {
+      controller.abort()
+    }
+  }
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT))
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_END))
+  assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
+  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
+})
+
 test('mockChatStream answers a code example with a fenced block', async () => {
   const chunks = []
   for await (const chunk of mockChatStream({
