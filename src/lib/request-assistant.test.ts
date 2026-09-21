@@ -38,14 +38,22 @@ test('requestAssistantText streams from OpenRouter when a key is set', async () 
   saveProviderConfig({
     provider: 'openrouter',
     apiKey: 'sk-or-v1-test',
-    model: 'openai/gpt-4.1-mini',
+    model: 'anthropic/claude-sonnet-4',
+    temperature: 0.3,
+    maxTokens: 400,
   })
   const urls: string[] = []
   globalThis.fetch = (async (input, init) => {
     urls.push(String(input))
     const body = JSON.parse(String(init?.body)) as {
+      model: string
+      temperature?: number
+      max_tokens?: number
       messages: Array<{ role: string; content: string }>
     }
+    assert.equal(body.model, 'anthropic/claude-sonnet-4')
+    assert.equal(body.temperature, 0.3)
+    assert.equal(body.max_tokens, 400)
     assert.equal(body.messages[0]?.role, 'system')
     assert.match(body.messages[1]?.content ?? '', /SELECTED QUOTE/)
     assert.match(body.messages.at(-1)?.content ?? '', /Summarize/)
