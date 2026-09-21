@@ -1,4 +1,4 @@
-import { createSeedState } from '@/lib/seed'
+import { createEmptyState } from '@/lib/seed'
 import type { Anchor, ChatMessage, Thread, TreeState } from '@/types'
 import { LEGACY_STORAGE_KEY, STORAGE_KEY } from '@/types'
 
@@ -127,7 +127,8 @@ function parseV2(record: Record<string, unknown>): TreeState | null {
     if (thread) parsed[thread.id] = thread
   }
   const root = parsed[record.rootId]
-  if (!root || root.messages.length === 0) return null
+  // Empty root is a valid fresh chat — rejecting it would re-seed on reload.
+  if (!root) return null
 
   const threads = pruneOrphans(parsed, root.id)
 
@@ -152,7 +153,7 @@ function parseV2(record: Record<string, unknown>): TreeState | null {
 }
 
 export function loadTreeState(): TreeState {
-  if (typeof localStorage === 'undefined') return createSeedState()
+  if (typeof localStorage === 'undefined') return createEmptyState()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
@@ -161,7 +162,7 @@ export function loadTreeState(): TreeState {
         const state = parseV2(parsed as Record<string, unknown>)
         if (state) return state
       }
-      return createSeedState()
+      return createEmptyState()
     }
 
     const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
@@ -172,9 +173,9 @@ export function loadTreeState(): TreeState {
         if (state) return state
       }
     }
-    return createSeedState()
+    return createEmptyState()
   } catch {
-    return createSeedState()
+    return createEmptyState()
   }
 }
 

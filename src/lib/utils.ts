@@ -18,11 +18,29 @@ export function isBranchShortcut(event: KeyboardEvent | ReactKeyboardEvent) {
   )
 }
 
-export function branchShortcutLabel() {
-  if (typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)) {
-    return '⌘⇧B'
-  }
-  return 'Ctrl+⇧B'
+type NavigatorUAData = {
+  platform?: string
+}
+
+function detectPlatform() {
+  if (typeof navigator === 'undefined') return ''
+  const uaData =
+    'userAgentData' in navigator
+      ? (navigator as Navigator & { userAgentData?: NavigatorUAData }).userAgentData
+      : undefined
+  return uaData?.platform || navigator.platform || ''
+}
+
+export function isApplePlatform(platform = detectPlatform()) {
+  return /Mac|iPhone|iPad|iPod/i.test(platform)
+}
+
+export function branchShortcutLabel(platform = detectPlatform()) {
+  return isApplePlatform(platform) ? '⌘⇧B' : 'Ctrl+⇧B'
+}
+
+export function sendShortcutLabel(platform = detectPlatform()) {
+  return isApplePlatform(platform) ? '⌘⏎' : 'Ctrl+Enter'
 }
 
 export function truncate(text: string, max: number) {

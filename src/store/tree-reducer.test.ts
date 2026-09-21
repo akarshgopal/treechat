@@ -120,3 +120,28 @@ test('actions against a missing thread are inert', () => {
     state,
   )
 })
+
+test('reset replaces the tree with an empty root thread', () => {
+  const next = reducer(base(), { type: 'reset' })
+  assert.equal(Object.keys(next.threads).length, 1)
+  const root = next.threads[next.rootId]
+  assert.ok(root)
+  assert.equal(root.parentId, null)
+  assert.equal(root.anchor, null)
+  assert.deepEqual(root.messages, [])
+  assert.equal(next.activeThreadId, next.rootId)
+  assert.deepEqual(next.expanded, {})
+  assert.ok(
+    !Object.values(next.threads).some((thread) =>
+      thread.messages.some((message) => message.content === 'What is TreeChat?'),
+    ),
+  )
+})
+
+test('restoreDemo loads the seeded walkthrough', () => {
+  const next = reducer(base(), { type: 'restoreDemo' })
+  const root = next.threads[next.rootId]
+  assert.ok(root)
+  assert.ok(root.messages.some((message) => message.content === 'What is TreeChat?'))
+  assert.ok(Object.keys(next.threads).length > 1)
+})
