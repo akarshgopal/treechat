@@ -1,12 +1,22 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {
+  dropAnchorIdsForEdit,
+  droppedMessageIds,
+  editUserMessage,
+  retryFromAssistant,
+} from '../lib/message-actions.ts'
 import { reducer } from './tree-reducer.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
 
-const msg = (id: string): ChatMessage => ({
+const msg = (
+  id: string,
+  role: ChatMessage['role'] = 'user',
+  content = id,
+): ChatMessage => ({
   id,
-  role: 'user',
-  content: id,
+  role,
+  content,
   createdAt: 0,
 })
 
@@ -144,4 +154,99 @@ test('restoreDemo loads the seeded walkthrough', () => {
   assert.ok(root)
   assert.ok(root.messages.some((message) => message.content === 'What is TreeChat?'))
   assert.ok(Object.keys(next.threads).length > 1)
+})
+
+function conversation(): TreeState {
+  return {
+    threads: {
+      root: {
+        id: 'root',
+        parentId: null,
+        anchor: null,
+        messages: [
+          msg('u1', 'user', 'hello'),
+          msg('a1', 'assistant', 'hi there'),
+          msg('u2', 'user', 'again'),
+          msg('a2', 'assistant', 'ok'),
+        ],
+        createdAt: 0,
+        rev: 0,
+      },
+      b1: thread('b1', 'root', ['x']),
+      b1a: thread('b1a', 'b1', ['y']),
+      b2: {
+        ...thread('b2', 'root'),
+        anchor: { messageId: 'u2', start: 0, end: 5, quote: 'again' },
+      },
+    },
+    rootId: 'root',
+    activeThreadId: 'b1a',
+    expanded: { root: 'b1', b1: 'b1a' },
+  }
+}
+
+test('rewrite-thread retry trims the assistant tail and discards its branches', () => {
+  const state = conversation()
+  state.threads.b1 = {
+    ...state.threads.b1,
+    anchor: { messageId: 'a1', start: 0, end: 2, quote: 'hi' },
+  }
+  state.threads.b2 = {
+    ...state.threads.b2,
+    anchor: { messageId: 'u1', start: 0, end: 5, quote: 'hello' },
+  }
+  const before = state.threads.root.messages
+  const messages = retryFromAssistant(before, 'a1')
+  assert.ok(messages)
+  const next = reducer(state, {
+    type: 'rewrite-thread',
+    threadId: 'root',
+    messages,
+    dropAnchorMessageIds: droppedMessageIds(before, messages),
+  })
+  assert.deepEqual(
+    next.threads.root.messages.map((m) => m.id),
+    ['u1'],
+  )
+  assert.equal(next.threads.root.rev, 0)
+  assert.deepEqual(Object.keys(next.threads).sort(), ['b2', 'root'])
+  assert.equal(next.activeThreadId, 'root')
+  assert.equal(next.expanded.root, null)
+})
+
+test('rewrite-thread edit discards children on the edited message', () => {
+  const state = conversation()
+  const before = state.threads.root.messages
+  const messages = editUserMessage(before, 'u2', 'edited')
+  assert.ok(messages)
+  const next = reducer(state, {
+    type: 'rewrite-thread',
+    threadId: 'root',
+    messages,
+    dropAnchorMessageIds: dropAnchorIdsForEdit(before, messages, 'u2'),
+  })
+  assert.deepEqual(
+    next.threads.root.messages.map((m) => [m.id, m.content]),
+    [
+      ['u1', 'hello'],
+      ['a1', 'hi there'],
+      ['u2', 'edited'],
+    ],
+  )
+  assert.ok(!next.threads.b2)
+  assert.ok(next.threads.b1)
+  assert.equal(next.threads.root.rev, 0)
+})
+
+test('rewrite-thread against a missing thread is inert', () => {
+  const state = conversation()
+  assert.equal(
+    reducer(state, {
+      type: 'rewrite-thread',
+      threadId: 'gone',
+      messages: [],
+      dropAnchorMessageIds: [],
+    }),
+    state,
+  )
 })
