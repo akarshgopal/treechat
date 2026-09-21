@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { splitMarkedText, type Mark } from './selection.ts'
+import { OFFSET_IGNORE_ATTR, splitMarkedText, type Mark } from './selection.ts'
 
 const mark = (id: string, start: number, end: number, open = false): Mark => ({
   id,
@@ -58,4 +58,8 @@ test('drops marks that fall outside the content', () => {
   assert.deepEqual(splitMarkedText('short', [mark('a', 2, 99)]), [
     { text: 'short' },
   ])
+})
+
+test('offset-ignore attribute is the chrome skip hook', () => {
+  assert.equal(OFFSET_IGNORE_ATTR, 'data-offset-ignore')
 })

@@ -33,3 +33,21 @@ test('mockChatStream emits TanStack text events without a server', async () => {
   assert.match(text, /lands in whichever thread/)
   assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
 })
+
+test('mockChatStream answers a code example with a fenced block', async () => {
+  const chunks = []
+  for await (const chunk of mockChatStream({
+    messages: [{ role: 'user', content: 'show a code example please' }],
+    threadId: 't1',
+    runId: 'r1',
+    pace: false,
+  })) {
+    chunks.push(chunk)
+  }
+  const text = chunks
+    .filter((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT)
+    .map((chunk) => ('delta' in chunk ? chunk.delta : ''))
+    .join('')
+  assert.match(text, /```ts/)
+  assert.match(text, /quote\.trim\(\)/)
+})

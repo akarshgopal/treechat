@@ -69,6 +69,21 @@ function lastUserText(messages: unknown[]): string {
 function craftReply(userText: string, quote?: string): string {
   const text = userText.toLowerCase()
 
+  if (
+    text.includes('```') ||
+    /\b(code (sample|block|fence|example)|syntax highlight|markdown)\b/.test(text)
+  ) {
+    return `A fenced block renders with a language label and a copy button:
+
+\`\`\`ts
+function branch(quote: string) {
+  return quote.trim()
+}
+\`\`\`
+
+Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-thread. Links like [TreeChat](https://example.com) open in a new tab.`
+  }
+
   if (text.includes('summarize') || text.includes('merge') || text.includes('drop')) {
     const q = quote ? `«${quote}»` : 'the selected passage'
     return `Merged up from the branch on ${q}. The tangent stayed pinned to that character range and used its own composer, so it never stole the thread above it. What is left behind is a quiet underline and a pill you can reopen.`

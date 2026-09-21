@@ -4,6 +4,48 @@ export type TextRange = {
   text: string
 }
 
+/** Fence chrome, copy buttons, mark counts — excluded from branch offsets. */
+export const OFFSET_IGNORE_ATTR = 'data-offset-ignore'
+
+function closestOffsetIgnore(node: Node, root: Node): Element | null {
+  let el: Element | null =
+    node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
+  while (el) {
+    if (el.hasAttribute(OFFSET_IGNORE_ATTR)) return el
+    if (el === root) return null
+    el = el.parentElement
+  }
+  return null
+}
+
+/** Visible message text: text nodes minus `[data-offset-ignore]` subtrees. */
+export function plainTextSkippingIgnore(root: Node): string {
+  if (root.nodeType === Node.TEXT_NODE) {
+    return closestOffsetIgnore(root, root) ? '' : (root.nodeValue ?? '')
+  }
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return closestOffsetIgnore(node, root)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT
+    },
+  })
+  let out = ''
+  let current: Node | null
+  while ((current = walker.nextNode())) {
+    out += current.nodeValue ?? ''
+  }
+  return out
+}
+
+function rangePlainText(range: Range): string {
+  const fragment = range.cloneContents()
+  fragment.querySelectorAll(`[${OFFSET_IGNORE_ATTR}]`).forEach((el) => {
+    el.remove()
+  })
+  return fragment.textContent ?? ''
+}
+
 export function offsetsInRoot(root: HTMLElement): TextRange | null {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -11,11 +53,17 @@ export function offsetsInRoot(root: HTMLElement): TextRange | null {
   }
   const range = selection.getRangeAt(0)
   if (!root.contains(range.commonAncestorContainer)) return null
+  if (
+    closestOffsetIgnore(range.startContainer, root) &&
+    closestOffsetIgnore(range.endContainer, root)
+  ) {
+    return null
+  }
   const pre = document.createRange()
   pre.selectNodeContents(root)
   pre.setEnd(range.startContainer, range.startOffset)
-  const start = pre.toString().length
-  const text = range.toString()
+  const start = rangePlainText(pre).length
+  const text = rangePlainText(range)
   if (!text.trim()) return null
   return { start, end: start + text.length, text }
 }
