@@ -68,20 +68,19 @@ export function SessionList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2" data-testid="session-list">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-0.5">
-        <span className="eyebrow text-muted-foreground">chats</span>
+      <span className="eyebrow shrink-0 px-0.5 text-muted-foreground">chats</span>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
         <button
           type="button"
           onClick={onCreate}
           aria-label="New chat"
           title="New chat"
           data-testid="session-new"
-          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          className="flex min-w-0 items-center gap-2 rounded-[7px] px-2 py-[6px] text-left text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         >
-          <SquarePen className="size-3.5" />
+          <SquarePen className="size-3.5 shrink-0" />
+          <span className="min-w-0 truncate text-[12px] leading-tight">New chat</span>
         </button>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
         {ordered.map((session) => {
           const active = session.id === activeSessionId
           const editing = session.id === editingId

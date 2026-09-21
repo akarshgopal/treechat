@@ -206,7 +206,6 @@ function TreeChatShell({
     activeSessionId,
     activeSession,
     activeThread,
-    rootThread,
     createThread,
     expand,
     focus,
@@ -442,7 +441,6 @@ function TreeChatShell({
     }
   }, [syncChipFromSelection])
 
-  const rootTitle = rootThread?.messages[0]?.content ?? 'Main thread'
   const path = pathTo(state, activeThread.id)
   const pendingDelete = sessions.find((session) => session.id === pendingDeleteId)
   const onSelectSession = useCallback(
@@ -562,7 +560,13 @@ function TreeChatShell({
             className="hidden min-h-0 w-[252px] shrink-0 flex-col border-r border-border bg-rail md:flex"
             data-testid="chat-sidebar"
           >
-            <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-b border-border px-3.5 py-3">
+            <TreeRail
+              state={state}
+              sessionId={activeSessionId}
+              rootTitle={activeSession.title}
+              onFocus={focus}
+            />
+            <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-3">
               <SessionList
                 sessions={sessions}
                 activeSessionId={activeSessionId}
@@ -572,7 +576,10 @@ function TreeChatShell({
                 onDelete={setPendingDeleteId}
               />
             </div>
-            <TreeRail state={state} rootTitle={rootTitle} onFocus={focus} />
+            <div className="flex shrink-0 items-center gap-2 border-t border-border px-3.5 py-2.5">
+              <span className="text-[12px] leading-none text-branch">+</span>
+              <span className="eyebrow text-muted-foreground">select text to branch</span>
+            </div>
           </aside>
           <div className="min-w-0 flex-1">
             {chip ? (
