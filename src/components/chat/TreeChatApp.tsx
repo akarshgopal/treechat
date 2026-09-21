@@ -35,6 +35,12 @@ import {
 } from '@/components/ui/dialog'
 import { chatConnection } from '@/lib/chat-connection'
 import { createId } from '@/lib/ids'
+import {
+  dropAnchorIdsForEdit,
+  droppedMessageIds,
+  editUserMessage,
+  retryFromAssistant,
+} from '@/lib/message-actions'
 import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
 import {
   DEFAULT_OPENROUTER_MODEL,
@@ -77,10 +83,16 @@ type ChipState = {
  * Handlers shared by every thread in the tree. Threads render recursively, so
  * drilling these as props would mean re-threading a dozen of them at each level.
  */
+type EngineHandle = {
+  stop: () => void
+  isLoading: boolean
+}
+
 type ShellValue = {
   draftFor: (threadId: string) => string
   setDraft: (threadId: string, value: string) => void
   registerComposer: (threadId: string, el: HTMLTextAreaElement | null) => void
+  registerEngine: (threadId: string, handle: EngineHandle | null) => void
   onSelectMessage: (threadId: string, messageId: string) => void
   onOpenChild: (parentId: string, childId: string | null) => void
   onFocus: (threadId: string) => void
@@ -103,7 +115,7 @@ function useShell() {
  * rather than overwriting it with its own stale copy.
  */
 function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) {
-  const { state, replaceMessages } = useTree()
+  const { state, replaceMessages, rewriteThread } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
 
@@ -123,13 +135,46 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
     if (!sameTranscript(next, initial)) replaceMessages(threadId, next)
   }, [chat.messages, initial, replaceMessages, threadId])
 
+  useEffect(() => {
+    shell.registerEngine(threadId, {
+      stop: () => chat.stop(),
+      isLoading: chat.isLoading,
+    })
+    return () => shell.registerEngine(threadId, null)
+  }, [chat, shell, threadId])
+
   if (!thread) return null
+
+  const snapshot = () => {
+    const live = fromUIMessages(chat.messages)
+    return live.length > 0 ? live : thread.messages
+  }
 
   const send = () => {
     const text = shell.draftFor(threadId).trim()
     if (!text) return
     shell.setDraft(threadId, '')
     void chat.sendMessage(text)
+  }
+
+  const retryAssistant = (messageId: string) => {
+    if (chat.isLoading) chat.stop()
+    const before = snapshot()
+    const next = retryFromAssistant(before, messageId)
+    if (!next) return
+    chat.setMessages(toUIMessages(next))
+    rewriteThread(threadId, next, droppedMessageIds(before, next))
+    void chat.reload()
+  }
+
+  const editUser = (messageId: string, content: string) => {
+    if (chat.isLoading) chat.stop()
+    const before = snapshot()
+    const next = editUserMessage(before, messageId, content)
+    if (!next) return
+    chat.setMessages(toUIMessages(next))
+    rewriteThread(threadId, next, dropAnchorIdsForEdit(before, next, messageId))
+    void chat.reload()
   }
 
   return (
@@ -146,6 +191,8 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
       onSelectMessage={shell.onSelectMessage}
       onOpenChild={shell.onOpenChild}
       onFocusChild={shell.onFocus}
+      onRetryAssistant={retryAssistant}
+      onEditUser={editUser}
       composerRef={(el) => shell.registerComposer(threadId, el)}
       accentComposer={Boolean(thread.anchor)}
       placeholder={
@@ -228,6 +275,7 @@ function TreeChatShell({
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
+  const enginesRef = useRef<Record<string, EngineHandle>>({})
   const lastRangeRef = useRef<ChipState | null>(null)
   const focusNextRef = useRef<string | null>(null)
   const holdChipRef = useRef(false)
@@ -256,6 +304,27 @@ function TreeChatShell({
     },
     [],
   )
+
+  const registerEngine = useCallback(
+    (threadId: string, handle: EngineHandle | null) => {
+      if (!handle) {
+        delete enginesRef.current[threadId]
+        return
+      }
+      enginesRef.current[threadId] = handle
+    },
+    [],
+  )
+
+  const stopGenerating = useCallback(() => {
+    let stopped = false
+    for (const handle of Object.values(enginesRef.current)) {
+      if (!handle.isLoading) continue
+      handle.stop()
+      stopped = true
+    }
+    return stopped
+  }, [])
 
   const syncChipFromSelection = useCallback(() => {
     const selection = window.getSelection()
@@ -374,6 +443,7 @@ function TreeChatShell({
       draftFor,
       setDraft,
       registerComposer,
+      registerEngine,
       onSelectMessage,
       onOpenChild,
       onFocus: focus,
@@ -385,6 +455,7 @@ function TreeChatShell({
       draftFor,
       setDraft,
       registerComposer,
+      registerEngine,
       onSelectMessage,
       onOpenChild,
       focus,
@@ -403,6 +474,10 @@ function TreeChatShell({
         return
       }
       if (event.key !== 'Escape') return
+      if (stopGenerating()) {
+        event.preventDefault()
+        return
+      }
       if (chip) {
         event.preventDefault()
         setChip(null)
@@ -425,7 +500,7 @@ function TreeChatShell({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeThread, branchFromChip, chip, drafts, focus])
+  }, [activeThread, branchFromChip, chip, drafts, focus, stopGenerating])
 
   useEffect(() => {
     let frame = 0
