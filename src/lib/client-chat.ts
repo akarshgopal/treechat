@@ -72,6 +72,32 @@ export function openRouterHeaders(
   }
 }
 
+export function openRouterRequestBody(
+  config: ClientProviderConfig,
+  messages: OpenAIChatMessage[],
+): {
+  model: string
+  messages: OpenAIChatMessage[]
+  stream: true
+  temperature?: number
+  max_tokens?: number
+} {
+  const body: {
+    model: string
+    messages: OpenAIChatMessage[]
+    stream: true
+    temperature?: number
+    max_tokens?: number
+  } = {
+    model: config.model.trim() || DEFAULT_OPENROUTER_MODEL,
+    messages,
+    stream: true,
+  }
+  if (typeof config.temperature === 'number') body.temperature = config.temperature
+  if (typeof config.maxTokens === 'number') body.max_tokens = config.maxTokens
+  return body
+}
+
 function defaultOrigin(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin
@@ -200,11 +226,7 @@ export async function* openRouterChatStream(input: {
     response = await fetch(OPENROUTER_CHAT_URL, {
       method: 'POST',
       headers: openRouterHeaders(config),
-      body: JSON.stringify({
-        model: config.model || DEFAULT_OPENROUTER_MODEL,
-        messages: openaiMessages,
-        stream: true,
-      }),
+      body: JSON.stringify(openRouterRequestBody(config, openaiMessages)),
       signal,
     })
   } catch (error) {
