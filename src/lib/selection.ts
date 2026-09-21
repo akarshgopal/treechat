@@ -4,6 +4,43 @@ export type TextRange = {
   text: string
 }
 
+
+/** Fence chrome, copy buttons, mark counts — excluded from branch offsets. */
+export const OFFSET_IGNORE_ATTR = 'data-offset-ignore'
+
+function closestOffsetIgnore(node: Node, root: Node): Element | null {
+  let el: Element | null =
+    node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
+  while (el) {
+    if (el.hasAttribute(OFFSET_IGNORE_ATTR)) return el
+    if (el === root) return null
+    el = el.parentElement
+  }
+  return null
+}
+
+/** Visible message text: text nodes minus `[data-offset-ignore]` subtrees. */
+export function plainTextSkippingIgnore(root: Node): string {
+  if (root.nodeType === Node.TEXT_NODE) {
+    return closestOffsetIgnore(root, root) ? '' : (root.nodeValue ?? '')
+  }
+  const doc = root.ownerDocument
+  if (!doc) return root.textContent ?? ''
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return closestOffsetIgnore(node, root)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT
+    },
+  })
+  let out = ''
+  let current: Node | null
+  while ((current = walker.nextNode())) {
+    out += current.nodeValue ?? ''
+  }
+  return out
+}
+
 /** Sanity cap only — long in-message selections should still branch. */
 export const MAX_BRANCH_SELECTION = 8_000
 
@@ -117,7 +154,13 @@ function rangeHasNonWhitespaceOutside(range: Range, root: Node): boolean {
 function prefixTextLength(root: Node, target: Node): number {
   const doc = root.ownerDocument
   if (!doc) return 0
-  const walker = doc.createTreeWalker(root, SHOW_TEXT)
+  const walker = doc.createTreeWalker(root, SHOW_TEXT, {
+    acceptNode(node) {
+      return closestOffsetIgnore(node, root)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT
+    },
+  })
   let n = 0
   let current: Node | null
   while ((current = walker.nextNode())) {
@@ -151,7 +194,8 @@ function offsetsFromClampedRange(root: HTMLElement, range: Range): TextRange | n
   const endCmp = comparePointToRoot(root, range.endContainer, range.endOffset, 'end')
   if (startCmp > 0 || endCmp < 0) return null
 
-  const total = root.textContent?.length ?? 0
+  const visible = plainTextSkippingIgnore(root)
+  const total = visible.length
   const start = isInside(root, range.startContainer)
     ? pointToOffset(root, range.startContainer, range.startOffset)
     : 0
@@ -161,7 +205,7 @@ function offsetsFromClampedRange(root: HTMLElement, range: Range): TextRange | n
   if (start == null || end == null) return null
   const lo = Math.min(start, end)
   const hi = Math.max(start, end)
-  const text = (root.textContent ?? '').slice(lo, hi)
+  const text = visible.slice(lo, hi)
   if (!text.trim()) return null
   if (text.length > MAX_BRANCH_SELECTION) return null
   return { start: lo, end: hi, text }
