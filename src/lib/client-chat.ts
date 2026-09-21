@@ -126,6 +126,31 @@ function now() {
   return Date.now()
 }
 
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
+}
+
+function finishStopped(
+  messageId: string,
+  threadId: string,
+  runId: string,
+): StreamChunk[] {
+  return [
+    { type: EventType.TEXT_MESSAGE_END, messageId, timestamp: now() },
+    {
+      type: EventType.RUN_FINISHED,
+      threadId,
+      runId,
+      timestamp: now(),
+      outcome: { type: 'success' },
+    },
+  ]
+}
+
 async function* readSseDataLines(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
@@ -208,13 +233,11 @@ export async function* openRouterChatStream(input: {
       signal,
     })
   } catch (error) {
-    const aborted =
-      signal?.aborted ||
-      (error instanceof DOMException && error.name === 'AbortError')
+    if (isAbortError(error, signal)) return
     yield {
       type: EventType.RUN_ERROR,
-      message: aborted ? 'Aborted' : error instanceof Error ? error.message : 'OpenRouter request failed',
-      code: aborted ? 'aborted' : 'network',
+      message: error instanceof Error ? error.message : 'OpenRouter request failed',
+      code: 'network',
       timestamp: now(),
     }
     return
@@ -262,11 +285,15 @@ export async function* openRouterChatStream(input: {
         timestamp: now(),
       }
     }
-  } catch {
+  } catch (error) {
+    if (isAbortError(error, signal)) {
+      for (const chunk of finishStopped(messageId, threadId, runId)) yield chunk
+      return
+    }
     yield {
       type: EventType.RUN_ERROR,
-      message: 'Aborted',
-      code: 'aborted',
+      message: error instanceof Error ? error.message : 'OpenRouter stream failed',
+      code: 'stream',
       timestamp: now(),
     }
     return

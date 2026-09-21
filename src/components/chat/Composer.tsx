@@ -48,6 +48,12 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
     }, [disabled, isLoading, onSend, value])
 
     const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === 'Escape' && isLoading) {
+        event.preventDefault()
+        event.stopPropagation()
+        onStop?.()
+        return
+      }
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
         submit()
@@ -83,6 +89,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
               <button
                 type="button"
                 onClick={onStop}
+                data-testid="composer-stop"
                 className="m-2 flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
                 <Square className="size-2.5 fill-current" />

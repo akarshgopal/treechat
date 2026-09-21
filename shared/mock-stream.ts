@@ -152,12 +152,20 @@ export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamCh
         timestamp: now(),
       }
     }
-  } catch {
+  } catch (error) {
+    const aborted =
+      signal?.aborted ||
+      (error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError')
+    if (!aborted) throw error
+    // Keep whatever already streamed; do not surface abort as a run error.
+    yield { type: EventType.TEXT_MESSAGE_END, messageId, timestamp: now() }
     yield {
-      type: EventType.RUN_ERROR,
-      message: 'Aborted',
-      code: 'aborted',
+      type: EventType.RUN_FINISHED,
+      threadId,
+      runId,
       timestamp: now(),
+      outcome: { type: 'success' },
     }
     return
   }

@@ -207,6 +207,93 @@ test('runChat with a saved key never posts to /api/chat', async () => {
   assert.ok(urls.every((url) => !url.includes('/api/chat')))
 })
 
+test('openRouterChatStream abort after start does not emit RUN_ERROR', async () => {
+  const controller = new AbortController()
+  const encoder = new TextEncoder()
+  globalThis.fetch = (async (_input, init) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'),
+        )
+        const signal = init?.signal
+        if (signal) {
+          if (signal.aborted) {
+            stream.close()
+            return
+          }
+          signal.addEventListener(
+            'abort',
+            () => {
+              stream.error(new DOMException('Aborted', 'AbortError'))
+            },
+            { once: true },
+          )
+        }
+      },
+    })
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  const chunks = []
+  const stream = openRouterChatStream({
+    messages: [{ role: 'user', content: 'hi' }],
+    config: {
+      provider: 'openrouter',
+      apiKey: 'sk-or-v1-test',
+      model: 'openai/gpt-4.1-mini',
+    },
+    forwardedProps: {},
+    threadId: 't1',
+    runId: 'r1',
+    signal: controller.signal,
+  })
+  for await (const chunk of stream) {
+    chunks.push(chunk)
+    if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) controller.abort()
+  }
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT))
+  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
+  assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
+})
+
+test('openRouterChatStream abort before response is silent', async () => {
+  const controller = new AbortController()
+  globalThis.fetch = (async (_input, init) => {
+    const signal = init?.signal
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    await new Promise<void>((_, reject) => {
+      signal?.addEventListener(
+        'abort',
+        () => reject(new DOMException('Aborted', 'AbortError')),
+        { once: true },
+      )
+    })
+    return new Response('', { status: 200 })
+  }) as typeof fetch
+
+  controller.abort()
+  const chunks = []
+  for await (const chunk of openRouterChatStream({
+    messages: [{ role: 'user', content: 'hi' }],
+    config: {
+      provider: 'openrouter',
+      apiKey: 'sk-or-v1-test',
+      model: 'openai/gpt-4.1-mini',
+    },
+    threadId: 't1',
+    runId: 'r1',
+    signal: controller.signal,
+  })) {
+    chunks.push(chunk)
+  }
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.RUN_STARTED))
+  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
+})
+
 test('runChat without a key and without /api uses the client mock', async () => {
   const urls: string[] = []
   globalThis.fetch = (async (input) => {
