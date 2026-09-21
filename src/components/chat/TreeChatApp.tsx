@@ -51,7 +51,11 @@ import {
   type ClientProviderConfig,
 } from '@/lib/provider'
 import { requestAssistantText } from '@/lib/request-assistant'
-import { offsetsInRoot } from '@/lib/selection'
+import {
+  offsetsInRoot,
+  selectableMessageFromRange,
+  selectionClientRect,
+} from '@/lib/selection'
 import {
   branchForwardedProps,
   childThreads,
@@ -333,15 +337,13 @@ function TreeChatShell({
       return
     }
     holdChipRef.current = false
-    const node = selection.anchorNode
-    const el = (
-      node instanceof Element ? node : node?.parentElement
-    )?.closest<HTMLElement>('[data-message-id][data-selectable="true"]')
+    const range = selection.getRangeAt(0)
+    const el = selectableMessageFromRange(range)
     if (!el) {
       setChip(null)
       return
     }
-    const offsets = offsetsInRoot(el)
+    const offsets = offsetsInRoot(el, range)
     if (!offsets) {
       setChip(null)
       return
@@ -349,8 +351,12 @@ function TreeChatShell({
     const threadId = el.dataset.threadId
     const messageId = el.dataset.messageId
     if (!threadId || !messageId) return
-    const rect = selection.getRangeAt(0).getBoundingClientRect()
-    if (rect.width === 0 && rect.height === 0) return
+    const host = el.getBoundingClientRect()
+    const rect = selectionClientRect(range) ?? {
+      top: host.top,
+      left: host.left + host.width / 2,
+      bottom: host.bottom,
+    }
     const next: ChipState = {
       threadId,
       messageId,
@@ -358,7 +364,7 @@ function TreeChatShell({
       end: offsets.end,
       quote: offsets.text.trim(),
       top: rect.top,
-      left: rect.left + rect.width / 2,
+      left: rect.left,
       bottom: rect.bottom,
     }
     lastRangeRef.current = next
