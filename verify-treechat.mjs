@@ -165,8 +165,21 @@ results.spineStream = true
 await page.screenshot({ path: '/tmp/tc-5.png' })
 
 await page.click('[data-testid="new-chat"]')
-await page.waitForFunction(() => !document.body.innerText.includes('What is TreeChat?'))
-results.newChatClears = !(await bodyText()).includes('What is TreeChat?')
+await page.waitForFunction(() => {
+  const active = document.querySelector('[data-testid="session-row"][data-active="true"]')
+  const composer = document.querySelector('textarea[placeholder="Message…"]')
+  return Boolean(active && active.textContent?.includes('New chat') && composer)
+})
+results.newChatClears = await page.evaluate(() => {
+  const active = document.querySelector('[data-testid="session-row"][data-active="true"]')
+  const composer = document.querySelector('textarea[placeholder="Message…"]')
+  const previous = [...document.querySelectorAll('[data-testid="session-row"]')].some(
+    (row) =>
+      row.getAttribute('data-active') !== 'true' &&
+      (row.textContent ?? '').includes('What is TreeChat?'),
+  )
+  return Boolean(active && composer && previous)
+})
 
 console.log(JSON.stringify({ results, errors }, null, 2))
 fs.writeFileSync('/tmp/tc-text.txt', await bodyText())

@@ -49,11 +49,29 @@ export type TreeState = {
   expanded: Record<string, string | null>
 }
 
+/** One named chat, with its own tree. */
+export type ChatSession = {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  treeState: TreeState
+  /** When true, the first user message no longer overwrites the title. */
+  titleLocked: boolean
+}
+
+export type SessionLibrary = {
+  sessions: ChatSession[]
+  activeSessionId: string
+}
+
 export type ProviderStatus = {
   mode: 'mock' | 'live'
   provider: 'xai' | 'openai' | 'openrouter' | 'mock'
   model: string
 }
 
-export const STORAGE_KEY = 'treechat:v2'
+/** Session library. A v2 single-tree blob is migrated into one session on load. */
+export const STORAGE_KEY = 'treechat:v3'
+export const V2_STORAGE_KEY = 'treechat:v2'
 export const LEGACY_STORAGE_KEY = 'treechat:v1'
