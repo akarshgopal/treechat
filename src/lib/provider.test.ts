@@ -3,39 +3,199 @@ import test from 'node:test'
 import {
   DEFAULT_OPENROUTER_MODEL,
   TREECHAT_MODEL_HEADER,
+  clearProviderConfig,
+  defaultProviderConfig,
+  loadProviderConfig,
+  normalizeProviderConfig,
+  parseMaxTokens,
   parseProviderConfig,
+  parseTemperature,
+  saveProviderConfig,
+  serializeProviderConfig,
+  shortModelName,
   providerRequestHeaders,
 } from './provider.ts'
 
-test('parseProviderConfig rejects missing or empty keys', () => {
+function installLocalStorage() {
+  const store = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value)
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+      clear: () => store.clear(),
+    },
+    configurable: true,
+  })
+}
+
+test('parseProviderConfig rejects missing or invalid payloads', () => {
   assert.equal(parseProviderConfig(null), null)
   assert.equal(parseProviderConfig('{'), null)
-  assert.equal(parseProviderConfig('{"apiKey":"  "}'), null)
-  assert.equal(parseProviderConfig('{"model":"openai/gpt-4.1-mini"}'), null)
+  assert.equal(parseProviderConfig('[]'), null)
+  assert.equal(parseProviderConfig('"nope"'), null)
 })
 
-test('parseProviderConfig reads OpenRouter key and model', () => {
+test('parseProviderConfig reads OpenRouter key, model, and params', () => {
   const config = parseProviderConfig(
     JSON.stringify({
       provider: 'openrouter',
       apiKey: ' sk-or-v1-test ',
       model: ' openai/gpt-4.1-mini ',
+      temperature: 0.7,
+      maxTokens: 1024,
     }),
   )
   assert.deepEqual(config, {
     provider: 'openrouter',
     apiKey: 'sk-or-v1-test',
     model: 'openai/gpt-4.1-mini',
+    temperature: 0.7,
+    maxTokens: 1024,
+  })
+})
+
+test('parseProviderConfig allows an empty key so prefs can persist in mock', () => {
+  const config = parseProviderConfig(
+    JSON.stringify({
+      model: 'x-ai/grok-4',
+      temperature: 0,
+      maxTokens: 512,
+    }),
+  )
+  assert.deepEqual(config, {
+    provider: 'openrouter',
+    apiKey: '',
+    model: 'x-ai/grok-4',
+    temperature: 0,
+    maxTokens: 512,
   })
 })
 
 test('parseProviderConfig defaults the model', () => {
   const config = parseProviderConfig(JSON.stringify({ apiKey: 'abc' }))
   assert.equal(config?.model, DEFAULT_OPENROUTER_MODEL)
+  assert.equal(config?.temperature, undefined)
+  assert.equal(config?.maxTokens, undefined)
+})
+
+test('parseProviderConfig clamps temperature and drops invalid maxTokens', () => {
+  const high = parseProviderConfig(
+    JSON.stringify({ apiKey: 'k', temperature: 9, maxTokens: -3 }),
+  )
+  assert.equal(high?.temperature, 2)
+  assert.equal(high?.maxTokens, undefined)
+
+  const low = parseProviderConfig(
+    JSON.stringify({ apiKey: 'k', temperature: -1, maxTokens: 0 }),
+  )
+  assert.equal(low?.temperature, 0)
+  assert.equal(low?.maxTokens, undefined)
+
+  const strings = parseProviderConfig(
+    JSON.stringify({ apiKey: 'k', temperature: '1.25', maxTokens: '2048' }),
+  )
+  assert.equal(strings?.temperature, 1.25)
+  assert.equal(strings?.maxTokens, 2048)
+})
+
+test('serializeProviderConfig roundtrips and omits empty optionals', () => {
+  const full = {
+    provider: 'openrouter' as const,
+    apiKey: ' sk-or-v1-test ',
+    model: ' google/gemini-2.5-flash ',
+    temperature: 1.5,
+    maxTokens: 1024,
+  }
+  const raw = serializeProviderConfig(full)
+  assert.deepEqual(JSON.parse(raw), {
+    provider: 'openrouter',
+    apiKey: 'sk-or-v1-test',
+    model: 'google/gemini-2.5-flash',
+    temperature: 1.5,
+    maxTokens: 1024,
+  })
+  assert.deepEqual(parseProviderConfig(raw), normalizeProviderConfig(full))
+
+  const bare = serializeProviderConfig({
+    provider: 'openrouter',
+    apiKey: '',
+    model: DEFAULT_OPENROUTER_MODEL,
+  })
+  assert.deepEqual(JSON.parse(bare), {
+    provider: 'openrouter',
+    apiKey: '',
+    model: DEFAULT_OPENROUTER_MODEL,
+  })
+  assert.ok(!('temperature' in JSON.parse(bare)))
+  assert.ok(!('maxTokens' in JSON.parse(bare)))
+})
+
+test('serializeProviderConfig keeps temperature 0', () => {
+  const raw = serializeProviderConfig({
+    provider: 'openrouter',
+    apiKey: 'k',
+    model: DEFAULT_OPENROUTER_MODEL,
+    temperature: 0,
+  })
+  assert.equal(JSON.parse(raw).temperature, 0)
+  assert.equal(parseProviderConfig(raw)?.temperature, 0)
+})
+
+test('parseTemperature and parseMaxTokens ignore junk', () => {
+  assert.equal(parseTemperature(''), undefined)
+  assert.equal(parseTemperature('nope'), undefined)
+  assert.equal(parseTemperature(1.234), 1.23)
+  assert.equal(parseMaxTokens(''), undefined)
+  assert.equal(parseMaxTokens('nope'), undefined)
+  assert.equal(parseMaxTokens(3.9), 3)
+})
+
+test('defaultProviderConfig is mock-safe', () => {
+  assert.deepEqual(defaultProviderConfig(), {
+    provider: 'openrouter',
+    apiKey: '',
+    model: DEFAULT_OPENROUTER_MODEL,
+  })
+})
+
+test('shortModelName strips the OpenRouter publisher prefix', () => {
+  assert.equal(shortModelName('anthropic/claude-sonnet-4'), 'claude-sonnet-4')
+  assert.equal(shortModelName('grok-4'), 'grok-4')
+})
+
+test('saveProviderConfig persists params without an API key', () => {
+  installLocalStorage()
+  saveProviderConfig({
+    provider: 'openrouter',
+    apiKey: '',
+    model: 'google/gemini-2.5-flash',
+    temperature: 1.1,
+  })
+  assert.deepEqual(loadProviderConfig(), {
+    provider: 'openrouter',
+    apiKey: '',
+    model: 'google/gemini-2.5-flash',
+    temperature: 1.1,
+  })
+  clearProviderConfig()
+  assert.equal(loadProviderConfig(), null)
 })
 
 test('providerRequestHeaders is empty without a key', () => {
   assert.deepEqual(providerRequestHeaders(null), {})
+  assert.deepEqual(
+    providerRequestHeaders({
+      provider: 'openrouter',
+      apiKey: '',
+      model: 'x-ai/grok-4',
+    }),
+    {},
+  )
 })
 
 test('providerRequestHeaders attaches Bearer and model', () => {
