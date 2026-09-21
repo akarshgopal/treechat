@@ -90,6 +90,24 @@ const nestedMessages: ChatMessage[] = [
   },
 ]
 
+/** A single empty root thread — a fresh chat with no demo messages or branches. */
+export function createEmptyState(): TreeState {
+  const root: Thread = {
+    id: 'thread-root',
+    parentId: null,
+    anchor: null,
+    messages: [],
+    createdAt: Date.now(),
+    rev: 0,
+  }
+  return {
+    threads: { [root.id]: root },
+    rootId: root.id,
+    activeThreadId: root.id,
+    expanded: {},
+  }
+}
+
 export function createSeedState(): TreeState {
   const root: Thread = {
     id: 'thread-root',

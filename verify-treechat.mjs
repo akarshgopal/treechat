@@ -26,8 +26,15 @@ const results = {}
 const bodyText = () => page.evaluate(() => document.body.innerText)
 
 results.hasTitle = (await bodyText()).includes('TreeChat')
-results.hasSeed = (await bodyText()).includes('What is TreeChat?')
+results.hasNewChat = Boolean(await page.$('[data-testid="new-chat"]'))
+results.emptyStart = !(await bodyText()).includes('What is TreeChat?')
 results.hasMock = /mock stream/i.test(await bodyText())
+
+await page.click('[data-testid="settings-button"]')
+await page.waitForSelector('[data-testid="settings-restore-demo"]')
+await page.click('[data-testid="settings-restore-demo"]')
+await page.waitForFunction(() => document.body.innerText.includes('What is TreeChat?'))
+results.hasSeed = (await bodyText()).includes('What is TreeChat?')
 results.hasQuote = (await bodyText()).includes(
   'select any passage and grow a side-thread from it',
 )
@@ -156,6 +163,10 @@ await page.waitForFunction(
 )
 results.spineStream = true
 await page.screenshot({ path: '/tmp/tc-5.png' })
+
+await page.click('[data-testid="new-chat"]')
+await page.waitForFunction(() => !document.body.innerText.includes('What is TreeChat?'))
+results.newChatClears = !(await bodyText()).includes('What is TreeChat?')
 
 console.log(JSON.stringify({ results, errors }, null, 2))
 fs.writeFileSync('/tmp/tc-text.txt', await bodyText())
