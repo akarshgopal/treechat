@@ -1,4 +1,4 @@
-import { createSeedState } from '../lib/seed.ts'
+import { createEmptyState, createSeedState } from '../lib/seed.ts'
 import { descendantIds, expansionToReveal } from '../lib/tree.ts'
 import type { ChatMessage, Thread, TreeState } from '@/types'
 
@@ -10,6 +10,7 @@ export type Action =
   | { type: 'focus'; threadId: string }
   | { type: 'discard'; threadId: string }
   | { type: 'reset' }
+  | { type: 'restoreDemo' }
 
 function withThread(state: TreeState, thread: Thread): TreeState {
   return { ...state, threads: { ...state.threads, [thread.id]: thread } }
@@ -87,6 +88,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
       return { ...state, threads, expanded, activeThreadId }
     }
     case 'reset':
+      return createEmptyState()
+    case 'restoreDemo':
       return createSeedState()
     default:
       return state
