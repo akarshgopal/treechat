@@ -75,6 +75,8 @@ export type Thread = {
    */
   rev: number
   summary?: ThreadSummary
+  /** Replies in this thread search the web and cite their sources. Set only when on. */
+  webSearch?: boolean
 }
 
 export type TreeState = {

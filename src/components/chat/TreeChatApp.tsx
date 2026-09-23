@@ -11,7 +11,8 @@ import { useChat } from '@tanstack/ai-react'
 import { ChevronDown, Settings, SquarePen } from 'lucide-react'
 import { BranchHeader } from '@/components/chat/BranchHeader'
 import { BranchPopover } from '@/components/chat/BranchPopover'
-import { Lanes, type LaneFrame } from '@/components/chat/Lanes'
+import { Lanes, type LaneFrame, type TrailingLane } from '@/components/chat/Lanes'
+import { SourceLane } from '@/components/chat/SourceLane'
 import { TakeawayDialog } from '@/components/chat/TakeawayDialog'
 import { SessionList } from '@/components/chat/SessionList'
 import { SettingsDialog } from '@/components/chat/SettingsDialog'
@@ -65,7 +66,7 @@ import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { refreshSummary } from '@/lib/summarize'
 import { isBranchShortcut } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
-import type { ChatMessage, ChatSession, ProviderStatus } from '@/types'
+import type { ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
 
 const idleStatus: ProviderStatus = {
   mode: 'mock',
@@ -95,6 +96,11 @@ type EngineHandle = {
   isLoading: boolean
 }
 
+/** A source open beside the reply that cites it. Shell state, never persisted. */
+type OpenSource = { threadId: string; messageId: string; citationId: string }
+
+const SOURCE_LANE_ID = 'source-lane'
+
 type ShellValue = {
   draftFor: (threadId: string) => string
   setDraft: (threadId: string, value: string) => void
@@ -111,6 +117,8 @@ type ShellValue = {
   scrollPositions: Map<string, number>
   sessionId: string
   onShowDemo: () => void
+  openSource: OpenSource | null
+  onOpenSource: (threadId: string, messageId: string, citationId: string) => void
 }
 
 const ShellContext = createContext<ShellValue | null>(null)
@@ -135,7 +143,7 @@ type PendingRewrite = {
  * rather than overwriting it with its own stale copy.
  */
 function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; openChildId: string | null; frame: LaneFrame }) {
-  const { state, replaceMessages, rewriteThread, setSummary } = useTree()
+  const { state, replaceMessages, rewriteThread, setSummary, setWebSearch } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
 
@@ -149,6 +157,7 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
     forwardedProps: {
       ...forwarded,
       cacheSessionId: shell.sessionId,
+      ...(thread?.webSearch ? { webSearch: true } : {}),
       ...(summary ? { threadSummary: { content: summary.content, throughMessageId: summary.throughMessageId } } : {}),
     },
   })
@@ -290,6 +299,8 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
       onShowDemo={shell.onShowDemo}
       onAskMessage={shell.onAskMessage}
       leadOffset={frame.leadOffset}
+      openCitation={shell.openSource?.threadId === threadId ? shell.openSource : null}
+      onOpenCitation={shell.onOpenSource}
       header={thread.parentId ? (
         <BranchHeader
           thread={thread}
@@ -298,6 +309,8 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
           onReturn={() => shell.onReturn(threadId)}
           summarized={Object.values(state.threads).some((entry) => entry.messages.some((message) => message.sourceThreadId === threadId))}
           controls={frame.controls}
+          webSearch={Boolean(thread.webSearch)}
+          onToggleWebSearch={() => setWebSearch(threadId, !thread.webSearch)}
         />
       ) : frame.controls ? (
         <div className="flex min-w-0 items-center gap-2">
@@ -406,6 +419,7 @@ function TreeChatShell({
     renameSession,
     deleteSession,
   } = useTree()
+  const [source, setSource] = useState<OpenSource | null>(null)
 
   const [chip, setChip] = useState<ChipState | null>(null)
   /** A question being written about a passage, in the popover beside it. */
@@ -544,13 +558,13 @@ function TreeChatShell({
   }, [])
 
   /** Grow the branch and give it the frame to the right of its source. */
-  const startBranch = useCallback((passage: ChipState, question: string) => {
+  const startBranch = useCallback((passage: ChipState, question: string, options?: { webSearch?: boolean }) => {
     const id = createThread(passage.threadId, {
       messageId: passage.messageId,
       start: passage.start,
       end: passage.end,
       quote: passage.quote,
-    })
+    }, options)
     initialQuestionsRef.current[id] = question
     focusNextRef.current = id
     setAsking(null)
@@ -559,7 +573,8 @@ function TreeChatShell({
   }, [clearSelection, createThread, focus])
 
   const onLens = useCallback((passage: ChipState, lens: Lens) => {
-    startBranch(passage, lensQuestion(lens, passage.quote))
+    // "Source?" wants evidence, so that branch searches the web from the start.
+    startBranch(passage, lensQuestion(lens, passage.quote), { webSearch: lens.id === 'source' })
   }, [startBranch])
 
   const onAskMessage = useCallback((threadId: string, messageId: string) => {
@@ -621,6 +636,37 @@ function TreeChatShell({
     [focus],
   )
 
+  /**
+   * Open a cited source in a lane right after the thread citing it, closing
+   * any deeper lanes (Miller columns). The same source again closes it.
+   */
+  const onOpenSource = useCallback((threadId: string, messageId: string, citationId: string) => {
+    if (source?.threadId === threadId && source.messageId === messageId && source.citationId === citationId) {
+      setSource(null)
+      return
+    }
+    setAsking(null)
+    focus(threadId)
+    setSource({ threadId, messageId, citationId })
+  }, [focus, source])
+
+  const closeSource = useCallback(() => {
+    if (!source) return
+    setSource(null)
+    // Back to the chip it opened from, so keyboard readers keep their place.
+    requestAnimationFrame(() => document
+      .querySelector<HTMLElement>(`[data-message-id="${CSS.escape(source.messageId)}"][data-thread-id="${CSS.escape(source.threadId)}"] [data-citation-id="${CSS.escape(source.citationId)}"] button`)
+      ?.focus({ preventScroll: true }))
+  }, [source])
+
+  // Opening any other lane replaces the source: it only sits beside its
+  // thread. Adjusted while rendering so a stale source never reappears later.
+  const [sourceFrame, setSourceFrame] = useState(activeThread.id)
+  if (sourceFrame !== activeThread.id) {
+    setSourceFrame(activeThread.id)
+    if (source && source.threadId !== activeThread.id) setSource(null)
+  }
+
   const onMerge = useCallback(
     (threadId: string) => {
       const thread = state.threads[threadId]
@@ -648,6 +694,8 @@ function TreeChatShell({
       scrollPositions,
       sessionId: activeSessionId,
       onShowDemo: onRestoreDemo,
+      openSource: source,
+      onOpenSource,
     }),
     [
       draftFor,
@@ -665,6 +713,8 @@ function TreeChatShell({
       scrollPositions,
       activeSessionId,
       onRestoreDemo,
+      source,
+      onOpenSource,
     ],
   )
 
@@ -696,6 +746,12 @@ function TreeChatShell({
         clearSelection()
         return
       }
+      // The source lane is the rightmost lane, so it closes first.
+      if (source) {
+        event.preventDefault()
+        closeSource()
+        return
+      }
       const parentId = activeThread.parentId
       if (!parentId) return
       const composer = composersRef.current[activeThread.id]
@@ -710,7 +766,7 @@ function TreeChatShell({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeThread, chip, clearSelection, drafts, openAsk, returnToPassage, stopGenerating])
+  }, [activeThread, chip, clearSelection, closeSource, drafts, openAsk, returnToPassage, source, stopGenerating])
 
   useEffect(() => {
     let frame = 0
@@ -743,6 +799,31 @@ function TreeChatShell({
   const hasBranches = Object.keys(state.threads).length > 1
   const lanePath = useMemo(() => pathTo(state, activeThread.id), [state, activeThread.id])
   const narrow = useNarrow()
+  const sourceCitation = source ? citationFor(state.threads[source.threadId]?.messages, source) : undefined
+  const trailing = useMemo<TrailingLane | null>(() => {
+    if (!source || !sourceCitation || source.threadId !== activeThread.id) return null
+    const message = `[data-message-id="${CSS.escape(source.messageId)}"]`
+    const cite = `[data-citation-id="${CSS.escape(sourceCitation.id)}"]`
+    return {
+      id: SOURCE_LANE_ID,
+      title: sourceCitation.title,
+      label: `Source: ${sourceCitation.title}`,
+      testId: 'source-lane',
+      ownerId: source.threadId,
+      // The chip in the reply; the sources list when the text never cites it.
+      selector: `${message} ${cite}, [data-sources-for="${CSS.escape(source.messageId)}"] ${cite}`,
+      render: (frame) => (
+        <SourceLane
+          key={`${source.messageId}:${sourceCitation.id}`}
+          laneId={SOURCE_LANE_ID}
+          citation={sourceCitation}
+          leadOffset={frame.leadOffset}
+          narrow={narrow}
+          onClose={closeSource}
+        />
+      ),
+    }
+  }, [activeThread.id, closeSource, narrow, source, sourceCitation])
   return (
     <div
       className="flex h-svh flex-col bg-background"
@@ -894,6 +975,7 @@ function TreeChatShell({
                 path={lanePath}
                 single={narrow}
                 rootTitle={activeSession.title}
+                trailing={trailing}
                 renderLane={(thread, frame) => {
                   const index = lanePath.findIndex((entry) => entry.id === thread.id)
                   return (
@@ -1032,6 +1114,10 @@ function TakeawayNotice({ onView, onUndo, onDismiss }: {
       </div>
     </div>
   )
+}
+
+function citationFor(messages: ChatMessage[] | undefined, source: OpenSource): Citation | undefined {
+  return messages?.find((message) => message.id === source.messageId)?.citations?.find((citation) => citation.id === source.citationId)
 }
 
 /** Phones get one lane at a time; there is no room for depth side by side. */

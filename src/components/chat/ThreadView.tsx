@@ -42,6 +42,9 @@ type ThreadViewProps = {
   onShowDemo?: () => void
   /** Space above a branch so its anchor sits level with the source passage. */
   leadOffset?: number
+  /** The citation in this thread whose source lane is open beside it. */
+  openCitation?: { messageId: string; citationId: string } | null
+  onOpenCitation?: (threadId: string, messageId: string, citationId: string) => void
 }
 
 /** Each branch off a message is a small, named link beneath its source. */
@@ -84,6 +87,8 @@ export function ThreadView({
   onRetryError,
   onShowDemo,
   leadOffset = 0,
+  openCitation = null,
+  onOpenCitation,
 }: ThreadViewProps) {
   const lastMessage = thread.messages.at(-1)
   const waitingForReply = isLoading && (lastMessage?.role !== 'assistant' || !lastMessage.content.trim())
@@ -172,6 +177,8 @@ export function ThreadView({
                   : message.role === 'user' ? onRegenerateUser : undefined
               }
               onEdit={message.role === 'user' ? onEditUser : undefined}
+              openCitationId={openCitation?.messageId === message.id ? openCitation.citationId : null}
+              onOpenCitation={onOpenCitation ? (messageId, citationId) => onOpenCitation(thread.id, messageId, citationId) : undefined}
             />
             {children.length > 0 ? (
               <div className="flex flex-col items-start" aria-label="Branches from this message">

@@ -9,7 +9,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { ArrowLeft, ArrowUpLeft, Check, GitBranch, Maximize2, Trash2, X } from 'lucide-react'
+import { ArrowLeft, ArrowUpLeft, Check, GitBranch, Globe, Maximize2, Trash2, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { threadTitle } from '@/lib/tree'
 import type { Thread } from '@/types'
 
@@ -25,6 +26,9 @@ type BranchHeaderProps = {
   summarized?: boolean
   /** Lane controls (collapse), placed at the end of the header. */
   controls?: ReactNode
+  /** Whether replies in this branch search the web; omit to hide the switch. */
+  webSearch?: boolean
+  onToggleWebSearch?: () => void
 }
 
 export function BranchHeader({
@@ -37,6 +41,8 @@ export function BranchHeader({
   onReturn,
   summarized,
   controls,
+  webSearch = false,
+  onToggleWebSearch,
 }: BranchHeaderProps) {
   const [confirm, setConfirm] = useState(false)
   const count = thread.messages.length
@@ -60,6 +66,19 @@ export function BranchHeader({
         {thread.messages.some((message) => message.role === 'assistant' && message.content.trim()) ? (
           <button type="button" className="branch-secondary shrink-0 text-branch-bright" onClick={onMerge} disabled={merging} data-testid="drop-summary" title="Review a takeaway for the parent conversation">
             <ArrowUpLeft size={15} /> Bring back
+          </button>
+        ) : null}
+        {onToggleWebSearch ? (
+          <button
+            type="button"
+            className={cn('branch-icon-button', webSearch && 'bg-branch/10 text-branch-bright')}
+            onClick={onToggleWebSearch}
+            aria-pressed={webSearch}
+            data-testid="web-search-toggle"
+            aria-label="Search the web"
+            title={webSearch ? 'Replies here search the web and cite sources' : 'Search the web for replies in this branch'}
+          >
+            <Globe size={15} />
           </button>
         ) : null}
         {onFocus ? (

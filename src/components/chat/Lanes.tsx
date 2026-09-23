@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -23,6 +24,24 @@ export type LaneFrame = {
   controls: ReactNode
 }
 
+/**
+ * A lane after the deepest thread that is not a thread (a source being read).
+ * Its content must carry `data-lane-id={id}`, a scroll area and a
+ * `[data-lane-anchor]` head, like a thread lane, so it gets a connector and
+ * a lead offset the same way.
+ */
+export type TrailingLane = {
+  id: string
+  title: string
+  label: string
+  testId: string
+  /** The lane it opens from. */
+  ownerId: string
+  /** Where in the owner lane its connector starts. */
+  selector: string
+  render: (frame: LaneFrame) => ReactNode
+}
+
 type LanesProps = {
   /** Root first; each thread is the open branch of the one before it. */
   path: Thread[]
@@ -31,7 +50,13 @@ type LanesProps = {
   single: boolean
   /** Name for the root thread (the chat's title). */
   rootTitle: string
+  trailing?: TrailingLane | null
 }
+
+type LaneEntry = { id: string; title: string; thread?: Thread; trailing?: TrailingLane }
+
+/** A connector: from somewhere in one lane to the head of another. */
+type LaneLink = { from: string; to: string; selectors: string[] }
 
 type Connector = { id: string; d: string; offscreen: boolean; start: { x: number; y: number } }
 
@@ -87,7 +112,7 @@ function useFullLaneCount(scroller: RefObject<HTMLDivElement | null>, branchWidt
  * a line in the gutter ties the two together. Lanes fold into strips and the
  * gutters resize the lane to their right.
  */
-export function Lanes({ path, renderLane, single, rootTitle }: LanesProps) {
+export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const [defaultWidth, setDefaultWidth] = useState(loadDefaultWidth)
@@ -96,27 +121,44 @@ export function Lanes({ path, renderLane, single, rootTitle }: LanesProps) {
   const [folds, setFolds] = useState<Record<string, boolean>>({})
   const fullCount = useFullLaneCount(scroller, defaultWidth)
 
-  const autoFolded = single ? 0 : Math.max(0, path.length - fullCount)
+  const entries: LaneEntry[] = [
+    ...path.map((thread) => ({ id: thread.id, title: thread.parentId ? threadTitle(thread) : rootTitle, thread })),
+    ...(trailing ? [{ id: trailing.id, title: trailing.title, trailing }] : []),
+  ]
+  const autoFolded = single ? 0 : Math.max(0, entries.length - fullCount)
   // The deepest lane is where the reader is; it never folds.
-  const collapsed = (thread: Thread, index: number) =>
-    !single && index < path.length - 1 && (folds[thread.id] ?? index < autoFolded)
-  const visible = single ? path.slice(-1) : path
+  const collapsed = (id: string, index: number) =>
+    !single && index < entries.length - 1 && (folds[id] ?? index < autoFolded)
+  const visible = single ? entries.slice(-1) : entries
   const fullIds = visible
-    .filter((thread) => !collapsed(thread, path.indexOf(thread)))
-    .map((thread) => thread.id)
+    .filter((entry) => !collapsed(entry.id, entries.indexOf(entry)))
+    .map((entry) => entry.id)
 
-  const { connectors, offsets } = useLaneGeometry(track, single ? [] : path, fullIds)
-  const deepest = path.at(-1)?.id
+  const links = useMemo<LaneLink[]>(() => {
+    if (single) return []
+    const out = path.slice(1).map((child, index) => ({
+      from: path[index]!.id,
+      to: child.id,
+      selectors: [
+        `[data-mark-ids~="${CSS.escape(child.id)}"]`,
+        `[data-message-id="${CSS.escape(child.anchor?.messageId ?? '')}"]`,
+      ],
+    }))
+    if (trailing) out.push({ from: trailing.ownerId, to: trailing.id, selectors: [trailing.selector] })
+    return out
+  }, [path, single, trailing])
+  const { connectors, offsets } = useLaneGeometry(track, links, fullIds)
+  const deepest = entries.at(-1)?.id
 
-  // Bring a newly opened branch into view; closing one needs no scroll.
-  const lastDepth = useRef(path.length)
+  // Bring a newly opened lane into view; closing one needs no scroll.
+  const lastDepth = useRef(entries.length)
   useLayoutEffect(() => {
-    const grew = path.length > lastDepth.current
-    lastDepth.current = path.length
+    const grew = entries.length > lastDepth.current
+    lastDepth.current = entries.length
     const el = scroller.current
     if (!el || single || !grew) return
     el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' })
-  }, [deepest, path.length, single])
+  }, [deepest, entries.length, single])
 
   const setFold = (threadId: string, value: boolean) => {
     setFolds((current) => ({ ...current, [threadId]: value }))
@@ -144,17 +186,17 @@ export function Lanes({ path, renderLane, single, rootTitle }: LanesProps) {
   return (
     <div ref={scroller} className="lanes h-full overflow-x-auto overflow-y-hidden" data-testid="lanes">
       <div ref={track} className="relative flex h-full min-w-full">
-        {visible.map((thread) => {
-          const index = path.indexOf(thread)
-          const title = thread.parentId ? threadTitle(thread) : rootTitle
-          if (collapsed(thread, index)) {
+        {visible.map((entry) => {
+          const index = entries.indexOf(entry)
+          const { thread, title } = entry
+          if (collapsed(entry.id, index)) {
             return (
               <button
-                key={thread.id}
+                key={entry.id}
                 type="button"
                 className="lane-strip group flex h-full shrink-0 flex-col items-center gap-3 border-r border-border py-4 text-muted-foreground hover:bg-branch/5 hover:text-foreground"
                 style={{ width: STRIP_WIDTH }}
-                onClick={() => setFold(thread.id, false)}
+                onClick={() => setFold(entry.id, false)}
                 aria-label={`Expand pane: ${title}`}
                 title={`Expand ${title}`}
                 aria-expanded={false}
@@ -165,15 +207,15 @@ export function Lanes({ path, renderLane, single, rootTitle }: LanesProps) {
               </button>
             )
           }
-          const first = thread.id === firstFullId
-          const width = widths[thread.id] ?? defaultWidth
+          const first = entry.id === firstFullId
+          const width = widths[entry.id] ?? defaultWidth
           const frame: LaneFrame = {
-            leadOffset: offsets[thread.id] ?? 0,
-            controls: canFold && index < path.length - 1 ? (
+            leadOffset: offsets[entry.id] ?? 0,
+            controls: canFold && index < entries.length - 1 ? (
               <button
                 type="button"
                 className="branch-icon-button"
-                onClick={() => setFold(thread.id, true)}
+                onClick={() => setFold(entry.id, true)}
                 aria-label={`Collapse pane: ${title}`}
                 title="Collapse pane"
                 data-testid="collapse-lane"
@@ -183,28 +225,28 @@ export function Lanes({ path, renderLane, single, rootTitle }: LanesProps) {
             ) : null,
           }
           return (
-            <Fragment key={thread.id}>
+            <Fragment key={entry.id}>
               {!first && !single ? (
                 <ResizeGutter
                   label={title}
                   width={width}
-                  onResize={(next, remember) => resize(thread.id, next, remember)}
-                  onReset={() => resize(thread.id, BRANCH_DEFAULT, true)}
+                  onResize={(next, remember) => resize(entry.id, next, remember)}
+                  onReset={() => resize(entry.id, BRANCH_DEFAULT, true)}
                 />
               ) : null}
               <section
-                aria-label={thread.parentId ? `Branch: ${title}` : 'Main conversation'}
-                data-testid={thread.parentId ? 'branch-lane' : 'main-lane'}
-                data-lane-section={thread.id}
+                aria-label={entry.trailing?.label ?? (thread?.parentId ? `Branch: ${title}` : 'Main conversation')}
+                data-testid={entry.trailing?.testId ?? (thread?.parentId ? 'branch-lane' : 'main-lane')}
+                data-lane-section={entry.id}
                 className={cn(
                   'lane relative h-full min-w-0',
                   single ? 'w-full' : first ? 'flex-1' : 'shrink-0',
-                  thread.parentId && !single && 'lane-branch border-l border-branch/25',
-                  thread.id === deepest && !single && thread.parentId && 'lane-enter',
+                  (entry.trailing || thread?.parentId) && !single && 'lane-branch border-l border-branch/25',
+                  entry.id === deepest && !single && (entry.trailing || thread?.parentId) && 'lane-enter',
                 )}
                 style={single ? undefined : first ? { minWidth: MAIN_MIN } : { width }}
               >
-                {renderLane(thread, frame)}
+                {entry.trailing ? entry.trailing.render(frame) : renderLane(thread!, frame)}
               </section>
             </Fragment>
           )
@@ -296,38 +338,38 @@ function ResizeGutter({ label, width, onResize, onReset }: {
  * - offsets: how far down each branch starts so its head sits level with the
  *   passage, for as long as the branch still fits in its lane.
  */
-function useLaneGeometry(track: RefObject<HTMLDivElement | null>, path: Thread[], fullIds: string[]) {
+function useLaneGeometry(track: RefObject<HTMLDivElement | null>, links: LaneLink[], fullIds: string[]) {
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [offsets, setOffsets] = useState<Record<string, number>>({})
   const offsetsRef = useRef(offsets)
   useEffect(() => {
     offsetsRef.current = offsets
   }, [offsets])
-  const key = `${path.map((thread) => thread.id).join('>')}|${fullIds.join(',')}`
+  const key = `${links.map((link) => `${link.from}>${link.to}:${link.selectors.join(',')}`).join('|')}|${fullIds.join(',')}`
 
   useEffect(() => {
     const root = track.current
     const full = new Set(fullIds)
-    if (!root || path.length < 2) return
+    if (!root || links.length === 0) return
     let frame = 0
     const measure = () => {
       frame = 0
       const origin = root.getBoundingClientRect()
       const lines: Connector[] = []
       const lead: Record<string, number> = {}
-      for (let i = 1; i < path.length; i += 1) {
-        const parent = path[i - 1]!
-        const child = path[i]!
-        if (!full.has(parent.id) || !full.has(child.id)) continue
-        const parentLane = root.querySelector<HTMLElement>(`[data-lane-id="${CSS.escape(parent.id)}"]`)
-        const childLane = root.querySelector<HTMLElement>(`[data-lane-id="${CSS.escape(child.id)}"]`)
+      for (const link of links) {
+        if (!full.has(link.from) || !full.has(link.to)) continue
+        const parentLane = root.querySelector<HTMLElement>(`[data-lane-id="${CSS.escape(link.from)}"]`)
+        const childLane = root.querySelector<HTMLElement>(`[data-lane-id="${CSS.escape(link.to)}"]`)
         const viewport = parentLane?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
         const childViewport = childLane?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
         const childHead = childLane?.querySelector<HTMLElement>('[data-lane-anchor]')
         if (!parentLane || !childLane || !viewport || !childViewport || !childHead) continue
-        const passage =
-          parentLane.querySelector<HTMLElement>(`[data-mark-ids~="${CSS.escape(child.id)}"]`)
-          ?? parentLane.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(child.anchor?.messageId ?? '')}"]`)
+        // The first selector that matches: a passage, else its message.
+        const passage = link.selectors.reduce<HTMLElement | null>(
+          (found, selector) => found ?? parentLane.querySelector<HTMLElement>(selector),
+          null,
+        )
         if (!passage) continue
 
         const bounds = viewport.getBoundingClientRect()
@@ -352,9 +394,9 @@ function useLaneGeometry(track: RefObject<HTMLDivElement | null>, path: Thread[]
         const desired = Math.max(0, y - view.top - head.height / 2 - headNatural)
         const room = Math.max(0, childViewport.clientHeight - content)
         const target = childViewport.scrollTop > 1 ? 0 : Math.round(Math.min(desired, room))
-        const previous = offsetsRef.current[child.id] ?? 0
+        const previous = offsetsRef.current[link.to] ?? 0
         const settled = Math.abs(target - previous) <= 1 ? previous : target
-        lead[child.id] = settled
+        lead[link.to] = settled
 
         const sx = lane.right - origin.left
         const ex = head.left - origin.left
@@ -362,7 +404,7 @@ function useLaneGeometry(track: RefObject<HTMLDivElement | null>, path: Thread[]
         const sy = y - origin.top
         const bend = Math.max(14, (ex - sx) * 0.9)
         lines.push({
-          id: child.id,
+          id: link.to,
           offscreen: y !== rawY,
           start: { x: sx, y: sy },
           d: `M ${sx} ${sy} C ${sx + bend} ${sy}, ${ex - bend} ${ey}, ${ex} ${ey}`,
@@ -404,5 +446,5 @@ function useLaneGeometry(track: RefObject<HTMLDivElement | null>, path: Thread[]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, track])
 
-  return path.length < 2 ? { connectors: [], offsets: {} } : { connectors, offsets }
+  return links.length === 0 ? { connectors: [], offsets: {} } : { connectors, offsets }
 }

@@ -58,6 +58,17 @@ test('empty state round-trips without being re-seeded', () => {
   assert.equal(localStorage.getItem(STORAGE_KEY)?.includes('What is TreeChat?'), false)
 })
 
+test('a branch that searches the web keeps that across reloads', () => {
+  mockLocalStorage()
+  const seed = createSeedState()
+  const branchId = Object.values(seed.threads).find((thread) => thread.parentId)!.id
+  seed.threads[branchId] = { ...seed.threads[branchId]!, webSearch: true }
+  saveTreeState(seed)
+  const loaded = loadTreeState()
+  assert.equal(loaded.threads[branchId]?.webSearch, true)
+  assert.equal('webSearch' in loaded.threads[loaded.rootId]!, false)
+})
+
 test('existing v2 seed state is kept', () => {
   mockLocalStorage()
   const seed = createSeedState()

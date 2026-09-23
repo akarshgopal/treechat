@@ -20,7 +20,8 @@ type TreeContextValue = {
   activeSession: ChatSession
   activeThread: Thread
   rootThread: Thread
-  createThread: (parentId: string, anchor: Anchor) => string
+  createThread: (parentId: string, anchor: Anchor, options?: { webSearch?: boolean }) => string
+  setWebSearch: (threadId: string, on: boolean) => void
   expand: (parentId: string, childId: string | null) => void
   focus: (threadId: string) => void
   discard: (threadId: string) => void
@@ -55,7 +56,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
   const rootThread = state.threads[state.rootId]
   const activeThread = state.threads[state.activeThreadId] ?? rootThread
 
-  const createThread = useCallback((parentId: string, anchor: Anchor) => {
+  const createThread = useCallback((parentId: string, anchor: Anchor, options?: { webSearch?: boolean }) => {
     const thread: Thread = {
       id: createId('thread'),
       parentId,
@@ -63,6 +64,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       messages: [],
       createdAt: Date.now(),
       rev: 0,
+      ...(options?.webSearch ? { webSearch: true } : {}),
     }
     dispatch({ type: 'tree', action: { type: 'create-thread', thread } })
     return thread.id
@@ -80,6 +82,8 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       expand: (parentId, childId) =>
         dispatch({ type: 'tree', action: { type: 'expand', parentId, childId } }),
       focus: (threadId) => dispatch({ type: 'tree', action: { type: 'focus', threadId } }),
+      setWebSearch: (threadId, on) =>
+        dispatch({ type: 'tree', action: { type: 'set-web-search', threadId, on } }),
       discard: (threadId) => dispatch({ type: 'tree', action: { type: 'discard', threadId } }),
       replaceMessages: (threadId, messages) =>
         dispatch({

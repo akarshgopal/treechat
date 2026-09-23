@@ -19,6 +19,7 @@ export type Action =
   | { type: 'create-thread'; thread: Thread }
   | { type: 'expand'; parentId: string; childId: string | null }
   | { type: 'focus'; threadId: string }
+  | { type: 'set-web-search'; threadId: string; on: boolean }
   | { type: 'discard'; threadId: string }
   | { type: 'reset' }
   | { type: 'restoreDemo' }
@@ -139,6 +140,13 @@ export function reducer(state: TreeState, action: Action): TreeState {
           ...expansionToReveal(state, action.threadId),
         },
       }
+    }
+    case 'set-web-search': {
+      const thread = state.threads[action.threadId]
+      if (!thread || Boolean(thread.webSearch) === action.on) return state
+      // Absent rather than false, so threads without it stay as they were.
+      const { webSearch: _off, ...rest } = thread
+      return withThread(state, action.on ? { ...rest, webSearch: true } : rest)
     }
     case 'discard': {
       const thread = state.threads[action.threadId]

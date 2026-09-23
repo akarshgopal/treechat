@@ -614,3 +614,53 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .tc-md .hljs-strong {
   font-weight: 600;
 }
+
+/* Citations: a `[n]` marker becomes a small numbered chip. The brackets stay
+   in the text (branch anchors count them) but are not shown. */
+.cite-ref { position: relative; font-size: 0.72em; line-height: 0; vertical-align: super; }
+.cite-bracket { font-size: 0; }
+.cite-chip {
+  display: inline-flex;
+  min-width: 1.4em;
+  align-items: center;
+  justify-content: center;
+  margin: 0 1px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--branch) 12%, transparent);
+  color: var(--branch-bright);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.cite-chip:hover, .cite-chip[data-open="true"] { background: color-mix(in oklch, var(--branch) 26%, transparent); }
+.cite-tip {
+  position: absolute;
+  bottom: calc(100% + 1em);
+  left: 50%;
+  z-index: 30;
+  display: none;
+  width: max-content;
+  max-width: 260px;
+  transform: translateX(-50%);
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+.cite-ref:hover .cite-tip, .cite-chip:focus-visible + .cite-tip { display: block; }
+@media (hover: none) { .cite-chip { padding: 3px 7px; } }
+
+/* The cited passage inside a source lane. */
+::highlight(source-snippet) {
+  background-color: color-mix(in oklch, var(--branch) 32%, transparent);
+  color: inherit;
+}
