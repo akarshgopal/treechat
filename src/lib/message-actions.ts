@@ -28,6 +28,12 @@ export function retryFromAssistant(
   return null
 }
 
+/** Regenerate from a user turn without rewriting its text or source anchors. */
+export function retryFromUser(messages: ChatMessage[], messageId: string): ChatMessage[] | null {
+  if (messages.find((message) => message.id === messageId)?.role !== 'user') return null
+  return truncateAfterMessage(messages, messageId)
+}
+
 /**
  * Edit a user message and drop everything after it on this thread.
  * `null` if the id is missing or not a user turn.

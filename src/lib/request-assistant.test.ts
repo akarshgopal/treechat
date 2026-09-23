@@ -84,5 +84,5 @@ test('requestAssistantText uses the client mock when Pages has no API', async ()
     'summarize this branch',
     'select any passage',
   )
-  assert.match(text, /Merged up from the branch/)
+  assert.match(text, /The exploration on/)
 })

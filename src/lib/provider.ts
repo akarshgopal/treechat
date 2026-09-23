@@ -126,6 +126,14 @@ export function hasClientApiKey(config: ClientProviderConfig | null): boolean {
   return Boolean(config?.apiKey)
 }
 
+/**
+ * OpenRouter ids are `vendor/model`, optionally with a `:variant` suffix.
+ * Catches half-typed text before it is saved and sent with every request.
+ */
+export function isModelId(value: string): boolean {
+  return /^[\w.-]+\/[\w.:@-]+$/.test(value.trim())
+}
+
 export function shortModelName(model: string): string {
   const trimmed = model.trim()
   const slash = trimmed.lastIndexOf('/')

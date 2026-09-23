@@ -40,7 +40,7 @@ const rootMessages: ChatMessage[] = [
     id: 'msg-root-4',
     role: 'assistant',
     content:
-      'Highlight text in any message, in any thread. A “branch from selection” chip floats over the selection — or press ⌘⇧B / Ctrl+Shift+B. Closed branches keep a quiet underline, and a pill sits on the hairline below the message with the quote and its reply count. Several branches can hang off the same passage; the underline doubles and the pill numbers them.',
+      'Highlight text in any message, in any thread. Choose “Branch” — or press ⌘⇧B / Ctrl+Shift+B — and write a question beside the passage. The branch is created when you send. You can also use the branch icon below any message. Closed branches keep a quiet underline so you can find your way back.',
     createdAt: at(3),
   },
   {
@@ -53,7 +53,7 @@ const rootMessages: ChatMessage[] = [
     id: 'msg-root-6',
     role: 'assistant',
     content:
-      'Whichever thread it sits in. Every thread has its own composer — the one at the bottom belongs to the thread holding the frame, and an expanded branch carries its own inside its card. “Open as chat” gives a branch the full frame, with the tree rail beside it and the path in the header. Esc walks back up one level.',
+      '“Expand” gives an exploration the full frame, with its source passage pinned above it. “Back to passage” returns you to that source and highlights it. When you find something useful, choose “Bring back”, edit the takeaway, and add it to the parent conversation. The exploration stays available through a link on the takeaway.',
     createdAt: at(5),
   },
 ]
@@ -85,7 +85,7 @@ const nestedMessages: ChatMessage[] = [
     id: 'msg-nested-2',
     role: 'assistant',
     content:
-      'As deep as you like — this thread is itself a branch of a branch. Each level carries the chain above it as context, so the model still knows what the original question was. Past two levels the inline cards stop nesting and offer “open as chat” instead, so the reading column never turns into a staircase.',
+      'As deep as you like — this thread is itself a branch of a branch. Each level carries upstream context. Past two levels the inline cards offer “Expand branch” for a comfortable reading width. On mobile, new branches open in their own full-width view. “Back to passage” takes you one level up to the exact source.',
     createdAt: at(9),
   },
 ]

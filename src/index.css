@@ -116,11 +116,72 @@ body {
 /* Eyebrow labels — mono, uppercase, wide-tracked. Used everywhere in the design. */
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   line-height: 1.2;
+}
+
+.branch-primary,
+.branch-secondary,
+.branch-starter,
+.branch-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 36px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.branch-primary {
+  padding: 8px 13px;
+  background: var(--branch-bright);
+  color: var(--background);
+}
+
+.branch-primary:hover { background: var(--foreground); }
+.branch-primary:disabled, .branch-secondary:disabled { opacity: 0.4; cursor: default; }
+.branch-secondary { padding: 6px 9px; }
+.branch-secondary:hover, .branch-icon-button:hover { background: var(--secondary); }
+.branch-icon-button { width: 36px; flex-shrink: 0; color: var(--muted-foreground); }
+.branch-starter { padding: 5px 10px; border: 1px solid var(--border); color: var(--muted-foreground); }
+.branch-starter:hover { color: var(--branch-bright); border-color: var(--branch); background: color-mix(in oklch, var(--branch) 8%, transparent); }
+
+button:focus-visible, summary:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid var(--branch-bright);
+  outline-offset: 3px;
+}
+
+.source-return {
+  border-radius: 4px;
+  animation: tcSourceReturn 2.4s ease-out;
+}
+
+@keyframes tcSourceReturn {
+  0%, 45% { background: color-mix(in oklch, var(--branch) 28%, transparent); box-shadow: 0 0 0 4px color-mix(in oklch, var(--branch) 16%, transparent); }
+  100% { background: transparent; box-shadow: none; }
+}
+
+@media (pointer: coarse) {
+  .branch-primary, .branch-secondary, .branch-starter, .branch-icon-button { min-height: 44px; }
+  .branch-icon-button { min-width: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .source-return { outline: 2px solid var(--branch); outline-offset: 3px; }
+}
+
+/* Radix wraps viewport content in `display: table`, which grows to fit wide
+   content (code, long words) and pushes the whole column past narrow screens. */
+[data-radix-scroll-area-viewport] > div {
+  display: block !important;
+  min-width: 0 !important;
 }
 
 /* A quoted span inside a message that has a branch hanging off it. */

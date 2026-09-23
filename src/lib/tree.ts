@@ -9,6 +9,16 @@ const CONTEXT_BUDGET = 4200
 export const CONTEXT_MAIN = 'MAIN'
 export const CONTEXT_QUOTE = 'SELECTED QUOTE'
 
+/** A question gives an exploration a recognizable name, even on the same quote. */
+export function threadTitle(thread: Thread): string {
+  if (!thread.parentId) return 'Main conversation'
+  return clipText(
+    thread.messages.find((message) => message.role === 'user' && message.content.trim())?.content
+      ?? thread.anchor?.quote ?? 'New exploration',
+    64,
+  )
+}
+
 export function contextBranchLabel(depth: number) {
   return `BRANCH depth ${depth}`
 }

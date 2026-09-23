@@ -1,13 +1,16 @@
 import {
   forwardRef,
   useCallback,
+  useImperativeHandle,
+  useRef,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { Square } from 'lucide-react'
+import { ArrowUp, Square } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
-import { cn, sendShortcutLabel } from '@/lib/utils'
+import { useAutosize } from '@/lib/use-autosize'
+import { cn } from '@/lib/utils'
 
 type ComposerProps = {
   value: string
@@ -23,6 +26,9 @@ type ComposerProps = {
   disabled?: boolean
   onFocus?: () => void
   className?: string
+  destination?: string
+  showDestination?: boolean
+  testId?: string
 }
 
 export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
@@ -39,9 +45,15 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
       disabled,
       onFocus,
       className,
+      destination,
+      showDestination = false,
+      testId,
     },
     ref,
   ) {
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
+    useAutosize(textareaRef, value, 180)
+    useImperativeHandle(ref, () => textareaRef.current as HTMLTextAreaElement, [textareaRef])
     const submit = useCallback(() => {
       if (!value.trim() || isLoading || disabled) return
       onSend()
@@ -54,7 +66,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
         onStop?.()
         return
       }
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
         event.preventDefault()
         submit()
       }
@@ -67,6 +79,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
 
     return (
       <form onSubmit={onSubmit} className={cn(className)}>
+        {destination && showDestination ? <p className="mb-2 flex min-w-0 items-center gap-2 text-xs text-muted-foreground" data-testid="reply-destination"><span className={`size-1.5 shrink-0 rounded-full ${accent ? 'bg-branch' : 'bg-muted-foreground'}`} /><span className="truncate" title={destination}>Posting to {destination}</span></p> : null}
         <div className="flex items-end gap-[11px]">
           <div
             className={cn(
@@ -75,42 +88,40 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
             )}
           >
             <Textarea
-              ref={ref}
+              ref={textareaRef}
+              data-testid={testId}
               value={value}
               onChange={(event) => onChange(event.target.value)}
               onKeyDown={onKeyDown}
               onFocus={onFocus}
               placeholder={placeholder}
+              aria-label={destination ? `Message to ${destination}` : placeholder}
               disabled={disabled}
               rows={1}
-              className="min-h-[42px] resize-none border-0 bg-transparent px-3 py-2.5 text-[13.5px] leading-[1.5] shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
+              className="min-h-[48px] resize-none border-0 bg-transparent px-3 py-3 text-[15px] leading-[1.5] shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
             />
             {isLoading ? (
               <button
                 type="button"
                 onClick={onStop}
                 data-testid="composer-stop"
-                className="m-2 flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                aria-label="Stop response"
+                title="Stop · Esc"
+                className="branch-icon-button m-1.5"
               >
                 <Square className="size-2.5 fill-current" />
-                Stop
               </button>
             ) : value.trim() ? (
               <button
                 type="submit"
                 disabled={disabled}
-                className="m-2 flex shrink-0 items-center gap-1.5 rounded-md border border-branch/30 bg-branch/15 px-2.5 py-1.5 text-[10.5px] font-medium text-branch-bright transition-colors hover:bg-branch/25 disabled:opacity-50"
+                aria-label="Send message"
+                title="Send · Enter"
+                className="branch-icon-button m-1.5 text-branch-bright disabled:opacity-50"
               >
-                Send ⏎
+                <ArrowUp size={18} />
               </button>
-            ) : (
-              <span
-                data-testid="send-shortcut-hint"
-                className="m-2 shrink-0 select-none px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground"
-              >
-                {sendShortcutLabel()}
-              </span>
-            )}
+            ) : null}
           </div>
           {trailing}
         </div>

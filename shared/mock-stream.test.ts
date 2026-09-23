@@ -30,7 +30,7 @@ test('mockChatStream emits TanStack text events without a server', async () => {
     .filter((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT)
     .map((chunk) => ('delta' in chunk ? chunk.delta : ''))
     .join('')
-  assert.match(text, /lands in whichever thread/)
+  assert.match(text, /demo reply/)
   assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
 })
 

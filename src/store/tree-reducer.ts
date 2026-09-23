@@ -6,6 +6,7 @@ import type { ChatMessage, Thread, TreeState } from '@/types'
 export type Action =
   | { type: 'replace-messages'; threadId: string; messages: ChatMessage[] }
   | { type: 'append-message'; threadId: string; message: ChatMessage }
+  | { type: 'undo-takeaway'; threadId: string; messageId: string }
   | {
       type: 'rewrite-thread'
       threadId: string
@@ -54,6 +55,15 @@ export function removeThreads(
 
 export function reducer(state: TreeState, action: Action): TreeState {
   switch (action.type) {
+    case 'undo-takeaway': {
+      const thread = state.threads[action.threadId]
+      if (!thread?.messages.some((message) => message.id === action.messageId && message.kind === 'drop-summary')) return state
+      return withThread(state, {
+        ...thread,
+        messages: thread.messages.filter((message) => message.id !== action.messageId),
+        rev: thread.rev + 1,
+      })
+    }
     case 'replace-messages': {
       const thread = state.threads[action.threadId]
       if (!thread) return state

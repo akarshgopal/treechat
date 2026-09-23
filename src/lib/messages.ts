@@ -16,7 +16,7 @@ export function toUIMessages(messages: ChatMessage[]): UIMessage[] {
     createdAt: new Date(message.createdAt),
     metadata:
       message.kind === 'drop-summary'
-        ? { kind: 'drop-summary', quote: message.quote }
+        ? { kind: 'drop-summary', quote: message.quote, sourceThreadId: message.sourceThreadId }
         : undefined,
   }))
 }
@@ -37,6 +37,10 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
           typeof message.metadata?.quote === 'string'
             ? message.metadata.quote
             : undefined,
+        sourceThreadId:
+          typeof message.metadata?.sourceThreadId === 'string'
+            ? message.metadata.sourceThreadId
+            : undefined,
       } satisfies ChatMessage,
     ]
   })
@@ -54,4 +58,3 @@ export function sameTranscript(a: ChatMessage[], b: ChatMessage[]) {
     )
   })
 }
-

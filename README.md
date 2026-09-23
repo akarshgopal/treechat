@@ -22,12 +22,16 @@ pnpm preview    # serve the build (Vite plugin still handles /api/chat for mock 
 
 1. Open **Settings** (gear in the header).
 2. Paste an [OpenRouter](https://openrouter.ai/) API key and optionally a model (default `openai/gpt-4.1-mini`).
-3. **Save**. The header switches from `Mock stream` to `Live · openrouter`.
-4. **Clear** removes the key from this browser.
+3. **Save**. The header switches from `Demo replies · Add key` to `Live · openrouter`.
+4. **Remove key** forgets the key in this browser; the model and generation params stay saved.
 
 Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**: anyone with access to this browser profile can read it, and every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`). TreeChat's GitHub Pages host never sees it.
 
 When a key is set, chat streams from `https://openrouter.ai/api/v1/chat/completions` in the browser (`stream: true`, plus `HTTP-Referer` and `X-Title`). It does **not** call `/api/chat`.
+
+While waiting for the first visible token, the thread shows elapsed waiting time. Provider errors, including errors delivered inside an HTTP 200 stream, are displayed with a retry action.
+
+Requests in one chat share an OpenRouter `session_id` to support sticky provider routing. Prompt caching remains provider/model dependent and requires a matching prefix; this does not guarantee cache hits or a specific response time. See [OpenRouter prompt caching](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
 
 ## Mock mode (no key)
 
@@ -65,13 +69,26 @@ No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 
 ## How branching works
 
-1. Select text in a spine message. A **Branch** chip appears (or press **⌘⇧B** / **Ctrl+Shift+B**).
-2. Closed branches keep a quiet underline and a gutter pip with the reply count. Hover for a preview; click to open.
-3. An open branch is an indented inline thread under the source. Only one inline thread is open at a time.
-4. The bottom composer always posts to the spine. While a branch is open, a banner reads **Posting to main · switch to branch**. The branch has its own composer.
-5. Branch header: **Drop summary into main**, **Discard** (confirm), **Open as conversation**.
-6. Conversation view is a full-frame tangent: Back to spine, quote as context, Drop/Discard. Its composer posts only to that tangent. **Esc** stops an in-flight reply first, then blurs a dirty composer, then returns to the spine.
-7. Chats persist in `localStorage` (`treechat:v3`) as a session library: each named chat has its own tree. An older `treechat:v2` single tree (or `treechat:v1` spine) is migrated into one session on first load. The sidebar lists chats; **New chat** opens a blank spine in a **new** session and leaves the others alone. Restore the seeded “What is TreeChat?” demo from Settings — it replaces the **active** chat only (it does not clear the key or other sessions). The OpenRouter key is stored separately (`treechat:provider:v1`).
+1. Select a passage and choose **Branch**, or press **⌘⇧B / Ctrl+Shift+B**. The branch icon below each message also works with touch and keyboard.
+2. A question box opens beside the source with the quote included. Write a question and press **Enter** or the send arrow to create the branch and request its first response. Cancel or Esc leaves no empty branch behind.
+3. On desktop, the exploration opens inline. **Expand** gives it a focused view with the source pinned above. New mobile branches open in the focused view automatically. The parent composer labels its destination when an inline branch composer is also visible.
+4. **Back to passage** returns to the parent and highlights the source. Reading positions and composer drafts are retained while navigating threads and switching chats in the current app visit. Drafts are not saved across page reloads.
+5. **Bring back** prepares an editable takeaway preview. **Add takeaway** appends it to the parent conversation, scrolls to and highlights it, and preserves the branch. **View exploration** on the takeaway reopens the source branch; **Undo** in the confirmation banner removes only the new takeaway. If generation fails, retry or write the takeaway yourself. Closing the preview does not change the conversation.
+6. Closed branches retain their passage underline and a link named after their first question. The tree rail names branches from their first question. Multiple explorations on one span also have direct title buttons below the source. The trash button in a branch header asks for confirmation before removing a subtree. A ✓ in the tree marks branches whose takeaway was brought back.
+7. **Esc** closes a question box or dialog first. In a conversation it stops an in-flight reply, dismisses a selection, blurs a dirty branch composer, or returns to the source, in that order.
+8. **Edit** and **Retry** rewrite a conversation from that point. If that would remove more than the reply being regenerated — later turns or branches anchored below — TreeChat asks first.
+9. Chats persist in `localStorage` (`treechat:v3`) as a session library. Older `treechat:v2` trees and `treechat:v1` spines are migrated on load. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the header also lists the current chat's branches. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
+
+## Browser verification
+
+```bash
+pnpm exec playwright install chromium   # once, unless using an existing Chromium
+pnpm test:e2e
+```
+
+Playwright builds the production app and serves it on `127.0.0.1:5180`. A second Vite server on `127.0.0.1:5190` verifies branch requests under development StrictMode. Tests cover desktop and mobile Chromium, settings-key branch and nested-branch context, user-message regeneration, delayed responses and stream errors, branch cancellation and creation, reply destinations, takeaway review and undo, failed generation, source-link persistence, and drafts across chats. Provider requests are intercepted; no real API keys or model calls are used.
+
+Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. Screenshots are written to `test-results/`; failed runs also retain Playwright traces. `node verify-treechat.mjs` runs the same suite.
 
 ## Stop, retry, and edit
 
@@ -79,6 +96,7 @@ These act on the **active session’s active thread** (spine or branch), not acr
 
 - **Stop** — the composer’s Stop button (while streaming) and **Esc** abort the in-flight mock or OpenRouter stream. Partial text stays; loading UI clears. Abort is not shown as an error.
 - **Retry** — hover an assistant message and regenerate from the preceding user turn on that thread. The assistant and everything after it are trimmed, then the turn is resent.
+- **Regenerate response** — available on user messages, including unanswered ones. Resends that turn and replaces later replies while preserving branches anchored to the unchanged user message.
 - **Edit** — hover a user message, edit in place, confirm. Later messages on that thread are truncated and the turn is resent.
 - **Branches** — child threads pinned to the edited message, or to any truncated message, are **discarded** (anchors would be stale). Nested descendants go with them. Other threads and sessions are untouched.
 

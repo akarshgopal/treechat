@@ -9,35 +9,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { QuoteCard } from '@/components/chat/QuoteCard'
+import { ArrowLeft, ArrowUpLeft, Check, GitBranch, Maximize2, Trash2, X } from 'lucide-react'
+import { threadTitle } from '@/lib/tree'
 import type { Thread } from '@/types'
 
 type BranchHeaderProps = {
   thread: Thread
-  /** e.g. "branch · 2 replies" — defaults to a reply count. */
-  eyebrow?: string
   merging?: boolean
   onMerge: () => void
   onDiscard: () => void
   /** Omitted when this thread already holds the frame. */
   onFocus?: () => void
   onHide?: () => void
+  onReturn?: () => void
+  summarized?: boolean
 }
-
-const quiet =
-  'rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50'
-
-const accent =
-  'rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-branch-bright transition-colors hover:bg-branch/15 disabled:opacity-50'
 
 export function BranchHeader({
   thread,
-  eyebrow,
   merging,
   onMerge,
   onDiscard,
   onFocus,
   onHide,
+  onReturn,
+  summarized,
 }: BranchHeaderProps) {
   const [confirm, setConfirm] = useState(false)
   const count = thread.messages.length
@@ -45,52 +41,33 @@ export function BranchHeader({
 
   return (
     <>
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <span className="eyebrow text-branch">
-            {eyebrow ?? `branch · ${count} ${count === 1 ? 'reply' : 'replies'}`}
+      <div className="flex min-w-0 items-center gap-1.5">
+        {onReturn ? (
+          <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 text-left text-sm text-muted-foreground hover:text-foreground" onClick={onReturn} data-testid="back-to-spine" aria-label="Back to passage" title={`Back to passage: ${quote}`}>
+            <ArrowLeft size={16} className="shrink-0" />
+            <span className="truncate">{quote}</span>
+          </button>
+        ) : (
+          <span className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground" title={threadTitle(thread)}>
+            <GitBranch size={15} className="shrink-0 text-branch" aria-hidden />
+            <span className="truncate">{threadTitle(thread)}</span>
           </span>
-          {onHide ? (
-            <button
-              type="button"
-              className={quiet}
-              onClick={onHide}
-              data-testid="hide-branch"
-              aria-label="Hide this branch"
-            >
-              hide ⌄
-            </button>
-          ) : null}
-        </div>
-        <QuoteCard quote={quote} />
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-          <button
-            type="button"
-            className={accent}
-            onClick={onMerge}
-            disabled={merging}
-            data-testid="drop-summary"
-          >
-            {merging ? 'Merging…' : 'Merge up ↑'}
+        )}
+        {summarized ? <Check size={14} className="shrink-0 text-branch" aria-label="Takeaway shared" /> : null}
+        {thread.messages.some((message) => message.role === 'assistant' && message.content.trim()) ? (
+          <button type="button" className="branch-secondary shrink-0 text-branch-bright" onClick={onMerge} disabled={merging} data-testid="drop-summary" title="Review a takeaway for the parent conversation">
+            <ArrowUpLeft size={15} /> Bring back
           </button>
-          {onFocus ? (
-            <button
-              type="button"
-              className={accent}
-              onClick={onFocus}
-              data-testid="open-as-conversation"
-            >
-              Open as chat ⤢
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={`${quiet} hover:text-destructive`}
-            onClick={() => setConfirm(true)}
-          >
-            Discard
+        ) : null}
+        {onFocus ? (
+          <button type="button" className="branch-icon-button" onClick={onFocus} data-testid="open-as-conversation" aria-label="Expand branch" title="Expand branch">
+            <Maximize2 size={15} />
           </button>
-        </div>
+        ) : null}
+        <button type="button" className="branch-icon-button hover:text-destructive" onClick={() => setConfirm(true)} data-testid="discard-branch" aria-label="Discard branch" title="Discard branch">
+          <Trash2 size={15} />
+        </button>
+        {onHide ? <button type="button" className="branch-icon-button" onClick={onHide} data-testid="hide-branch" aria-label="Hide this branch" title="Hide branch"><X size={15} /></button> : null}
       </div>
 
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
@@ -99,7 +76,7 @@ export function BranchHeader({
             <AlertDialogTitle>Discard this branch?</AlertDialogTitle>
             <AlertDialogDescription>
               The tangent on “{quote}” and its {count}{' '}
-              {count === 1 ? 'reply' : 'replies'} will be removed, along with any
+              {count === 1 ? 'message' : 'messages'} will be removed, along with any
               branches growing out of it. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

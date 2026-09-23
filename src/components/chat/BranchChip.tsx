@@ -26,13 +26,13 @@ export function BranchChip({
     Math.max(left, 132),
     typeof window === 'undefined' ? left : window.innerWidth - 132,
   )
-  const label = existing > 0 ? `Branch again · ${existing + 1}` : 'Branch from selection'
+  const label = 'Branch'
   const shortcut = branchShortcutLabel()
 
   return createPortal(
     <button
       type="button"
-      className={`selection-chip pointer-events-auto fixed z-50 inline-flex items-center gap-1.5 rounded-full border border-border bg-paper py-[5px] pl-2.5 pr-2.5 ${
+      className={`selection-chip pointer-events-auto fixed z-50 inline-flex min-h-10 items-center gap-2 rounded-full border border-branch/40 bg-paper px-3 py-2 ${
         placeAbove ? '-translate-x-1/2 -translate-y-full' : '-translate-x-1/2'
       }`}
       style={{ top: chipTop, left: chipLeft }}
@@ -43,14 +43,13 @@ export function BranchChip({
       data-testid="branch-chip"
       data-placement={placeAbove ? 'above' : 'below'}
       aria-keyshortcuts="Control+Shift+B Meta+Shift+B"
-      title={`${label} · ${shortcut}`}
+      title={`${existing > 0 ? 'New branch from this passage' : 'Branch from selection'} · ${shortcut}`}
       onClick={onBranch}
     >
       <span className="text-[13px] leading-none text-branch" aria-hidden>
         ↳
       </span>
       <span className="text-[12.5px] font-medium leading-none text-foreground">{label}</span>
-      <span className="text-[11px] leading-none text-muted-foreground">{shortcut}</span>
     </button>,
     document.body,
   )

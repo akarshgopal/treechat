@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, Pencil, RotateCw, X } from 'lucide-react'
+import { ArrowUpRight, GitBranch, Pencil, RotateCw } from 'lucide-react'
 import { MessageMarkdown } from '@/components/chat/MessageMarkdown'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { threadTitle } from '@/lib/tree'
 import type { ChatMessage, Thread } from '@/types'
 
 type MessageBubbleProps = {
@@ -23,11 +24,16 @@ type MessageBubbleProps = {
   onSelectMessage?: (messageId: string) => void
   onOpenBranch?: (threadId: string | null) => void
   onRetry?: (messageId: string) => void
-  onEdit?: (messageId: string, content: string) => void
+  onEdit?: (messageId: string, content: string) => Promise<boolean>
+  onAsk?: () => void
+  sourceThread?: Thread
+  onViewSource?: (threadId: string) => void
+  hideActions?: boolean
+  unanswered?: boolean
 }
 
 const actionBtn =
-  'flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40'
+  'flex size-7 items-center justify-center rounded-md [@media(hover:none)]:size-9 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40'
 
 export function MessageBubble({
   message,
@@ -41,6 +47,11 @@ export function MessageBubble({
   onOpenBranch,
   onRetry,
   onEdit,
+  onAsk,
+  sourceThread,
+  onViewSource,
+  hideActions = false,
+  unanswered = false,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const [editing, setEditing] = useState(false)
@@ -75,19 +86,14 @@ export function MessageBubble({
 
   if (message.kind === 'drop-summary') {
     return (
-      <article className="rise flex flex-col gap-1.5 py-0.5">
-        <div className="flex items-center gap-2.5">
-          <span className="accent-glow h-3.5 w-[2px] shrink-0 rounded-sm bg-branch" />
-          <span className="eyebrow text-branch">merged from branch</span>
-        </div>
-        <div className="rounded-[9px] border border-branch/20 bg-branch/[0.05] px-3.5 py-2.5">
-          {message.quote ? (
-            <p className="mb-1.5 text-[13px] italic leading-snug text-muted-foreground">
-              “{message.quote}”
-            </p>
-          ) : null}
-          <MessageMarkdown content={message.content} className="text-[14.5px] leading-[1.62]" />
-        </div>
+      <article className="rise flex flex-col gap-2 rounded-xl border border-branch/25 bg-branch/[0.05] p-4" data-takeaway-id={message.id}>
+        {sourceThread && onViewSource ? (
+          <button type="button" className="flex min-w-0 items-center gap-2 self-start text-left text-xs text-branch-bright hover:underline" onClick={() => onViewSource(sourceThread.id)} aria-label="View exploration" title={threadTitle(sourceThread)}>
+            <ArrowUpRight size={14} className="shrink-0" />
+            <span className="truncate">{threadTitle(sourceThread)}</span>
+          </button>
+        ) : <p className="truncate text-xs text-muted-foreground">{message.quote ?? 'Takeaway'}</p>}
+        <MessageMarkdown content={message.content} className="text-[14.5px] leading-[1.62]" />
       </article>
     )
   }
@@ -102,11 +108,12 @@ export function MessageBubble({
     setEditing(false)
   }
 
-  const confirmEdit = () => {
+  const confirmEdit = async () => {
     const text = draft.trim()
     if (!text) return
     setEditing(false)
-    onEdit?.(message.id, text)
+    const applied = await onEdit?.(message.id, text)
+    if (applied === false) setEditing(true)
   }
 
   const onEditKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -118,7 +125,7 @@ export function MessageBubble({
     }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      confirmEdit()
+      void confirmEdit()
     }
   }
 
@@ -136,22 +143,20 @@ export function MessageBubble({
       <div className="flex justify-end gap-1">
         <button
           type="button"
-          className={actionBtn}
+          className="branch-secondary text-xs text-muted-foreground"
           onClick={cancelEdit}
           data-testid="message-edit-cancel"
-          aria-label="Cancel edit"
         >
-          <X className="size-3.5" />
+          Cancel
         </button>
         <button
           type="button"
-          className={actionBtn}
-          onClick={confirmEdit}
+          className="branch-secondary text-xs text-branch-bright"
+          onClick={() => void confirmEdit()}
           disabled={!draft.trim()}
           data-testid="message-edit-save"
-          aria-label="Save and resend"
         >
-          <Check className="size-3.5" />
+          Save &amp; resend
         </button>
       </div>
     </div>
@@ -175,11 +180,14 @@ export function MessageBubble({
     ? 'text-[13.5px] leading-[1.55]'
     : 'text-[14.5px] leading-[1.62]'
 
-  const actions = !editing ? (
+  const actions = !editing && !hideActions ? (
     <MessageActions
       isUser={isUser}
-      onRetry={onRetry && !isUser ? () => onRetry(message.id) : undefined}
+      onRetry={onRetry ? () => onRetry(message.id) : undefined}
       onEdit={onEdit && isUser ? startEdit : undefined}
+      onAsk={onAsk}
+      messageId={message.id}
+      unanswered={unanswered}
     />
   ) : null
 
@@ -214,19 +222,27 @@ function MessageActions({
   isUser,
   onRetry,
   onEdit,
+  onAsk,
+  messageId,
+  unanswered,
 }: {
   isUser: boolean
   onRetry?: () => void
   onEdit?: () => void
+  onAsk?: () => void
+  messageId: string
+  unanswered: boolean
 }) {
-  if (!onRetry && !onEdit) return null
+  if (!onRetry && !onEdit && !onAsk) return null
   return (
     <div
       className={cn(
-        'flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100',
+        'message-actions flex gap-0.5 text-xs opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100',
+        unanswered && 'opacity-100',
         isUser ? 'justify-end' : 'justify-start',
       )}
     >
+      {onAsk ? <button type="button" className={actionBtn} onClick={onAsk} data-ask-message={messageId} aria-label="Branch from this message" title="Branch"><GitBranch size={15} /></button> : null}
       {onEdit ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -250,13 +266,13 @@ function MessageActions({
               type="button"
               className={actionBtn}
               onClick={onRetry}
-              data-testid="message-retry"
-              aria-label="Retry"
+              data-testid={isUser ? 'message-regenerate' : 'message-retry'}
+              aria-label={isUser ? 'Regenerate response' : 'Retry'}
             >
               <RotateCw className="size-3.5" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>Retry</TooltipContent>
+          <TooltipContent>{isUser ? 'Regenerate response' : 'Retry'}</TooltipContent>
         </Tooltip>
       ) : null}
     </div>

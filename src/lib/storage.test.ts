@@ -4,6 +4,7 @@ import { createEmptyState, createSeedState } from './seed.ts'
 import { DEFAULT_SESSION_TITLE } from './sessions.ts'
 import { loadLibrary, loadTreeState, saveLibrary, saveTreeState } from './storage.ts'
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '../types.ts'
+import { fromUIMessages, toUIMessages } from './messages.ts'
 
 function mockLocalStorage() {
   const data = new Map<string, string>()
@@ -177,4 +178,19 @@ test('unreadable v3 falls through to a leftover v2 tree', () => {
   const library = loadLibrary()
   assert.equal(library.sessions.length, 1)
   assert.equal(library.sessions[0]?.title, 'What is TreeChat?')
+})
+
+test('takeaway source links survive the chat engine and storage round-trip', () => {
+  mockLocalStorage()
+  const state = createSeedState()
+  state.threads[state.rootId].messages.push({
+    id: 'takeaway', role: 'assistant', content: 'The conclusion', createdAt: 1,
+    kind: 'drop-summary', quote: 'The source passage', sourceThreadId: 'thread-branch-1',
+  })
+  state.threads[state.rootId].messages = fromUIMessages(toUIMessages(state.threads[state.rootId].messages))
+  saveTreeState(state)
+  assert.deepEqual(loadTreeState().threads[state.rootId].messages.at(-1), {
+    id: 'takeaway', role: 'assistant', content: 'The conclusion', createdAt: 1,
+    kind: 'drop-summary', quote: 'The source passage', sourceThreadId: 'thread-branch-1',
+  })
 })

@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   DEFAULT_OPENROUTER_MODEL,
-  clearProviderConfig,
+  isModelId,
   loadProviderConfig,
   normalizeProviderConfig,
   saveProviderConfig,
@@ -26,35 +26,69 @@ const fieldClass =
 
 type SettingsDialogProps = {
   status: ProviderStatus
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onConfigChange: (config: ClientProviderConfig | null) => void
   onRestoreDemo: () => void
 }
 
 export function SettingsDialog({
   status,
+  open,
+  onOpenChange,
   onConfigChange,
   onRestoreDemo,
 }: SettingsDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState(DEFAULT_OPENROUTER_MODEL)
-  const [temperature, setTemperature] = useState('')
-  const [maxTokens, setMaxTokens] = useState('')
-  const [saved, setSaved] = useState(false)
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <button
+        type="button"
+        onClick={() => onOpenChange(true)}
+        aria-label="Settings"
+        title="Settings"
+        data-testid="settings-button"
+        className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+      >
+        <Settings className="size-3.5" />
+      </button>
+      <DialogContent className="max-h-[90svh] max-w-md gap-5 overflow-y-auto sm:rounded-lg" data-testid="settings-dialog">
+        {/* Content unmounts while closed, so each open re-reads storage: the
+            header model picker or another tab may have changed it. */}
+        <SettingsBody
+          status={status}
+          onConfigChange={onConfigChange}
+          onRestoreDemo={() => {
+            onRestoreDemo()
+            onOpenChange(false)
+          }}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
 
-  const hydrate = () => {
-    const current = loadProviderConfig()
-    setApiKey(current?.apiKey ?? '')
-    setModel(current?.model || DEFAULT_OPENROUTER_MODEL)
-    setTemperature(
-      current?.temperature !== undefined ? String(current.temperature) : '',
-    )
-    setMaxTokens(current?.maxTokens !== undefined ? String(current.maxTokens) : '')
-    setSaved(false)
-  }
+function SettingsBody({
+  status,
+  onConfigChange,
+  onRestoreDemo,
+}: Pick<SettingsDialogProps, 'status' | 'onConfigChange' | 'onRestoreDemo'>) {
+  const [initial] = useState(() => loadProviderConfig())
+  const [apiKey, setApiKey] = useState(initial?.apiKey ?? '')
+  const [model, setModel] = useState(initial?.model || DEFAULT_OPENROUTER_MODEL)
+  const [temperature, setTemperature] = useState(
+    initial?.temperature !== undefined ? String(initial.temperature) : '',
+  )
+  const [maxTokens, setMaxTokens] = useState(
+    initial?.maxTokens !== undefined ? String(initial.maxTokens) : '',
+  )
+  const [saved, setSaved] = useState(false)
+  const [savedModel, setSavedModel] = useState(initial?.model || DEFAULT_OPENROUTER_MODEL)
+  const [hasKey, setHasKey] = useState(Boolean(initial?.apiKey))
+  const modelValid = isModelId(model)
 
   const persist = (event: FormEvent) => {
     event.preventDefault()
+    if (!modelValid) return
     const next = normalizeProviderConfig({
       apiKey,
       model,
@@ -67,52 +101,31 @@ export function SettingsDialog({
     setModel(next.model)
     setTemperature(next.temperature !== undefined ? String(next.temperature) : '')
     setMaxTokens(next.maxTokens !== undefined ? String(next.maxTokens) : '')
+    setSavedModel(next.model)
+    setHasKey(Boolean(next.apiKey))
     setSaved(true)
   }
 
-  const clear = () => {
-    clearProviderConfig()
+  /** Forget the key only; model and generation params stay as saved. */
+  const removeKey = () => {
+    const next = normalizeProviderConfig({ ...(loadProviderConfig() ?? {}), apiKey: '' })
+    saveProviderConfig(next)
     setApiKey('')
-    setModel(DEFAULT_OPENROUTER_MODEL)
-    setTemperature('')
-    setMaxTokens('')
+    setHasKey(false)
     setSaved(false)
-    onConfigChange(null)
+    onConfigChange(next)
   }
 
   const modeLabel =
     status.mode === 'mock' ? 'mock' : status.provider === 'openrouter' ? 'openrouter' : status.provider
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (next) hydrate()
-        setOpen(next)
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => {
-          hydrate()
-          setOpen(true)
-        }}
-        aria-label="Provider settings"
-        title="Provider settings"
-        data-testid="settings-button"
-        className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-      >
-        <Settings className="size-3.5" />
-      </button>
-      <DialogContent className="max-w-md gap-5 sm:rounded-lg" data-testid="settings-dialog">
+    <>
         <DialogHeader>
-          <DialogTitle>Provider</DialogTitle>
+          <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Paste an OpenRouter key to run live from this browser. Model and
-            generation params are saved even without a key — chat stays mock
-            until you add one. The key stays in this device's localStorage
-            (treat it like a password) and is sent from the browser to
-            OpenRouter on each chat request — never stored on TreeChat's host.
+            Add an OpenRouter key for real answers. Without one, TreeChat
+            replies with demo text so you can try branching.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={persist} className="grid gap-4" autoComplete="off">
@@ -148,11 +161,15 @@ export function SettingsDialog({
               data-testid="settings-api-key"
               className={fieldClass}
             />
+            <span className="text-[11px] text-muted-foreground">
+              Kept only in this browser and sent straight to OpenRouter. Treat it like a password.
+            </span>
           </label>
           <div className="grid gap-1.5">
             <ModelPicker
               id="settings-model"
               name="openrouter-model"
+              invalid={!modelValid}
               value={model}
               onChange={(next) => {
                 setModel(next)
@@ -166,9 +183,15 @@ export function SettingsDialog({
                 setSaved(false)
               }}
             />
-            <p className="text-[11px] text-muted-foreground">
-              Pick a preset or paste any OpenRouter model id.
-            </p>
+            {modelValid ? (
+              <p className="text-[11px] text-muted-foreground">
+                Pick a preset or paste any OpenRouter model id.
+              </p>
+            ) : (
+              <p className="text-[11px] text-destructive" role="alert" data-testid="settings-model-error">
+                Model ids look like <span className="font-mono">vendor/model</span>, e.g. {savedModel}.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="grid gap-1.5">
@@ -214,20 +237,22 @@ export function SettingsDialog({
             </label>
           </div>
           <DialogFooter className="gap-2 sm:justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={clear}
-              data-testid="settings-clear"
-            >
-              Clear
-            </Button>
+            {hasKey ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={removeKey}
+                data-testid="settings-clear"
+              >
+                Remove key
+              </Button>
+            ) : <span />}
             <div className="flex items-center gap-2">
               {saved ? (
                 <span className="text-[11px] text-muted-foreground">Saved in this browser</span>
               ) : null}
-              <Button type="submit" size="sm" data-testid="settings-save">
+              <Button type="submit" size="sm" data-testid="settings-save" disabled={!modelValid}>
                 Save
               </Button>
             </div>
@@ -237,7 +262,7 @@ export function SettingsDialog({
           <div className="grid gap-0.5">
             <span className="text-[12px] font-medium text-foreground">Demo conversation</span>
             <span className="text-[11px] text-muted-foreground">
-              Load the seeded “What is TreeChat?” walkthrough into this chat.
+              Replace this chat with the “What is TreeChat?” walkthrough.
               Other chats are left alone.
             </span>
           </div>
@@ -245,16 +270,12 @@ export function SettingsDialog({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => {
-              onRestoreDemo()
-              setOpen(false)
-            }}
+            onClick={onRestoreDemo}
             data-testid="settings-restore-demo"
           >
             Restore demo
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   )
 }

@@ -2,11 +2,12 @@ import { useState } from 'react'
 import {
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_MODEL_OPTIONS,
+  isModelId,
 } from '@/lib/provider'
 import { cn } from '@/lib/utils'
 
 const fieldClass =
-  'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+  'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive'
 
 type ModelPickerProps = {
   value: string
@@ -16,6 +17,9 @@ type ModelPickerProps = {
   name?: string
   compact?: boolean
   testId?: string
+  /** Restored when the field is left holding something that is not a model id. */
+  fallback?: string
+  invalid?: boolean
 }
 
 function isPreset(value: string) {
@@ -30,11 +34,17 @@ export function ModelPicker({
   name,
   compact,
   testId,
+  fallback,
+  invalid,
 }: ModelPickerProps) {
   const listId = `${id}-list`
 
   const commit = (raw: string) => {
     const next = raw.trim() || DEFAULT_OPENROUTER_MODEL
+    if (!isModelId(next)) {
+      if (fallback !== undefined) onChange(fallback)
+      return
+    }
     onChange(next)
     onCommit?.(next)
   }
@@ -68,6 +78,7 @@ export function ModelPicker({
         spellCheck={false}
         autoComplete="off"
         aria-label="OpenRouter model"
+        aria-invalid={invalid || undefined}
         title={value}
         data-testid={testId ?? (compact ? 'header-model' : 'settings-model')}
         className={cn(
@@ -102,6 +113,7 @@ export function HeaderModelPicker({ model, onCommit }: HeaderModelPickerProps) {
     <ModelPicker
       compact
       id="header-model"
+      fallback={model}
       value={draft}
       onChange={setDraft}
       onCommit={(next) => {

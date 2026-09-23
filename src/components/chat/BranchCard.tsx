@@ -11,6 +11,7 @@ export function BranchCard({
   onFocus,
   onHide,
   children,
+  summarized,
 }: {
   thread: Thread
   merging?: boolean
@@ -19,11 +20,12 @@ export function BranchCard({
   onFocus: () => void
   onHide?: () => void
   children: ReactNode
+  summarized?: boolean
 }) {
   return (
-    <div className="relative pb-0.5 pl-[22px] pt-0.5">
+    <div className="relative pb-0.5 pl-2 pt-0.5 sm:pl-[22px]" data-testid="inline-branch" data-branch-id={thread.id}>
       <span className="branch-spine absolute bottom-2 left-[4px] top-1 w-[2px] rounded-full" />
-      <div className="rise flex flex-col gap-3 rounded-[9px] border border-branch/20 bg-branch/[0.05] px-3.5 py-3">
+      <div className="rise flex min-w-0 flex-col gap-3 pl-3 sm:pl-4">
         <BranchHeader
           thread={thread}
           merging={merging}
@@ -31,8 +33,8 @@ export function BranchCard({
           onDiscard={onDiscard}
           onFocus={onFocus}
           onHide={onHide}
+          summarized={summarized}
         />
-        <span className="h-px bg-branch/20" />
         {children}
       </div>
     </div>

@@ -10,6 +10,8 @@ export type ChatMessage = {
   kind?: MessageKind
   /** For a merged summary: the quote of the thread it came from. */
   quote?: string
+  /** Link a takeaway to the exploration that produced it. */
+  sourceThreadId?: string
 }
 
 /** Where a thread is pinned inside its parent's message. */

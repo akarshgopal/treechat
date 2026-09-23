@@ -380,3 +380,49 @@ test('runChat without a key and without /api uses the client mock', async () => 
   assert.ok(urls.every((url) => !url.includes('/api/chat')))
   assert.ok(urls.every((url) => !url.includes('openrouter.ai')))
 })
+
+const streamInput = {
+  messages: [{ role: 'user', content: 'hello' }],
+  config: { provider: 'openrouter' as const, apiKey: 'test', model: 'test-model' },
+  threadId: 'branch-1',
+  runId: 'run-1',
+  forwardedProps: { cacheSessionId: 'chat-session-1' },
+}
+
+test('streaming preserves split UTF-8, CRLF frames and a final unterminated frame', async () => {
+  const encoded = new TextEncoder().encode(
+    ': heartbeat\r\n\r\ndata: {"choices":[{"delta":{"content":"Hi 🌱"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"!"}}]}',
+  )
+  globalThis.fetch = (async (_input, init) => {
+    assert.equal(JSON.parse(String(init?.body)).session_id, 'chat-session-1')
+    return new Response(new ReadableStream({
+      start(controller) {
+        for (const byte of encoded) controller.enqueue(new Uint8Array([byte]))
+        controller.close()
+      },
+    }))
+  }) as typeof fetch
+  assert.equal(await collectAssistantText(openRouterChatStream(streamInput)), 'Hi 🌱!')
+})
+
+test('provider errors inside a successful HTTP stream surface instead of silently finishing', async () => {
+  globalThis.fetch = (async () => new Response(
+    'data: {"choices":[{"delta":{"content":"Partial"}}]}\n\ndata: {"error":{"message":"Provider overloaded"}}\n\n',
+  )) as typeof fetch
+  const chunks = []
+  for await (const chunk of openRouterChatStream(streamInput)) chunks.push(chunk)
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT))
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.RUN_ERROR && chunk.message === 'Provider overloaded'))
+  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_FINISHED))
+})
+
+test('empty provider streams and error finish reasons surface a retryable error', async () => {
+  for (const body of ['', 'data: [DONE]\n\n', 'data: {"choices":[{"finish_reason":"error"}]}\n\n']) {
+    globalThis.fetch = (async () => new Response(body)) as typeof fetch
+    await assert.rejects(collectAssistantText(openRouterChatStream(streamInput)), /provider/i)
+  }
+})
+
+test('routing sessions are bounded to the provider limit', () => {
+  assert.equal(openRouterRequestBody(streamInput.config, [], 'a'.repeat(300)).session_id?.length, 256)
+})

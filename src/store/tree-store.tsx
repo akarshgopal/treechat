@@ -26,6 +26,7 @@ type TreeContextValue = {
   discard: (threadId: string) => void
   replaceMessages: (threadId: string, messages: ChatMessage[]) => void
   appendMessage: (threadId: string, message: ChatMessage) => void
+  undoTakeaway: (threadId: string, messageId: string) => void
   rewriteThread: (
     threadId: string,
     messages: ChatMessage[],
@@ -89,6 +90,8 @@ export function TreeProvider({ children }: { children: ReactNode }) {
           type: 'tree',
           action: { type: 'append-message', threadId, message },
         }),
+      undoTakeaway: (threadId, messageId) =>
+        dispatch({ type: 'tree', action: { type: 'undo-takeaway', threadId, messageId } }),
       rewriteThread: (threadId, messages, dropAnchorMessageIds) =>
         dispatch({
           type: 'tree',

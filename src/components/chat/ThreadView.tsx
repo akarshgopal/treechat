@@ -1,12 +1,12 @@
-import type { ReactNode, Ref } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Composer } from '@/components/chat/Composer'
 import { MessageBubble } from '@/components/chat/MessageBubble'
+import { ReplyProgress } from '@/components/chat/ReplyProgress'
 import {
   childThreadsForMessage,
-  cycleOpenId,
   groupThreadsBySpan,
-  subtreeSize,
+  threadTitle,
 } from '@/lib/tree'
 import { truncate } from '@/lib/utils'
 import type { Thread, TreeState } from '@/types'
@@ -43,73 +43,27 @@ type ThreadViewProps = {
   /** Rendered above the transcript in the framed view. */
   lede?: ReactNode
   onRetryAssistant?: (messageId: string) => void
-  onEditUser?: (messageId: string, content: string) => void
+  onRegenerateUser?: (messageId: string) => void
+  /** Resolves false when the edit was not applied, so the editor stays open. */
+  onEditUser?: (messageId: string, content: string) => Promise<boolean>
+  onAskMessage?: (threadId: string, messageId: string) => void
+  renderQuestion?: (threadId: string, messageId: string) => ReactNode
+  header?: ReactNode
+  scrollPositions?: Map<string, number>
+  scrollKey?: string
+  error?: string
+  onRetryError?: () => void
+  /** Offered in an empty chat: load the walkthrough. */
+  onShowDemo?: () => void
 }
 
-/** Hairline rule with a pill — opens / cycles the branch(es) anchored above it. */
-function BranchRule({
-  threads,
-  state,
-  openId,
-  onCycle,
-}: {
-  threads: Thread[]
-  state: TreeState
-  openId: string | null
-  onCycle: () => void
-}) {
-  const primary = threads.find((thread) => thread.id === openId) ?? threads[0]
-  const open = Boolean(openId && threads.some((thread) => thread.id === openId))
-  const count = threads.reduce((total, thread) => total + subtreeSize(state, thread.id), 0)
-  const quote = primary?.anchor?.quote ?? ''
-  const openIndex = threads.findIndex((thread) => thread.id === openId)
-  const siblings = threads.length
-
+/** A closed exploration is a small, named link beneath its source. */
+function BranchRule({ thread, onOpen }: { thread: Thread; onOpen: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onCycle}
-      aria-expanded={open}
-      aria-label={
-        siblings > 1
-          ? `${open ? 'Cycle' : 'Open'} ${siblings} branches on “${quote}”`
-          : `${open ? 'Hide' : 'Open'} branch on “${quote}” with ${count} ${
-              count === 1 ? 'reply' : 'replies'
-            }`
-      }
-      className="group relative flex h-8 w-full cursor-pointer select-none items-center"
-    >
-      <span
-        className={`absolute inset-x-0 top-1/2 h-px transition-colors ${
-          open ? 'bg-branch/40' : 'bg-border group-hover:bg-branch/30'
-        }`}
-      />
-      <span
-        className={`relative mx-auto flex items-center gap-1.5 rounded-full border bg-paper py-[4px] pl-2.5 pr-2.5 shadow-[0_4px_14px_-6px_rgba(0,0,0,0.7)] transition-transform group-hover:scale-[1.03] ${
-          open ? 'border-branch/45' : 'border-border'
-        }`}
-      >
-        <span className="text-[13px] leading-none text-branch">
-          {open ? '⌄' : '↳'}
-        </span>
-        <span className="eyebrow text-muted-foreground">
-          {open
-            ? siblings > 1 && openIndex < siblings - 1
-              ? 'next branch'
-              : 'hide branch'
-            : truncate(quote, 34)}
-        </span>
-        {siblings > 1 ? (
-          <span className="eyebrow text-branch-bright">
-            {openIndex >= 0 ? `${openIndex + 1}/${siblings}` : `${siblings}`}
-          </span>
-        ) : null}
-        {count > 0 ? (
-          <span className="eyebrow rounded-full bg-branch/15 px-1.5 py-px text-branch-bright">
-            {count}
-          </span>
-        ) : null}
-      </span>
+    <button type="button" onClick={onOpen} aria-label={`Open branch: ${threadTitle(thread)}`}
+      className="my-1 flex min-h-9 max-w-full items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-branch/5 hover:text-branch-bright">
+      <span className="text-branch" aria-hidden>↳</span>
+      <span className="truncate">{threadTitle(thread)}</span>
     </button>
   )
 }
@@ -136,22 +90,84 @@ export function ThreadView({
   framed,
   lede,
   onRetryAssistant,
+  onRegenerateUser,
   onEditUser,
+  onAskMessage,
+  renderQuestion,
+  header,
+  scrollPositions,
+  scrollKey,
+  error,
+  onRetryError,
+  onShowDemo,
 }: ThreadViewProps) {
   const expandedChildId = state.expanded[thread.id] ?? null
+  const lastMessage = thread.messages.at(-1)
+  const waitingForReply = isLoading && (lastMessage?.role !== 'assistant' || !lastMessage.content.trim())
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const following = useRef(true)
+  const [awayFromLatest, setAwayFromLatest] = useState(false)
+  // Only offer the jump when there is something new below — not merely
+  // because the reader scrolled up to reread.
+  const [unseen, setUnseen] = useState(false)
+  const seenMessages = useRef(thread.messages)
+
+  useLayoutEffect(() => {
+    const viewport = scrollRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
+    if (!viewport || !scrollKey) return
+    viewport.scrollTop = scrollPositions?.get(scrollKey) ?? 0
+    const remember = () => {
+      scrollPositions?.set(scrollKey, viewport.scrollTop)
+      following.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80
+      setAwayFromLatest(!following.current)
+      if (following.current) setUnseen(false)
+    }
+    remember()
+    viewport.addEventListener('scroll', remember, { passive: true })
+    return () => {
+      scrollPositions?.set(scrollKey, viewport.scrollTop)
+      viewport.removeEventListener('scroll', remember)
+    }
+  }, [scrollKey, scrollPositions])
+
+  useEffect(() => {
+    if (seenMessages.current === thread.messages) return
+    seenMessages.current = thread.messages
+    if (!following.current) setUnseen(true)
+  }, [thread.messages])
+
+  useEffect(() => {
+    if (!isLoading || !following.current) return
+    const viewport = scrollRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
+    if (viewport) viewport.scrollTop = viewport.scrollHeight
+  }, [thread.messages, isLoading])
 
   const transcript = (
     <div className="flex flex-col gap-4">
       {lede}
+      {thread.messages.length === 0 && !thread.parentId ? (
+        <div className="flex flex-col items-center gap-3 py-16 text-center" data-testid="empty-chat-guide">
+          <p className="text-[15px] text-foreground">Ask anything to start.</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Then select any passage in a reply to branch off into a side conversation, without losing your place.
+          </p>
+          {onShowDemo ? (
+            <button type="button" className="branch-starter mt-1 text-sm" onClick={onShowDemo} data-testid="show-demo">
+              See how it works
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {thread.messages.length === 0 && emptyLabel ? (
         <p className="text-[13.5px] leading-[1.55] text-muted-foreground">
           {emptyLabel}
         </p>
       ) : null}
 
-      {thread.messages.map((message) => {
+      {thread.messages.map((message, index) => {
         const children = childThreadsForMessage(state, thread.id, message.id)
         const groups = groupThreadsBySpan(children)
+        const question = renderQuestion?.(thread.id, message.id)
         return (
           <div key={message.id} className="flex flex-col gap-0.5">
             <MessageBubble
@@ -159,19 +175,25 @@ export function ThreadView({
               threadId={thread.id}
               childThreads={children}
               openChildId={expandedChildId}
-              labels={depth === 0}
+              labels={false}
               compact={depth > 0}
               onSelectMessage={(messageId) =>
                 onSelectMessage(thread.id, messageId)
               }
               onOpenBranch={(childId) => onOpenChild(thread.id, childId)}
+              onAsk={onAskMessage ? () => onAskMessage(thread.id, message.id) : undefined}
+              sourceThread={message.sourceThreadId ? state.threads[message.sourceThreadId] : undefined}
+              onViewSource={onFocusChild}
+              hideActions={Boolean(question)}
+              unanswered={message.role === 'user' && index === thread.messages.length - 1 && !isLoading}
               onRetry={
                 message.role === 'assistant' && message.kind !== 'drop-summary'
                   ? onRetryAssistant
-                  : undefined
+                  : message.role === 'user' ? onRegenerateUser : undefined
               }
               onEdit={message.role === 'user' ? onEditUser : undefined}
             />
+            {question}
             {groups.map((group) => {
               const ids = group.map((child) => child.id)
               const openInGroup = ids.includes(expandedChildId ?? '')
@@ -180,12 +202,8 @@ export function ThreadView({
               const openChild = group.find((child) => child.id === openInGroup)
               return (
                 <div key={ids.join(':')}>
-                  <BranchRule
-                    threads={group}
-                    state={state}
-                    openId={openInGroup}
-                    onCycle={() => onOpenChild(thread.id, cycleOpenId(ids, openInGroup))}
-                  />
+                  {group.length === 1 && !openChild ? <BranchRule thread={group[0]} onOpen={() => onOpenChild(thread.id, group[0].id)} /> : null}
+                  {group.length > 1 ? <div className="flex flex-wrap gap-1" aria-label="Choose a branch">{group.map((child) => <button key={child.id} type="button" className={`branch-secondary max-w-full truncate ${child.id === openInGroup ? 'text-branch-bright' : 'text-muted-foreground'}`} aria-pressed={child.id === openInGroup} onClick={() => onOpenChild(thread.id, child.id)}>{threadTitle(child)}</button>)}</div> : null}
                   {openChild ? (
                     depth >= MAX_INLINE_DEPTH ? (
                       <TooDeep
@@ -202,6 +220,7 @@ export function ThreadView({
           </div>
         )
       })}
+      {waitingForReply ? <ReplyProgress /> : null}
     </div>
   )
 
@@ -210,11 +229,14 @@ export function ThreadView({
       ref={composerRef}
       value={draft}
       onChange={onDraftChange}
-      onSend={onSend}
+      onSend={() => { following.current = true; onSend() }}
+      destination={threadTitle(thread)}
+      showDestination={Boolean(framed && expandedChildId)}
       onStop={onStop}
       isLoading={isLoading}
       onFocus={onComposerFocus}
       placeholder={placeholder}
+      testId={framed ? 'thread-composer' : undefined}
       accent={accentComposer}
       trailing={composerTrailing}
     />
@@ -224,6 +246,7 @@ export function ThreadView({
     return (
       <div className="flex flex-col gap-3">
         {transcript}
+        {error ? <div role="alert" className="text-sm text-destructive">{error} <button className="branch-secondary" onClick={onRetryError}>Try again</button></div> : null}
         {composer}
       </div>
     )
@@ -231,13 +254,22 @@ export function ThreadView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ScrollArea className="flex-1">
+      {header ? <div className="shrink-0 border-b border-border px-5 py-2 sm:px-8"><div className="mx-auto max-w-3xl">{header}</div></div> : null}
+      <ScrollArea ref={scrollRef} className="min-h-0 flex-1" data-testid="thread-scroll">
         <div className="mx-auto w-full max-w-3xl px-5 py-5 sm:px-8">
           {transcript}
         </div>
       </ScrollArea>
+      {awayFromLatest && (isLoading || unseen) ? <div className="relative h-0"><button type="button" className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-paper px-3 py-2 text-xs shadow-lg" onClick={() => {
+        following.current = true
+        const viewport = scrollRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
+        if (viewport) viewport.scrollTop = viewport.scrollHeight
+      }}>↓ Latest messages</button></div> : null}
       <div className="border-t border-border bg-foreground/[0.025] px-5 py-3 sm:px-8">
-        <div className="mx-auto max-w-3xl">{composer}</div>
+        <div className="mx-auto max-w-3xl">
+          {error ? <div role="alert" className="mb-3 text-sm text-destructive">{error} <button type="button" className="branch-secondary" onClick={onRetryError}>Try again</button></div> : null}
+          {composer}
+        </div>
       </div>
     </div>
   )
@@ -257,7 +289,7 @@ function TooDeep({ thread, onFocus }: { thread: Thread; onFocus: () => void }) {
           onClick={onFocus}
           className="shrink-0 rounded-md border border-branch/30 bg-branch/[0.13] px-2.5 py-[5px] text-[10.5px] font-medium text-branch-bright transition-colors hover:bg-branch/25"
         >
-          Open as chat ⤢
+          Expand branch ⤢
         </button>
       </div>
     </div>

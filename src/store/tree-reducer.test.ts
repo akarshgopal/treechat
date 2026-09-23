@@ -250,3 +250,22 @@ test('rewrite-thread against a missing thread is inert', () => {
     state,
   )
 })
+
+test('undoing a takeaway preserves its branch and later conversation messages', () => {
+  const state = conversation()
+  const withTakeaway = reducer(state, {
+    type: 'append-message', threadId: 'root',
+    message: { id: 'takeaway', role: 'assistant', content: 'Insight', createdAt: 1, kind: 'drop-summary', sourceThreadId: 'b1' },
+  })
+  const withFollowup = reducer(withTakeaway, {
+    type: 'append-message', threadId: 'root',
+    message: { id: 'followup', role: 'user', content: 'Continue', createdAt: 2 },
+  })
+  const undone = reducer(withFollowup, { type: 'undo-takeaway', threadId: 'root', messageId: 'takeaway' })
+  assert.equal(undone.threads.root.messages.at(-1)?.id, 'followup')
+  assert.ok(!undone.threads.root.messages.some((message) => message.id === 'takeaway'))
+  assert.equal(undone.threads.b1, state.threads.b1)
+  assert.equal(undone.threads.b1a, state.threads.b1a)
+  assert.equal(undone.threads.root.rev, withFollowup.threads.root.rev + 1)
+  assert.equal(reducer(undone, { type: 'undo-takeaway', threadId: 'root', messageId: 'followup' }), undone)
+})

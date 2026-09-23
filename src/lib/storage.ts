@@ -33,6 +33,7 @@ function parseMessage(value: unknown): ChatMessage | null {
     createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
     kind: record.kind === 'drop-summary' ? 'drop-summary' : 'message',
     quote: typeof record.quote === 'string' ? record.quote : undefined,
+    sourceThreadId: typeof record.sourceThreadId === 'string' ? record.sourceThreadId : undefined,
   }
 }
 

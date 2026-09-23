@@ -75,12 +75,14 @@ export function openRouterHeaders(
 export function openRouterRequestBody(
   config: ClientProviderConfig,
   messages: OpenAIChatMessage[],
+  sessionId?: string,
 ): {
   model: string
   messages: OpenAIChatMessage[]
   stream: true
   temperature?: number
   max_tokens?: number
+  session_id?: string
 } {
   const body: {
     model: string
@@ -88,6 +90,7 @@ export function openRouterRequestBody(
     stream: true
     temperature?: number
     max_tokens?: number
+    session_id?: string
   } = {
     model: config.model.trim() || DEFAULT_OPENROUTER_MODEL,
     messages,
@@ -95,6 +98,7 @@ export function openRouterRequestBody(
   }
   if (typeof config.temperature === 'number') body.temperature = config.temperature
   if (typeof config.maxTokens === 'number') body.max_tokens = config.maxTokens
+  if (sessionId) body.session_id = sessionId.slice(0, 256)
   return body
 }
 
@@ -190,15 +194,18 @@ async function* readSseDataLines(
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      const frames = buffer.split('\n\n')
+      const frames = buffer.split(/\r?\n\r?\n/)
       buffer = frames.pop() ?? ''
       for (const frame of frames) {
-        const line = frame.split('\n').find((entry) => entry.startsWith('data:'))
-        if (!line) continue
-        yield line.replace(/^data:\s?/, '')
+        const data = frame.split(/\r?\n/).filter((entry) => entry.startsWith('data:')).map((line) => line.replace(/^data: ?/, '')).join('\n')
+        if (data) yield data
       }
     }
+    buffer += decoder.decode()
+    const trailing = buffer.split(/\r?\n/).filter((entry) => entry.startsWith('data:')).map((line) => line.replace(/^data: ?/, '')).join('\n')
+    if (trailing) yield trailing
   } finally {
+    await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 }
@@ -251,7 +258,9 @@ export async function* openRouterChatStream(input: {
     response = await fetch(OPENROUTER_CHAT_URL, {
       method: 'POST',
       headers: openRouterHeaders(config),
-      body: JSON.stringify(openRouterRequestBody(config, openaiMessages)),
+      body: JSON.stringify(openRouterRequestBody(config, openaiMessages,
+        typeof input.forwardedProps?.cacheSessionId === 'string' ? input.forwardedProps.cacheSessionId : threadId,
+      )),
       signal,
     })
   } catch (error) {
@@ -284,22 +293,24 @@ export async function* openRouterChatStream(input: {
   }
 
   if (!response.body) {
-    yield { type: EventType.TEXT_MESSAGE_END, messageId, timestamp: now() }
-    yield {
-      type: EventType.RUN_FINISHED,
-      threadId,
-      runId,
-      timestamp: now(),
-      outcome: { type: 'success' },
-    }
+    yield { type: EventType.RUN_ERROR, message: 'The provider returned no response. Try regenerating.', code: 'empty_response', timestamp: now() }
     return
   }
 
+  let receivedText = false
   try {
     for await (const payload of readSseDataLines(response.body, signal)) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      if (payload.trim() === '[DONE]') break
+      let event: { error?: unknown; choices?: Array<{ finish_reason?: string }> } | undefined
+      try { event = JSON.parse(payload) } catch { /* Ignore non-JSON heartbeat frames. */ }
+      if (event?.error || event?.choices?.[0]?.finish_reason === 'error') {
+        yield { type: EventType.RUN_ERROR, message: event.error ? errorMessageFromOpenRouter(response.status, payload) : 'The provider stopped with an error. Try regenerating.', code: 'provider', timestamp: now() }
+        return
+      }
       const delta = contentDeltaFromOpenAIData(payload)
       if (!delta) continue
+      receivedText = true
       yield {
         type: EventType.TEXT_MESSAGE_CONTENT,
         messageId,
@@ -321,6 +332,10 @@ export async function* openRouterChatStream(input: {
     return
   }
 
+  if (!receivedText) {
+    yield { type: EventType.RUN_ERROR, message: 'The provider returned no text. Try regenerating or choose another model.', code: 'empty_response', timestamp: now() }
+    return
+  }
   yield { type: EventType.TEXT_MESSAGE_END, messageId, timestamp: now() }
   yield {
     type: EventType.RUN_FINISHED,
