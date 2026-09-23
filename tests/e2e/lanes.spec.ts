@@ -93,7 +93,7 @@ test('Escape cancels an unsent question without creating a branch', async ({ pag
   expect(Object.keys((await tree(page)).threads)).toEqual(before)
 })
 
-test('ancestors that no longer fit fold into strips and lead back', async ({ page }, testInfo) => {
+test('ancestors that no longer fit fold into strips that expand again', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'phones show one lane at a time')
   await page.locator('button[aria-label^="Open branch"]').first().click()
   const first = page.getByTestId('branch-lane')
@@ -106,5 +106,72 @@ test('ancestors that no longer fit fold into strips and lead back', async ({ pag
   await expect(page.getByTestId('main-lane')).toHaveCount(0)
   await strip.click()
   await expect(page.getByTestId('main-lane')).toBeVisible()
-  await expect(page.getByTestId('branch-lane')).toHaveCount(0)
+  await expect(page.getByTestId('branch-lane')).toHaveCount(2)
+})
+
+test('a short branch starts level with its passage', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'phones show one lane at a time')
+  await page.locator('button[aria-label^="Open branch"]').first().click()
+  await expect(page.getByTestId('branch-anchor')).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => {
+    const anchor = document.querySelector('[data-lane-anchor]')!.getBoundingClientRect()
+    // A wrapped passage lines up by its first line, where the connector starts.
+    const passage = document.querySelector('[data-testid="main-lane"] mark[data-open="true"]')!.getClientRects()[0]!
+    return Math.abs((anchor.top + anchor.height / 2) - (passage.top + passage.height / 2))
+  }), { timeout: 10_000 }).toBeLessThan(12)
+})
+
+test('panes collapse to strips, expand again, and resize from the gutter', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'phones show one lane at a time')
+  await page.locator('button[aria-label^="Open branch"]').first().click()
+  const branch = page.getByTestId('branch-lane')
+  await expect(branch).toBeVisible()
+
+  const resizer = page.getByTestId('lane-resizer')
+  const before = (await branch.boundingBox())!.width
+  await resizer.focus()
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('ArrowLeft')
+  await expect.poll(async () => (await branch.boundingBox())!.width).toBeGreaterThan(before + 50)
+  const box = (await resizer.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + 200)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 120, box.y + 200, { steps: 6 })
+  await page.mouse.up()
+  await expect.poll(async () => (await branch.boundingBox())!.width).toBeLessThan(before)
+  await resizer.dblclick()
+  await expect.poll(async () => Math.round((await branch.boundingBox())!.width)).toBe(460)
+
+  await page.getByTestId('collapse-lane').click()
+  await expect(page.getByTestId('main-lane')).toHaveCount(0)
+  await expect(page.getByTestId('lane-strip')).toHaveCount(1)
+  await page.getByTestId('lane-strip').click()
+  await expect(page.getByTestId('main-lane')).toBeVisible()
+  await expect(page.getByTestId('lane-strip')).toHaveCount(0)
+})
+
+test('the sidebar holds New chat and Settings, collapses, resizes, and remembers', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'phones have no sidebar')
+  const sidebar = page.getByTestId('chat-sidebar')
+  await expect(sidebar.getByTestId('new-chat')).toBeVisible()
+  await expect(sidebar.getByTestId('settings-button')).toBeVisible()
+  await expect(page.locator('header').getByTestId('new-chat')).toHaveCount(0)
+  await expect(page.getByText(/Live ·/)).toHaveCount(0)
+
+  const before = (await sidebar.boundingBox())!.width
+  const handle = (await page.getByTestId('sidebar-resizer').boundingBox())!
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 300)
+  await page.mouse.down()
+  await page.mouse.move(handle.x + handle.width / 2 + 80, handle.y + 300, { steps: 5 })
+  await page.mouse.up()
+  await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(Math.round(before + 80))
+
+  await page.keyboard.press('ControlOrMeta+Backslash')
+  await expect(sidebar).toHaveAttribute('data-collapsed', 'true')
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeLessThan(60)
+  await page.reload()
+  await expect(page.getByTestId('chat-sidebar')).toHaveAttribute('data-collapsed', 'true')
+  await page.getByTestId('sidebar-toggle').click()
+  await expect(page.getByTestId('chat-sidebar')).toHaveAttribute('data-collapsed', 'false')
+  await expect.poll(async () => Math.round((await page.getByTestId('chat-sidebar').boundingBox())!.width)).toBe(Math.round(before + 80))
 })

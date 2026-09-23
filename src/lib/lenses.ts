@@ -21,6 +21,9 @@ export const LENSES: readonly Lens[] = [
 
 export const LENS_QUOTE_CHARS = 60
 
+/** Quote marks already around the passage would double up inside ours. */
+const EDGE_QUOTES = /^[“”"'‘’«»\s]+|[“”"'‘’«»\s]+$/g
+
 export function lensQuestion(lens: Lens, quote: string): string {
-  return lens.ask(clipText(quote, LENS_QUOTE_CHARS))
+  return lens.ask(clipText(quote.replace(EDGE_QUOTES, ''), LENS_QUOTE_CHARS))
 }

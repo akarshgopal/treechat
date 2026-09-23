@@ -39,6 +39,8 @@ type ThreadViewProps = {
   onRetryError?: () => void
   /** Offered in an empty chat: load the walkthrough. */
   onShowDemo?: () => void
+  /** Space above a branch so its anchor sits level with the source passage. */
+  leadOffset?: number
 }
 
 /** Each branch off a message is a small, named link beneath its source. */
@@ -80,6 +82,7 @@ export function ThreadView({
   error,
   onRetryError,
   onShowDemo,
+  leadOffset = 0,
 }: ThreadViewProps) {
   const lastMessage = thread.messages.at(-1)
   const waitingForReply = isLoading && (lastMessage?.role !== 'assistant' || !lastMessage.content.trim())
@@ -205,6 +208,19 @@ export function ThreadView({
       {header ? <div className="shrink-0 border-b border-border px-4 py-2 sm:px-6"><div className="mx-auto max-w-3xl">{header}</div></div> : null}
       <ScrollArea ref={scrollRef} className="min-h-0 flex-1" data-testid="thread-scroll">
         <div className="mx-auto w-full max-w-3xl px-4 py-5 sm:px-6">
+          {thread.anchor ? (
+            <>
+              <div aria-hidden className="lane-lead" style={{ height: leadOffset }} />
+              <blockquote
+                data-lane-anchor
+                data-testid="branch-anchor"
+                title={thread.anchor.quote}
+                className="mb-4 line-clamp-3 border-l-2 border-branch pl-3 text-[13px] italic leading-snug text-muted-foreground"
+              >
+                {thread.anchor.quote}
+              </blockquote>
+            </>
+          ) : null}
           {transcript}
         </div>
       </ScrollArea>

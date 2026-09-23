@@ -8,14 +8,14 @@ import {
   useState,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
-import { ChevronDown, SquarePen } from 'lucide-react'
+import { ChevronDown, Settings, SquarePen } from 'lucide-react'
 import { BranchHeader } from '@/components/chat/BranchHeader'
 import { BranchPopover } from '@/components/chat/BranchPopover'
-import { Lanes } from '@/components/chat/Lanes'
+import { Lanes, type LaneFrame } from '@/components/chat/Lanes'
 import { TakeawayDialog } from '@/components/chat/TakeawayDialog'
-import { HeaderModelPicker } from '@/components/chat/ModelPicker'
 import { SessionList } from '@/components/chat/SessionList'
 import { SettingsDialog } from '@/components/chat/SettingsDialog'
+import { Sidebar } from '@/components/chat/Sidebar'
 import { ThreadView } from '@/components/chat/ThreadView'
 import { TreeRail } from '@/components/chat/TreeRail'
 import {
@@ -49,9 +49,7 @@ import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
 import {
   DEFAULT_OPENROUTER_MODEL,
   loadProviderConfig,
-  patchProviderConfig,
   providerRequestHeaders,
-  shortModelName,
   type ClientProviderConfig,
 } from '@/lib/provider'
 import { lensQuestion, type Lens } from '@/lib/lenses'
@@ -134,7 +132,7 @@ type PendingRewrite = {
  * external write (a merged summary) remounts it and it re-reads the transcript
  * rather than overwriting it with its own stale copy.
  */
-function ThreadEngine({ threadId, openChildId }: { threadId: string; openChildId: string | null }) {
+function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; openChildId: string | null; frame: LaneFrame }) {
   const { state, replaceMessages, rewriteThread } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
@@ -267,6 +265,7 @@ function ThreadEngine({ threadId, openChildId }: { threadId: string; openChildId
       onRetryError={() => { void chat.reload() }}
       onShowDemo={shell.onShowDemo}
       onAskMessage={shell.onAskMessage}
+      leadOffset={frame.leadOffset}
       header={thread.parentId ? (
         <BranchHeader
           thread={thread}
@@ -274,7 +273,13 @@ function ThreadEngine({ threadId, openChildId }: { threadId: string; openChildId
           onDiscard={() => shell.onDiscard(threadId)}
           onReturn={() => shell.onReturn(threadId)}
           summarized={Object.values(state.threads).some((entry) => entry.messages.some((message) => message.sourceThreadId === threadId))}
+          controls={frame.controls}
         />
+      ) : frame.controls ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate py-2 text-sm text-muted-foreground">Main conversation</span>
+          {frame.controls}
+        </div>
       ) : undefined}
       draft={shell.draftFor(threadId)}
       onDraftChange={(value) => shell.setDraft(threadId, value)}
@@ -348,7 +353,6 @@ function TreeChatShell({
   onNewChat,
   onRestoreDemo,
   onProviderConfigChange,
-  onModelChange,
   drafts,
   onDraftChange,
   scrollPositions,
@@ -358,7 +362,6 @@ function TreeChatShell({
   onNewChat: () => void
   onRestoreDemo: () => void
   onProviderConfigChange: (config: ClientProviderConfig | null) => void
-  onModelChange: (model: string) => void
   drafts: Record<string, string>
   onDraftChange: (threadId: string, value: string) => void
   scrollPositions: Map<string, number>
@@ -763,68 +766,60 @@ function TreeChatShell({
             >
               Demo replies<span className="hidden sm:inline"> · Add key</span>
             </button>
-          ) : (
-            <span
-              data-testid="provider-mode"
-              className="hidden font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground sm:inline"
-            >
-              {`Live · ${status.provider}`}
-            </span>
-          )}
-          <span
-            data-testid="active-model"
-            title={status.model}
-            className="hidden max-w-[7.5rem] truncate font-mono text-[10px] text-muted-foreground sm:block sm:max-w-[10rem] md:hidden"
-          >
-            {shortModelName(status.model)}
-          </span>
-          <div className="hidden md:block">
-            <HeaderModelPicker model={status.model} onCommit={onModelChange} />
-          </div>
-          <SettingsDialog
-            status={status}
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            onConfigChange={onProviderConfigChange}
-            onRestoreDemo={onRestoreDemo}
-          />
-          <button
-            type="button"
-            onClick={onNewChat}
-            aria-label="New chat"
-            title="New chat"
-            data-testid="new-chat"
-            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <SquarePen className="size-3.5" />
-            <span className="hidden sm:inline">New chat</span>
-          </button>
+          ) : null}
+          {/* Phones have no sidebar, so its two actions live up here. */}
+          {narrow ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Settings"
+                title="Settings"
+                data-testid="settings-button"
+                className="flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <Settings className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onNewChat}
+                aria-label="New chat"
+                title="New chat"
+                data-testid="new-chat"
+                className="flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <SquarePen className="size-4" />
+              </button>
+            </>
+          ) : null}
         </div>
       </header>
 
       <ShellContext.Provider value={shell}>
         <div className="flex min-h-0 flex-1">
-          <aside
-            className="hidden min-h-0 w-[252px] shrink-0 flex-col border-r border-border bg-rail md:flex"
-            data-testid="chat-sidebar"
-          >
-            <TreeRail
-              state={state}
-              sessionId={activeSessionId}
-              rootTitle={activeSession.title}
-              onFocus={focus}
+          {narrow ? null : (
+            <Sidebar
+              onNewChat={onNewChat}
+              onOpenSettings={() => setSettingsOpen(true)}
+              tree={
+                <TreeRail
+                  state={state}
+                  sessionId={activeSessionId}
+                  rootTitle={activeSession.title}
+                  onFocus={focus}
+                />
+              }
+              sessions={
+                <SessionList
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  onSelect={onSelectSession}
+                  onRename={renameSession}
+                  onDelete={setPendingDeleteId}
+                />
+              }
             />
-            <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-3">
-              <SessionList
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                onSelect={onSelectSession}
-                onRename={renameSession}
-                onDelete={setPendingDeleteId}
-              />
-            </div>
-
-          </aside>
+          )}
           <div className="relative flex min-w-0 flex-1 flex-col">
             {asking ? (
               <BranchPopover
@@ -875,14 +870,14 @@ function TreeChatShell({
                 path={lanePath}
                 single={narrow}
                 rootTitle={activeSession.title}
-                onReturnTo={focus}
-                renderLane={(thread) => {
+                renderLane={(thread, frame) => {
                   const index = lanePath.findIndex((entry) => entry.id === thread.id)
                   return (
                     <ThreadEngine
                       key={`${thread.id}:${thread.rev}:${epoch}`}
                       threadId={thread.id}
                       openChildId={lanePath[index + 1]?.id ?? null}
+                      frame={frame}
                     />
                   )
                 }}
@@ -891,6 +886,13 @@ function TreeChatShell({
           </div>
         </div>
       </ShellContext.Provider>
+
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onConfigChange={onProviderConfigChange}
+        onRestoreDemo={onRestoreDemo}
+      />
 
       {previewThreadId && state.threads[previewThreadId] ? (
         <TakeawayDialog key={previewThreadId} thread={state.threads[previewThreadId]} state={state} onClose={() => setPreviewThreadId(null)} onConfirm={(content) => {
@@ -1062,10 +1064,6 @@ export function TreeChatApp() {
     setClientConfig(config)
   }, [])
 
-  const onModelChange = useCallback((model: string) => {
-    const next = patchProviderConfig({ model })
-    setClientConfig(next)
-  }, [])
 
   const bumpEpoch = useCallback(() => {
     setEpoch((value) => value + 1)
@@ -1121,7 +1119,6 @@ export function TreeChatApp() {
       onDraftChange={onDraftChange}
       scrollPositions={scrollPositions}
       onProviderConfigChange={onProviderConfigChange}
-      onModelChange={onModelChange}
       onNewChat={onNewChat}
       onRestoreDemo={onRestoreDemo}
     />

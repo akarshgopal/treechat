@@ -101,12 +101,14 @@ test('discarding a branch confirms and Escape only closes the dialog', async ({ 
   await expect.poll(async () => Object.keys((await tree(page)).threads)).toEqual(['thread-root'])
 })
 
-test('a half-typed model id is not saved from the header', async ({ page }, testInfo) => {
-  test.skip(Boolean(testInfo.project.use.isMobile), 'header model picker is desktop-only')
-  await page.getByTestId('header-model').fill('anthro')
-  await page.getByTestId('header-model').press('Tab')
-  await expect(page.getByTestId('header-model')).toHaveValue('openai/gpt-4.1-mini')
-  expect(await page.evaluate(() => localStorage.getItem('treechat:provider:v1'))).toBeNull()
+test('Settings refuses a half-typed model id', async ({ page }) => {
+  await page.getByTestId('settings-button').click()
+  await page.getByTestId('settings-model').fill('anthro')
+  await page.getByTestId('settings-model').press('Tab')
+  await expect(page.getByTestId('settings-model-error')).toBeVisible()
+  await expect(page.getByTestId('settings-save')).toBeDisabled()
+  await page.getByTestId('settings-model').fill('anthropic/claude-sonnet-4')
+  await expect(page.getByTestId('settings-save')).toBeEnabled()
 })
 
 test('New chat reuses a blank chat instead of stacking empty ones', async ({ page }, testInfo) => {

@@ -74,7 +74,7 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
 
   await expect(page.getByTestId('back-to-spine')).toBeVisible()
   await expect(page.getByTestId('reply-destination')).toHaveCount(0)
-  await expect(page.getByTestId('back-to-spine')).toContainText('Highlight text')
+  await expect(page.getByTestId('branch-anchor')).toContainText('Highlight text')
   await page.getByRole('textbox', { name: `Message to ${question}`, exact: true }).fill('A draft worth keeping')
   await page.screenshot({ path: testInfo.outputPath('focused-exploration.png') })
   await page.getByTestId('drop-summary').click()

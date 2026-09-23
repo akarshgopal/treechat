@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_MODEL_OPTIONS,
@@ -12,60 +11,37 @@ const fieldClass =
 type ModelPickerProps = {
   value: string
   onChange: (value: string) => void
-  onCommit?: (value: string) => void
   id: string
   name?: string
-  compact?: boolean
-  testId?: string
-  /** Restored when the field is left holding something that is not a model id. */
-  fallback?: string
   invalid?: boolean
-}
-
-function isPreset(value: string) {
-  return OPENROUTER_MODEL_OPTIONS.some((option) => option.id === value)
 }
 
 export function ModelPicker({
   value,
   onChange,
-  onCommit,
   id,
   name,
-  compact,
-  testId,
-  fallback,
   invalid,
 }: ModelPickerProps) {
   const listId = `${id}-list`
 
+  // Tidy on blur; an invalid id stays put so the form can flag it.
   const commit = (raw: string) => {
     const next = raw.trim() || DEFAULT_OPENROUTER_MODEL
-    if (!isModelId(next)) {
-      if (fallback !== undefined) onChange(fallback)
-      return
-    }
-    onChange(next)
-    onCommit?.(next)
+    if (isModelId(next)) onChange(next)
   }
 
   return (
-    <div className={cn('grid', compact ? 'gap-0' : 'gap-1.5')}>
-      {!compact ? (
-        <label htmlFor={id} className="text-[12px] font-medium text-foreground">
-          Model
-        </label>
-      ) : null}
+    <div className="grid gap-1.5">
+      <label htmlFor={id} className="text-[12px] font-medium text-foreground">
+        Model
+      </label>
       <input
         id={id}
         name={name}
         list={listId}
         value={value}
-        onChange={(event) => {
-          const next = event.target.value
-          onChange(next)
-          if (onCommit && isPreset(next.trim())) onCommit(next.trim())
-        }}
+        onChange={(event) => onChange(event.target.value)}
         onBlur={() => commit(value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
@@ -80,12 +56,8 @@ export function ModelPicker({
         aria-label="OpenRouter model"
         aria-invalid={invalid || undefined}
         title={value}
-        data-testid={testId ?? (compact ? 'header-model' : 'settings-model')}
-        className={cn(
-          fieldClass,
-          compact &&
-            'h-7 w-[9.5rem] px-2 font-mono text-[10.5px] text-muted-foreground shadow-none sm:w-[12.5rem]',
-        )}
+        data-testid="settings-model"
+        className={fieldClass}
       />
       <datalist id={listId}>
         {OPENROUTER_MODEL_OPTIONS.map((option) => (
@@ -93,34 +65,6 @@ export function ModelPicker({
         ))}
       </datalist>
     </div>
-  )
-}
-
-type HeaderModelPickerProps = {
-  model: string
-  onCommit: (model: string) => void
-}
-
-export function HeaderModelPicker({ model, onCommit }: HeaderModelPickerProps) {
-  const [draft, setDraft] = useState(model)
-  const [syncedModel, setSyncedModel] = useState(model)
-  if (model !== syncedModel) {
-    setSyncedModel(model)
-    setDraft(model)
-  }
-
-  return (
-    <ModelPicker
-      compact
-      id="header-model"
-      fallback={model}
-      value={draft}
-      onChange={setDraft}
-      onCommit={(next) => {
-        if (next === model) return
-        onCommit(next)
-      }}
-    />
   )
 }
 

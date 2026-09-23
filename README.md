@@ -20,9 +20,9 @@ pnpm preview    # serve the build (Vite plugin still handles /api/chat for mock 
 
 ## Bring your own key (OpenRouter)
 
-1. Open **Settings** (gear in the header).
+1. Open **Settings** (bottom of the sidebar; the gear in the header on phones).
 2. Paste an [OpenRouter](https://openrouter.ai/) API key and optionally a model (default `openai/gpt-4.1-mini`).
-3. **Save**. The header switches from `Demo replies · Add key` to `Live · openrouter`.
+3. **Save**. The header's `Demo replies · Add key` notice disappears.
 4. **Remove key** forgets the key in this browser; the model and generation params stay saved.
 
 Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**: anyone with access to this browser profile can read it, and every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`). TreeChat's GitHub Pages host never sees it.
@@ -69,7 +69,7 @@ No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 
 ## How branching works
 
-1. **Downward is time, rightward is depth.** Every thread on the open path gets a full-height lane with its own composer. A line in the gutter ties each branch to the passage it grew from and follows both as they scroll. When lanes no longer fit, ancestors fold into narrow strips on the left; click one to return to that level. Phones show one lane at a time.
+1. **Downward is time, rightward is depth.** Every thread on the open path gets a full-height lane with its own composer. A branch starts level with the passage it grew from (sliding up only as far as it needs to stay fully visible), and a line in the gutter ties the two together as they scroll. Drag a gutter (or focus it and use ←/→) to resize the lane to its right; double-click resets it. Lanes fold into narrow strips with the fold button in their header, and ancestors fold automatically when they no longer fit; click a strip to expand it. Phones show one lane at a time.
 2. **Branch in one gesture.** Select a passage and a bar appears at the selection: **Explain · Example · Source? · Challenge · Simpler · Deeper** start a branch in one tap. **Ask…**, **⌘⇧B / Ctrl+Shift+B**, or simply typing opens a question box right there; the passage stays highlighted while you write. Selections snap to whole words. The branch icon below a message asks about the whole message.
 3. The new branch opens in the lane to the right and its first reply starts immediately. Esc or Cancel on an unsent question leaves no branch behind.
 4. **Back** (the arrow in a branch header) closes that lane and highlights the source. Clicking an underlined passage or its "↳" link opens or closes its branch. Reading positions and drafts are kept per thread while you move around and switch chats in the current app visit; drafts are not saved across reloads.
@@ -77,7 +77,8 @@ No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 6. The tree rail names branches from their first question. The trash button in a branch header asks for confirmation before removing a subtree. A ✓ in the tree marks branches whose takeaway was brought back.
 7. **Esc** closes a question box or dialog first. Otherwise it stops an in-flight reply, dismisses a selection, blurs a dirty branch composer, or closes the rightmost lane, in that order.
 8. **Edit** and **Retry** rewrite a conversation from that point. If that would remove more than the reply being regenerated — later turns or branches anchored below — TreeChat asks first.
-9. Chats persist in `localStorage` (`treechat:v3`) as a session library. Older `treechat:v2` trees and `treechat:v1` spines are migrated on load. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the header also lists the current chat's branches. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
+9. The sidebar holds **New chat**, the tree, your chats, and **Settings**. Collapse it to an icon strip with its toggle or **Ctrl/⌘+\\**, and drag its right edge to resize it; both are remembered in this browser.
+10. Chats persist in `localStorage` (`treechat:v3`) as a session library. Older `treechat:v2` trees and `treechat:v1` spines are migrated on load. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the header also lists the current chat's branches. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
 
 ## Browser verification
 

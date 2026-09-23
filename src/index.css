@@ -270,6 +270,8 @@ button:focus-visible, summary:focus-visible, [role="button"]:focus-visible {
   stroke-linecap: round;
 }
 .lane-connector-dot { fill: var(--branch); }
+.lane-lead { transition: height 180ms cubic-bezier(0.22, 0.9, 0.24, 1); }
+body.col-resizing { cursor: col-resize; user-select: none; }
 .lane-strip-label { writing-mode: vertical-rl; transform: rotate(180deg); max-height: 100%; }
 /* The passage has scrolled out of its lane: the line points at the edge. */
 .lane-connector-offscreen { opacity: 0.55; }

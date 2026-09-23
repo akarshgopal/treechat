@@ -15,6 +15,11 @@ test('lens questions clip long quotes so branch titles stay readable', () => {
   assert.ok(quoted.endsWith('…'))
 })
 
+test('lens questions do not double quote marks already on the passage', () => {
+  assert.equal(lensQuestion(LENSES[0]!, '“knowledge cutoff”'), 'Explain “knowledge cutoff”')
+  assert.equal(lensQuestion(LENSES[0]!, '"Expand" gives room'), 'Explain “Expand" gives room”')
+})
+
 test('snapOffsetsToWords widens a selection that cuts words', () => {
   const text = 'a GLM 5.x series could exist without me'
   const start = text.indexOf('ries')

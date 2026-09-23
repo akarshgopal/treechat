@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +23,8 @@ type BranchHeaderProps = {
   onHide?: () => void
   onReturn?: () => void
   summarized?: boolean
+  /** Lane controls (collapse), placed at the end of the header. */
+  controls?: ReactNode
 }
 
 export function BranchHeader({
@@ -34,6 +36,7 @@ export function BranchHeader({
   onHide,
   onReturn,
   summarized,
+  controls,
 }: BranchHeaderProps) {
   const [confirm, setConfirm] = useState(false)
   const count = thread.messages.length
@@ -41,11 +44,11 @@ export function BranchHeader({
 
   return (
     <>
-      <div className="flex min-w-0 items-center gap-1.5" data-lane-anchor>
+      <div className="flex min-w-0 items-center gap-1.5">
         {onReturn ? (
           <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 text-left text-sm text-muted-foreground hover:text-foreground" onClick={onReturn} data-testid="back-to-spine" aria-label="Back to passage" title={`Back to passage: ${quote}`}>
             <ArrowLeft size={16} className="shrink-0" />
-            <span className="truncate">{quote}</span>
+            <span className="truncate">{threadTitle(thread)}</span>
           </button>
         ) : (
           <span className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground" title={threadTitle(thread)}>
@@ -67,6 +70,7 @@ export function BranchHeader({
         <button type="button" className="branch-icon-button hover:text-destructive" onClick={() => setConfirm(true)} data-testid="discard-branch" aria-label="Discard branch" title="Discard branch">
           <Trash2 size={15} />
         </button>
+        {controls}
         {onHide ? <button type="button" className="branch-icon-button" onClick={onHide} data-testid="hide-branch" aria-label="Hide this branch" title="Hide branch"><X size={15} /></button> : null}
       </div>
 

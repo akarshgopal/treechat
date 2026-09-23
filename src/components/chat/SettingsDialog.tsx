@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react'
-import { Settings } from 'lucide-react'
 import { ModelPicker, ModelPresetChips } from '@/components/chat/ModelPicker'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,14 +17,11 @@ import {
   saveProviderConfig,
   type ClientProviderConfig,
 } from '@/lib/provider'
-import { cn } from '@/lib/utils'
-import type { ProviderStatus } from '@/types'
 
 const fieldClass =
   'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
 type SettingsDialogProps = {
-  status: ProviderStatus
   open: boolean
   onOpenChange: (open: boolean) => void
   onConfigChange: (config: ClientProviderConfig | null) => void
@@ -33,7 +29,6 @@ type SettingsDialogProps = {
 }
 
 export function SettingsDialog({
-  status,
   open,
   onOpenChange,
   onConfigChange,
@@ -41,21 +36,10 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <button
-        type="button"
-        onClick={() => onOpenChange(true)}
-        aria-label="Settings"
-        title="Settings"
-        data-testid="settings-button"
-        className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-      >
-        <Settings className="size-3.5" />
-      </button>
       <DialogContent className="max-h-[90svh] max-w-md gap-5 overflow-y-auto sm:rounded-lg" data-testid="settings-dialog">
         {/* Content unmounts while closed, so each open re-reads storage: the
             header model picker or another tab may have changed it. */}
         <SettingsBody
-          status={status}
           onConfigChange={onConfigChange}
           onRestoreDemo={() => {
             onRestoreDemo()
@@ -68,10 +52,9 @@ export function SettingsDialog({
 }
 
 function SettingsBody({
-  status,
   onConfigChange,
   onRestoreDemo,
-}: Pick<SettingsDialogProps, 'status' | 'onConfigChange' | 'onRestoreDemo'>) {
+}: Pick<SettingsDialogProps, 'onConfigChange' | 'onRestoreDemo'>) {
   const [initial] = useState(() => loadProviderConfig())
   const [apiKey, setApiKey] = useState(initial?.apiKey ?? '')
   const [model, setModel] = useState(initial?.model || DEFAULT_OPENROUTER_MODEL)
@@ -116,9 +99,6 @@ function SettingsBody({
     onConfigChange(next)
   }
 
-  const modeLabel =
-    status.mode === 'mock' ? 'mock' : status.provider === 'openrouter' ? 'openrouter' : status.provider
-
   return (
     <>
         <DialogHeader>
@@ -129,20 +109,6 @@ function SettingsBody({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={persist} className="grid gap-4" autoComplete="off">
-          <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 px-3 py-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-              Mode
-            </span>
-            <span
-              data-testid="settings-mode"
-              className={cn(
-                'font-mono text-[11px] font-medium',
-                status.mode === 'mock' ? 'text-muted-foreground' : 'text-branch-bright',
-              )}
-            >
-              {modeLabel}
-            </span>
-          </div>
           <label className="grid gap-1.5">
             <span className="text-[12px] font-medium text-foreground">
               OpenRouter API key
