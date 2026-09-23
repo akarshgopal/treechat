@@ -2,6 +2,26 @@ export type Role = 'user' | 'assistant'
 
 export type MessageKind = 'message' | 'drop-summary'
 
+/**
+ * A source backing part of a message. Web search and local documents share
+ * this shape so they render, persist, and open as source lanes the same way.
+ * Message text refers to a citation by its marker, e.g. `[1]`.
+ */
+export type Citation = {
+  /** The marker used in the message text: `"1"` for `[1]`. Unique per message. */
+  id: string
+  kind: 'web' | 'document'
+  title: string
+  /** Web sources. */
+  url?: string
+  /** Local documents: the stored document this came from. */
+  documentId?: string
+  /** Where inside the source, e.g. "p. 4" or a heading. */
+  locator?: string
+  /** The cited text, when the provider returns it. */
+  snippet?: string
+}
+
 export type ChatMessage = {
   id: string
   role: Role
@@ -12,6 +32,8 @@ export type ChatMessage = {
   quote?: string
   /** Link a takeaway to the exploration that produced it. */
   sourceThreadId?: string
+  /** Sources behind this message, in marker order. */
+  citations?: Citation[]
 }
 
 /** Where a thread is pinned inside its parent's message. */

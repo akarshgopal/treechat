@@ -1,5 +1,6 @@
 import type { UIMessage } from '@tanstack/ai-react'
 import type { ChatMessage } from '@/types'
+import { parseCitations, sameCitations } from './citations.ts'
 
 export function textOf(message: UIMessage | undefined): string {
   if (!message) return ''
@@ -16,8 +17,10 @@ export function toUIMessages(messages: ChatMessage[]): UIMessage[] {
     createdAt: new Date(message.createdAt),
     metadata:
       message.kind === 'drop-summary'
-        ? { kind: 'drop-summary', quote: message.quote, sourceThreadId: message.sourceThreadId }
-        : undefined,
+        ? { kind: 'drop-summary', quote: message.quote, sourceThreadId: message.sourceThreadId, citations: message.citations }
+        : message.citations
+          ? { citations: message.citations }
+          : undefined,
   }))
 }
 
@@ -26,6 +29,7 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
     if (message.role !== 'user' && message.role !== 'assistant') return []
     const kind =
       message.metadata?.kind === 'drop-summary' ? 'drop-summary' : 'message'
+    const citations = parseCitations(message.metadata?.citations)
     return [
       {
         id: message.id,
@@ -41,6 +45,7 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
           typeof message.metadata?.sourceThreadId === 'string'
             ? message.metadata.sourceThreadId
             : undefined,
+        ...(citations ? { citations } : {}),
       } satisfies ChatMessage,
     ]
   })
@@ -54,7 +59,8 @@ export function sameTranscript(a: ChatMessage[], b: ChatMessage[]) {
       message.id === other.id &&
       message.content === other.content &&
       message.role === other.role &&
-      (message.kind ?? 'message') === (other.kind ?? 'message')
+      (message.kind ?? 'message') === (other.kind ?? 'message') &&
+      sameCitations(message.citations, other.citations)
     )
   })
 }

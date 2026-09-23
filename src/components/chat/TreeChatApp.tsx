@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { chatConnection } from '@/lib/chat-connection'
+import { takeRunCitations } from '@/lib/citations'
 import { createId } from '@/lib/ids'
 import {
   doomedIdsForAnchors,
@@ -165,6 +166,21 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
     if (next.length === 0 && initial.length > 0) return
     if (!sameTranscript(next, initial)) replaceMessages(threadId, next)
   }, [chat.messages, initial, replaceMessages, threadId])
+
+  // When a reply finishes, attach any sources its transport recorded.
+  const wasLoading = useRef(false)
+  const { setMessages } = chat
+  useEffect(() => {
+    const finished = wasLoading.current && !chat.isLoading
+    wasLoading.current = chat.isLoading
+    if (!finished) return
+    const citations = takeRunCitations(threadId)
+    const last = chat.messages.at(-1)
+    if (!citations || last?.role !== 'assistant') return
+    setMessages(chat.messages.map((message) =>
+      message === last ? { ...message, metadata: { ...(message.metadata ?? {}), citations } } : message,
+    ))
+  }, [chat.isLoading, chat.messages, setMessages, threadId])
 
   useEffect(() => {
     shell.registerEngine(threadId, {
