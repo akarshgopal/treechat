@@ -26,8 +26,8 @@ type ComposerProps = {
   disabled?: boolean
   onFocus?: () => void
   className?: string
+  /** Names the thread this composer posts to, for assistive tech. */
   destination?: string
-  showDestination?: boolean
   testId?: string
 }
 
@@ -46,7 +46,6 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
       onFocus,
       className,
       destination,
-      showDestination = false,
       testId,
     },
     ref,
@@ -79,7 +78,6 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
 
     return (
       <form onSubmit={onSubmit} className={cn(className)}>
-        {destination && showDestination ? <p className="mb-2 flex min-w-0 items-center gap-2 text-xs text-muted-foreground" data-testid="reply-destination"><span className={`size-1.5 shrink-0 rounded-full ${accent ? 'bg-branch' : 'bg-muted-foreground'}`} /><span className="truncate" title={destination}>Posting to {destination}</span></p> : null}
         <div className="flex items-end gap-[11px]">
           <div
             className={cn(

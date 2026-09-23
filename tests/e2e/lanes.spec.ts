@@ -1,0 +1,110 @@
+import { expect, test, type Page } from '@playwright/test'
+import type { TreeState } from '../../src/types'
+
+async function tree(page: Page) {
+  return page.evaluate(() => {
+    const library = JSON.parse(localStorage.getItem('treechat:v3')!)
+    return library.sessions.find((session: { id: string }) => session.id === library.activeSessionId).treeState as TreeState
+  })
+}
+
+/** Select `length` characters of a message's first text node from `from`. */
+async function select(page: Page, messageId: string, from: number, length: number) {
+  const message = page.locator(`[data-message-id="${messageId}"]`)
+  await message.scrollIntoViewIfNeeded()
+  await message.evaluate((element, [from, length]) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    const node = walker.nextNode()!
+    const range = document.createRange()
+    range.setStart(node, from)
+    range.setEnd(node, from + length)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+  }, [from, length])
+  await expect(page.getByTestId('branch-popover')).toHaveAttribute('data-mode', 'lenses')
+}
+
+test.beforeEach(async ({ page }) => {
+  // Static-site mock only: never reach a real provider from UI tests.
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/status') return route.fulfill({ status: 404, body: 'Static mock' })
+    if (url.hostname !== '127.0.0.1') return route.abort()
+    return route.continue()
+  })
+  await page.goto('/')
+  await page.getByTestId('show-demo').click()
+  await expect(page.locator('[data-message-id="msg-root-4"]')).toBeAttached()
+})
+
+test('a lens grows a branch from whole words and opens it beside its source', async ({ page }, testInfo) => {
+  // "ghlight text in any me" — both ends cut words.
+  await select(page, 'msg-root-4', 2, 22)
+  await page.locator('[data-lens="explain"]').click()
+
+  const branch = page.getByTestId('branch-lane')
+  await expect(branch).toBeVisible()
+  await expect(branch.locator('article').first()).toContainText('Explain “Highlight text in any message”')
+  await expect(branch.getByTestId('reply-progress')).toHaveCount(0, { timeout: 10_000 })
+  const created = Object.values((await tree(page)).threads).find((thread) => thread.anchor?.quote === 'Highlight text in any message')
+  expect(created).toBeDefined()
+
+  if (testInfo.project.use.isMobile) {
+    // One lane at a time on phones; the back arrow returns to the passage.
+    await expect(page.getByTestId('main-lane')).toHaveCount(0)
+    await page.getByTestId('back-to-spine').click()
+    await expect(page.getByTestId('branch-lane')).toHaveCount(0)
+    await expect(page.getByTestId('main-lane')).toBeVisible()
+    return
+  }
+  await expect(page.getByTestId('main-lane')).toBeVisible()
+  await expect(page.locator(`[data-connector-for="${created!.id}"]`)).toBeAttached()
+  // The branch has its own composer; the main one still posts to the main thread.
+  await expect(branch.getByRole('textbox', { name: /^Message to Explain/ })).toBeFocused()
+  await expect(page.getByTestId('main-lane').getByRole('textbox', { name: 'Message to Main conversation' })).toBeVisible()
+
+  // Clicking the open branch's link closes its lane again.
+  await page.getByRole('button', { name: /^Close branch: Explain/ }).click()
+  await expect(page.getByTestId('branch-lane')).toHaveCount(0)
+})
+
+test('typing with a passage selected asks about it in place', async ({ page }) => {
+  await select(page, 'msg-root-4', 0, 45)
+  await page.keyboard.type('W')
+  const popover = page.getByTestId('branch-popover')
+  await expect(popover).toHaveAttribute('data-mode', 'ask')
+  await expect(page.getByLabel('Your branch question')).toBeFocused()
+  await expect(page.getByLabel('Your branch question')).toHaveValue('W')
+  await page.keyboard.type('hy does this matter?')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('branch-lane').locator('article').first()).toContainText('Why does this matter?')
+  await expect(page.getByTestId('branch-popover')).toHaveCount(0)
+})
+
+test('Escape cancels an unsent question without creating a branch', async ({ page }) => {
+  const before = Object.keys((await tree(page)).threads)
+  await select(page, 'msg-root-4', 0, 20)
+  await page.getByTestId('branch-chip').click()
+  await page.getByLabel('Your branch question').fill('Never mind')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('branch-popover')).toHaveCount(0)
+  expect(Object.keys((await tree(page)).threads)).toEqual(before)
+})
+
+test('ancestors that no longer fit fold into strips and lead back', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'phones show one lane at a time')
+  await page.locator('button[aria-label^="Open branch"]').first().click()
+  const first = page.getByTestId('branch-lane')
+  await expect(first).toHaveCount(1)
+  const nested = first.locator('button[aria-label^="Open branch"]').first()
+  await nested.click()
+  await expect(page.getByTestId('branch-lane')).toHaveCount(2)
+  const strip = page.getByTestId('lane-strip')
+  await expect(strip).toHaveCount(1)
+  await expect(page.getByTestId('main-lane')).toHaveCount(0)
+  await strip.click()
+  await expect(page.getByTestId('main-lane')).toBeVisible()
+  await expect(page.getByTestId('branch-lane')).toHaveCount(0)
+})

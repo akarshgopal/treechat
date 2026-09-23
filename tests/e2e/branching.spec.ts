@@ -72,9 +72,6 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
   expect(branch.messages.some((message) => message.role === 'assistant' && message.content.length > 0)).toBe(true)
   expect(branched.threads[branched.rootId].messages).toEqual(before.threads[before.rootId].messages)
 
-  if (!testInfo.project.use.isMobile) {
-    await page.getByTestId('open-as-conversation').click()
-  }
   await expect(page.getByTestId('back-to-spine')).toBeVisible()
   await expect(page.getByTestId('reply-destination')).toHaveCount(0)
   await expect(page.getByTestId('back-to-spine')).toContainText('Highlight text')
@@ -126,7 +123,6 @@ test('message action supports touch and drafts stay with their chat', async ({ p
 test('failed takeaways can be cancelled or written manually and remain linked after reload', async ({ page }) => {
   await restoreDemo(page)
   await page.locator('button[aria-label^="Open branch"]').first().click()
-  await page.getByTestId('open-as-conversation').click()
   await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-only-never-sent', model: 'test-model' })))
   await page.route('https://openrouter.ai/**', (route) => route.fulfill({
     status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Provider temporarily unavailable' } }),

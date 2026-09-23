@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('a settings-key branch sends its question, quote and ancestor context and renders the reply', async ({ page }, testInfo) => {
+test('a settings-key branch sends its question, quote and ancestor context and renders the reply', async ({ page }) => {
   const requests: Array<{ session_id?: string; messages: Array<{ role: string; content: string }> }> = []
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
@@ -36,7 +36,6 @@ test('a settings-key branch sends its question, quote and ancestor context and r
   expect(requests[1].session_id).toBe(requests[0].session_id)
   await expect(page.getByText('The branch request reached the provider.', { exact: true })).toBeVisible()
   await expect(page.getByTestId('composer-stop')).toHaveCount(0)
-  if (!testInfo.project.use.isMobile) await page.getByTestId('open-as-conversation').click()
   const response = page.locator('[data-selectable="true"]').filter({ hasText: 'The branch request reached the provider.' })
   const responseId = await response.getAttribute('data-message-id')
   await page.locator(`[data-ask-message="${responseId}"]`).click()

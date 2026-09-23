@@ -88,11 +88,9 @@ test('the branch shortcut ignores a passage that was deselected', async ({ page 
   await expect(page.getByTestId('branch-question')).toHaveCount(0)
 })
 
-test('discarding a branch confirms and Escape only closes the dialog', async ({ page }, testInfo) => {
-  test.skip(Boolean(testInfo.project.use.isMobile), 'focused branch view is covered on desktop')
+test('discarding a branch confirms and Escape only closes the dialog', async ({ page }) => {
   await restoreDemo(page)
   await page.locator('button[aria-label^="Open branch"]').first().click()
-  await page.getByTestId('open-as-conversation').click()
   await page.getByTestId('discard-branch').click()
   await expect(page.getByRole('alertdialog')).toBeVisible()
   await page.keyboard.press('Escape')

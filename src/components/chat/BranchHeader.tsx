@@ -41,7 +41,7 @@ export function BranchHeader({
 
   return (
     <>
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1.5" data-lane-anchor>
         {onReturn ? (
           <button type="button" className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 text-left text-sm text-muted-foreground hover:text-foreground" onClick={onReturn} data-testid="back-to-spine" aria-label="Back to passage" title={`Back to passage: ${quote}`}>
             <ArrowLeft size={16} className="shrink-0" />

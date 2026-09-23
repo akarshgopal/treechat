@@ -6,19 +6,17 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
 import { ChevronDown, SquarePen } from 'lucide-react'
-import { BranchCard } from '@/components/chat/BranchCard'
-import { BranchChip } from '@/components/chat/BranchChip'
-import { BranchQuestion } from '@/components/chat/BranchQuestion'
 import { BranchHeader } from '@/components/chat/BranchHeader'
+import { BranchPopover } from '@/components/chat/BranchPopover'
+import { Lanes } from '@/components/chat/Lanes'
 import { TakeawayDialog } from '@/components/chat/TakeawayDialog'
 import { HeaderModelPicker } from '@/components/chat/ModelPicker'
 import { SessionList } from '@/components/chat/SessionList'
 import { SettingsDialog } from '@/components/chat/SettingsDialog'
-import { MAX_INLINE_DEPTH, ThreadView } from '@/components/chat/ThreadView'
+import { ThreadView } from '@/components/chat/ThreadView'
 import { TreeRail } from '@/components/chat/TreeRail'
 import {
   AlertDialog,
@@ -56,20 +54,18 @@ import {
   shortModelName,
   type ClientProviderConfig,
 } from '@/lib/provider'
+import { lensQuestion, type Lens } from '@/lib/lenses'
 import {
   offsetsInRoot,
   selectableMessageFromRange,
   selectionClientRect,
   plainTextSkippingIgnore,
+  snapRangeToWords,
 } from '@/lib/selection'
-import {
-  branchForwardedProps,
-  childThreads,
-  depthFrom,
-} from '@/lib/tree'
+import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { isBranchShortcut } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
-import type { ChatMessage, ChatSession, ProviderStatus, Thread } from '@/types'
+import type { ChatMessage, ChatSession, ProviderStatus } from '@/types'
 
 const idleStatus: ProviderStatus = {
   mode: 'mock',
@@ -86,6 +82,8 @@ type ChipState = {
   top: number
   left: number
   bottom: number
+  /** The passage in the DOM, snapped to whole words. */
+  range: Range | null
 }
 
 /**
@@ -107,9 +105,7 @@ type ShellValue = {
   onFocus: (threadId: string) => void
   onMerge: (threadId: string) => void
   onDiscard: (threadId: string) => void
-  merging: string | null
   takeInitialQuestion: (threadId: string) => string | undefined
-  renderQuestion: (threadId: string, messageId: string) => ReactNode
   onAskMessage: (threadId: string, messageId: string) => void
   onReturn: (threadId: string, takeawayId?: string) => void
   scrollPositions: Map<string, number>
@@ -138,7 +134,7 @@ type PendingRewrite = {
  * external write (a merged summary) remounts it and it re-reads the transcript
  * rather than overwriting it with its own stale copy.
  */
-function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) {
+function ThreadEngine({ threadId, openChildId }: { threadId: string; openChildId: string | null }) {
   const { state, replaceMessages, rewriteThread } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
@@ -264,16 +260,14 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
     <ThreadView
       thread={thread}
       state={state}
-      depth={depth}
-      framed={depth === 0}
+      openChildId={openChildId}
       scrollPositions={shell.scrollPositions}
       scrollKey={`${shell.sessionId}:${threadId}`}
       error={chat.error?.message}
       onRetryError={() => { void chat.reload() }}
       onShowDemo={shell.onShowDemo}
       onAskMessage={shell.onAskMessage}
-      renderQuestion={shell.renderQuestion}
-      header={depth === 0 && thread.parentId ? (
+      header={thread.parentId ? (
         <BranchHeader
           thread={thread}
           onMerge={() => shell.onMerge(threadId)}
@@ -307,9 +301,6 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
           ? 'Ask a follow-up…'
           : undefined
       }
-      renderChild={(childId, childDepth) => (
-        <NestedBranch threadId={childId} depth={childDepth} />
-      )}
     />
     {/* Mounted only while pending: reopening a closing Radix dialog can
         strand its overlay on top of the new one. */}
@@ -351,31 +342,6 @@ function rewriteLoss(messages: number, branches: number) {
   return `This removes ${parts.join(' and ')} in this conversation. This cannot be undone.`
 }
 
-/** An expanded child: the branch card, with that thread's own engine inside. */
-function NestedBranch({ threadId, depth }: { threadId: string; depth: number }) {
-  const { state } = useTree()
-  const shell = useShell()
-  const thread = state.threads[threadId]
-  if (!thread) return null
-  return (
-    <BranchCard
-      thread={thread}
-      summarized={Object.values(state.threads).some((entry) => entry.messages.some((message) => message.sourceThreadId === threadId))}
-      merging={shell.merging === threadId}
-      onMerge={() => shell.onMerge(threadId)}
-      onDiscard={() => shell.onDiscard(threadId)}
-      onFocus={() => shell.onFocus(threadId)}
-      onHide={
-        thread.parentId
-          ? () => shell.onOpenChild(thread.parentId!, null)
-          : undefined
-      }
-    >
-      <ThreadEngine key={`${thread.id}:${thread.rev}`} threadId={threadId} depth={depth} />
-    </BranchCard>
-  )
-}
-
 function TreeChatShell({
   epoch,
   status,
@@ -415,7 +381,8 @@ function TreeChatShell({
   } = useTree()
 
   const [chip, setChip] = useState<ChipState | null>(null)
-  const [pendingBranch, setPendingBranch] = useState<ChipState | null>(null)
+  /** A question being written about a passage, in the popover beside it. */
+  const [asking, setAsking] = useState<{ passage: ChipState; initial: string; returnFocus?: HTMLElement | null } | null>(null)
   const [previewThreadId, setPreviewThreadId] = useState<string | null>(null)
   const [returnTarget, setReturnTarget] = useState<{ threadId: string; messageId: string; branchId: string; takeawayId?: string } | null>(null)
   const [lastTakeaway, setLastTakeaway] = useState<{ threadId: string; messageId: string } | null>(null)
@@ -492,7 +459,7 @@ function TreeChatShell({
       return
     }
     holdChipRef.current = false
-    const range = selection.getRangeAt(0)
+    const range = snapRangeToWords(selection.getRangeAt(0))
     const el = selectableMessageFromRange(range)
     if (!el) {
       clear()
@@ -521,6 +488,7 @@ function TreeChatShell({
       top: rect.top,
       left: rect.left,
       bottom: rect.bottom,
+      range,
     }
     lastRangeRef.current = next
     setChip(next)
@@ -533,55 +501,57 @@ function TreeChatShell({
     [syncChipFromSelection],
   )
 
-  const branchFromChip = useCallback(
-    (range: ChipState) => {
-      setPendingBranch(range)
-      setChip(null)
-      lastRangeRef.current = null
-      holdChipRef.current = false
-      window.getSelection()?.removeAllRanges()
-    },
-    [],
-  )
+  const clearSelection = useCallback(() => {
+    setChip(null)
+    lastRangeRef.current = null
+    holdChipRef.current = false
+    window.getSelection()?.removeAllRanges()
+  }, [])
+
+  /** Open the question popover on a passage, optionally with what was typed. */
+  const openAsk = useCallback((passage: ChipState, initial = '', returnFocus?: HTMLElement | null) => {
+    setAsking({ passage, initial, returnFocus })
+    setChip(null)
+    lastRangeRef.current = null
+    holdChipRef.current = false
+  }, [])
+
+  /** Grow the branch and give it the frame to the right of its source. */
+  const startBranch = useCallback((passage: ChipState, question: string) => {
+    const id = createThread(passage.threadId, {
+      messageId: passage.messageId,
+      start: passage.start,
+      end: passage.end,
+      quote: passage.quote,
+    })
+    initialQuestionsRef.current[id] = question
+    focusNextRef.current = id
+    setAsking(null)
+    clearSelection()
+    focus(id)
+  }, [clearSelection, createThread, focus])
+
+  const onLens = useCallback((passage: ChipState, lens: Lens) => {
+    startBranch(passage, lensQuestion(lens, passage.quote))
+  }, [startBranch])
 
   const onAskMessage = useCallback((threadId: string, messageId: string) => {
     const element = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"][data-thread-id="${CSS.escape(threadId)}"]`)
     if (!element) return
     const quote = plainTextSkippingIgnore(element)
     if (!quote.trim()) return
-    branchFromChip({ threadId, messageId, quote, start: 0, end: quote.length, top: 0, left: 0, bottom: 0 })
-  }, [branchFromChip])
-
-  const renderQuestion = useCallback((threadId: string, messageId: string) => {
-    const range = pendingBranch
-    if (!range || range.threadId !== threadId || range.messageId !== messageId) return null
-    return <BranchQuestion key={`${messageId}:${range.start}:${range.end}`} quote={range.quote} onCancel={() => {
-      setPendingBranch(null)
-      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-ask-message="${CSS.escape(messageId)}"]`)?.focus({ preventScroll: true }))
-    }} onSend={(question) => {
-      const id = createThread(threadId, { messageId, start: range.start, end: range.end, quote: range.quote })
-      initialQuestionsRef.current[id] = question
-      setPendingBranch(null)
-      focusNextRef.current = id
-      if (window.matchMedia('(max-width: 767px)').matches || depthFrom(state, state.activeThreadId, threadId) >= MAX_INLINE_DEPTH) focus(id)
-      else {
-        // The new branch opens below its source; bring it into view so the
-        // question and the incoming reply are not left under the fold.
-        const reveal = (attempt: number) => {
-          const card = document.querySelector<HTMLElement>(`[data-branch-id="${CSS.escape(id)}"]`)
-          if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-          else if (attempt < 10) requestAnimationFrame(() => reveal(attempt + 1))
-        }
-        requestAnimationFrame(() => reveal(0))
-      }
-    }} />
-  }, [pendingBranch, createThread, focus, state])
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const rect = selectionClientRect(range) ?? { top: 0, left: window.innerWidth / 2, bottom: 0 }
+    const button = document.querySelector<HTMLElement>(`[data-ask-message="${CSS.escape(messageId)}"]`)
+    openAsk({ threadId, messageId, quote, start: 0, end: quote.length, ...rect, range }, '', button)
+  }, [openAsk])
 
   /** Close the branch and land on its source — or, after a takeaway, on the takeaway. */
   const returnToPassage = useCallback((threadId: string, takeawayId?: string) => {
     const thread = state.threads[threadId]
     if (!thread?.parentId || !thread.anchor) return
-    setPendingBranch(null)
+    setAsking(null)
     expand(thread.parentId, null)
     focus(thread.parentId)
     setReturnTarget({ threadId: thread.parentId, messageId: thread.anchor.messageId, branchId: threadId, takeawayId })
@@ -615,11 +585,13 @@ function TreeChatShell({
     }
   }, [returnTarget, state.activeThreadId])
 
+  /** Branches open in the lane to the right; `null` closes whatever is there. */
   const onOpenChild = useCallback(
     (parentId: string, childId: string | null) => {
-      expand(parentId, childId)
+      if (childId) focusNextRef.current = childId
+      focus(childId ?? parentId)
     },
-    [expand],
+    [focus],
   )
 
   const onMerge = useCallback(
@@ -643,9 +615,7 @@ function TreeChatShell({
       onFocus: focus,
       onMerge,
       onDiscard: discard,
-      merging: previewThreadId,
       takeInitialQuestion,
-      renderQuestion,
       onAskMessage,
       onReturn: returnToPassage,
       scrollPositions,
@@ -662,9 +632,7 @@ function TreeChatShell({
       focus,
       onMerge,
       discard,
-      previewThreadId,
       takeInitialQuestion,
-      renderQuestion,
       onAskMessage,
       returnToPassage,
       scrollPositions,
@@ -679,7 +647,16 @@ function TreeChatShell({
       if (isBranchShortcut(event)) {
         event.preventDefault()
         const range = chip ?? lastRangeRef.current
-        if (range) branchFromChip(range)
+        if (range) openAsk(range)
+        return
+      }
+      // With a passage selected, just start typing to ask about it. The chip
+      // only exists while the selection sits in a message, so keys go nowhere
+      // useful otherwise — even if a composer still holds focus.
+      const typing = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.trim()
+      if (chip && typing) {
+        event.preventDefault()
+        openAsk(chip, event.key)
         return
       }
       if (event.key !== 'Escape') return
@@ -689,10 +666,7 @@ function TreeChatShell({
       }
       if (chip) {
         event.preventDefault()
-        setChip(null)
-        lastRangeRef.current = null
-        holdChipRef.current = false
-        window.getSelection()?.removeAllRanges()
+        clearSelection()
         return
       }
       const parentId = activeThread.parentId
@@ -709,7 +683,7 @@ function TreeChatShell({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeThread, branchFromChip, chip, drafts, returnToPassage, stopGenerating])
+  }, [activeThread, chip, clearSelection, drafts, openAsk, returnToPassage, stopGenerating])
 
   useEffect(() => {
     let frame = 0
@@ -740,15 +714,8 @@ function TreeChatShell({
     [switchSession],
   )
   const hasBranches = Object.keys(state.threads).length > 1
-  const chipExisting = chip
-    ? childThreads(state, chip.threadId).filter(
-        (thread) =>
-          thread.anchor?.messageId === chip.messageId &&
-          thread.anchor.start === chip.start &&
-          thread.anchor.end === chip.end,
-      ).length
-    : 0
-
+  const lanePath = useMemo(() => pathTo(state, activeThread.id), [state, activeThread.id])
+  const narrow = useNarrow()
   return (
     <div
       className="flex h-svh flex-col bg-background"
@@ -859,13 +826,31 @@ function TreeChatShell({
 
           </aside>
           <div className="relative flex min-w-0 flex-1 flex-col">
-            {chip ? (
-              <BranchChip
-                top={chip.top}
-                left={chip.left}
-                bottom={chip.bottom}
-                existing={chipExisting}
-                onBranch={() => branchFromChip(chip)}
+            {asking ? (
+              <BranchPopover
+                key={`${asking.passage.messageId}:${asking.passage.start}:${asking.passage.end}`}
+                mode="ask"
+                anchor={asking.passage}
+                range={asking.passage.range}
+                quote={asking.passage.quote}
+                initialQuestion={asking.initial}
+                onLens={(lens) => onLens(asking.passage, lens)}
+                onAsk={(question) => startBranch(asking.passage, question)}
+                onOpenAsk={() => undefined}
+                onCancel={() => {
+                  asking.returnFocus?.focus({ preventScroll: true })
+                  setAsking(null)
+                }}
+              />
+            ) : chip ? (
+              <BranchPopover
+                mode="lenses"
+                anchor={chip}
+                quote={chip.quote}
+                onLens={(lens) => onLens(chip, lens)}
+                onAsk={(question) => startBranch(chip, question)}
+                onOpenAsk={() => openAsk(chip)}
+                onCancel={clearSelection}
                 onHold={() => {
                   holdChipRef.current = true
                 }}
@@ -885,7 +870,24 @@ function TreeChatShell({
                 onDismiss={dismissTakeaway}
               />
             ) : null}
-            <div className="min-h-0 flex-1"><FramedThread thread={activeThread} epoch={epoch} /></div>
+            <div className="min-h-0 flex-1">
+              <Lanes
+                path={lanePath}
+                single={narrow}
+                rootTitle={activeSession.title}
+                onReturnTo={focus}
+                renderLane={(thread) => {
+                  const index = lanePath.findIndex((entry) => entry.id === thread.id)
+                  return (
+                    <ThreadEngine
+                      key={`${thread.id}:${thread.rev}:${epoch}`}
+                      threadId={thread.id}
+                      openChildId={lanePath[index + 1]?.id ?? null}
+                    />
+                  )
+                }}
+              />
+            </div>
           </div>
         </div>
       </ShellContext.Provider>
@@ -1006,14 +1008,17 @@ function TakeawayNotice({ onView, onUndo, onDismiss }: {
   )
 }
 
-function FramedThread({ thread, epoch }: { thread: Thread; epoch: number }) {
-  return (
-    <ThreadEngine
-      key={`${thread.id}:${thread.rev}:${epoch}`}
-      threadId={thread.id}
-      depth={0}
-    />
-  )
+/** Phones get one lane at a time; there is no room for depth side by side. */
+function useNarrow() {
+  const query = '(max-width: 767px)'
+  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const media = window.matchMedia(query)
+    const update = () => setNarrow(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return narrow
 }
 
 function resolveStatus(
