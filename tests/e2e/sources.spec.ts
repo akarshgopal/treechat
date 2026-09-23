@@ -18,33 +18,33 @@ async function selectText(page: Page, messageSelector: string, text: string) {
   // A finishing reply re-renders once more (its sources attach), which can
   // replace the text nodes under a selection made in that instant: retry.
   await expect(async () => {
-  await message.evaluate((element, text) => {
-    const nodes: Text[] = []
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-      acceptNode: (node) => node.parentElement?.closest('[data-offset-ignore]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
-    })
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text)
-    const plain = nodes.map((node) => node.data).join('')
-    const start = plain.indexOf(text)
-    if (start < 0) throw new Error(`"${text}" not in message`)
-    const locate = (offset: number) => {
-      for (const node of nodes) {
-        if (offset <= node.data.length) return { node, offset }
-        offset -= node.data.length
+    await message.evaluate((element, text) => {
+      const nodes: Text[] = []
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => node.parentElement?.closest('[data-offset-ignore]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      })
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text)
+      const plain = nodes.map((node) => node.data).join('')
+      const start = plain.indexOf(text)
+      if (start < 0) throw new Error(`"${text}" not in message`)
+      const locate = (offset: number) => {
+        for (const node of nodes) {
+          if (offset <= node.data.length) return { node, offset }
+          offset -= node.data.length
+        }
+        throw new Error('offset out of range')
       }
-      throw new Error('offset out of range')
-    }
-    const from = locate(start)
-    const to = locate(start + text.length)
-    const range = document.createRange()
-    range.setStart(from.node, from.offset)
-    range.setEnd(to.node, to.offset)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
-    document.dispatchEvent(new Event('selectionchange'))
-  }, text)
-  await expect(page.getByTestId('branch-popover')).toHaveAttribute('data-mode', 'lenses', { timeout: 1500 })
+      const from = locate(start)
+      const to = locate(start + text.length)
+      const range = document.createRange()
+      range.setStart(from.node, from.offset)
+      range.setEnd(to.node, to.offset)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
+    }, text)
+    await expect(page.getByTestId('branch-popover')).toHaveAttribute('data-mode', 'lenses', { timeout: 1500 })
   }).toPass({ timeout: 10_000 })
 }
 
