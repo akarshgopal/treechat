@@ -76,6 +76,7 @@ function parseThread(value: unknown): Thread | null {
     messages: parseMessages(record.messages),
     createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
     rev: typeof record.rev === 'number' ? record.rev : 0,
+    ...(record.webSearch === true ? { webSearch: true } : {}),
   }
 }
 

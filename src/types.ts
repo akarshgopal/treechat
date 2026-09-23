@@ -62,6 +62,8 @@ export type Thread = {
    * picks the new transcript up instead of overwriting it.
    */
   rev: number
+  /** Replies in this thread search the web and cite their sources. Set only when on. */
+  webSearch?: boolean
 }
 
 export type TreeState = {

@@ -16,6 +16,7 @@ import {
   runChat,
   toOpenAIChatMessages,
 } from './client-chat.ts'
+import { takeRunCitations } from './citations.ts'
 
 const originalFetch = globalThis.fetch
 
@@ -425,4 +426,21 @@ test('empty provider streams and error finish reasons surface a retryable error'
 
 test('routing sessions are bounded to the provider limit', () => {
   assert.equal(openRouterRequestBody(streamInput.config, [], 'a'.repeat(300)).session_id?.length, 256)
+})
+
+test('a web-search run in mock mode cites two sources and keeps the event out of the stream', async () => {
+  globalThis.fetch = (async () => new Response('missing', { status: 404 })) as typeof fetch
+  const chunks = []
+  for await (const chunk of runChat({
+    messages: [{ role: 'user', content: 'Source?' }],
+    forwardedProps: { webSearch: true, quote: 'side thread' },
+    threadId: 'cited',
+    runId: 'r1',
+  })) chunks.push(chunk)
+  const text = chunks.map((chunk) => (chunk.type === EventType.TEXT_MESSAGE_CONTENT ? chunk.delta : '')).join('')
+  assert.match(text, /\[1\][\s\S]*\[2\]/)
+  assert.ok(chunks.every((chunk) => chunk.type !== EventType.CUSTOM))
+  const citations = takeRunCitations('cited')
+  assert.deepEqual(citations?.map((citation) => [citation.id, citation.kind, new URL(citation.url!).hostname]), [['1', 'web', 'example.com'], ['2', 'web', 'example.com']])
+  for (const citation of citations ?? []) assert.ok(text.includes(citation.snippet!), 'each snippet is quoted in the reply')
 })

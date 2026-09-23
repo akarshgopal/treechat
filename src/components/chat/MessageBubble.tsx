@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowUpRight, GitBranch, Pencil, RotateCw } from 'lucide-react'
+import { SourcesList } from '@/components/chat/Citations'
 import { MessageMarkdown } from '@/components/chat/MessageMarkdown'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -30,6 +31,9 @@ type MessageBubbleProps = {
   onViewSource?: (threadId: string) => void
   hideActions?: boolean
   unanswered?: boolean
+  /** The citation of this message whose source lane is open. */
+  openCitationId?: string | null
+  onOpenCitation?: (messageId: string, citationId: string) => void
 }
 
 const actionBtn =
@@ -52,6 +56,8 @@ export function MessageBubble({
   onViewSource,
   hideActions = false,
   unanswered = false,
+  openCitationId = null,
+  onOpenCitation,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const [editing, setEditing] = useState(false)
@@ -172,9 +178,21 @@ export function MessageBubble({
         content={message.content}
         marks={marks}
         onOpenBranch={onOpenBranch}
+        citations={message.citations}
+        openCitationId={openCitationId}
+        onOpenCitation={onOpenCitation ? (citationId) => onOpenCitation(message.id, citationId) : undefined}
       />
     </div>
   )
+  // Outside the selectable body: the list is chrome, not message text.
+  const sources = !editing && !isUser && message.citations?.length ? (
+    <SourcesList
+      messageId={message.id}
+      citations={message.citations}
+      openId={openCitationId}
+      onOpen={onOpenCitation ? (citationId) => onOpenCitation(message.id, citationId) : undefined}
+    />
+  ) : null
 
   const size = compact
     ? 'text-[13.5px] leading-[1.55]'
@@ -213,6 +231,7 @@ export function MessageBubble({
     <article className="group flex flex-col gap-1.5">
       {labels ? <span className="eyebrow text-muted-foreground">treechat</span> : null}
       <div className={cn('text-foreground', size)}>{body}</div>
+      {sources}
       {actions}
     </article>
   )

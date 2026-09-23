@@ -56,6 +56,15 @@ test('creating a thread expands it inside its parent', () => {
   assert.equal(next.threads.b3.parentId, 'root')
 })
 
+test('web search switches on and off per thread, leaving no key when off', () => {
+  const on = reducer(base(), { type: 'set-web-search', threadId: 'b1', on: true })
+  assert.equal(on.threads.b1.webSearch, true)
+  assert.equal(reducer(on, { type: 'set-web-search', threadId: 'b1', on: true }), on)
+  const off = reducer(on, { type: 'set-web-search', threadId: 'b1', on: false })
+  assert.deepEqual(off.threads.b1, base().threads.b1)
+  assert.equal('webSearch' in off.threads.b1, false)
+})
+
 test('creating a nested thread also expands ancestors', () => {
   const state = { ...base(), expanded: {} }
   const next = reducer(state, {

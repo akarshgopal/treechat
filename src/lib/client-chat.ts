@@ -6,9 +6,10 @@ import {
   providerRequestHeaders,
   type ClientProviderConfig,
 } from './provider.ts'
-import { mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
+import { CITATIONS_EVENT, mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
 import { buildSystemPrompts } from '../../shared/system-prompts.ts'
-import { clearRunCitations } from './citations.ts'
+import { clearRunCitations, parseCitations, recordRunCitations } from './citations.ts'
+import { applyWebSearch, createWebCitationCollector, isWebSearch } from './web-search.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
@@ -259,9 +260,9 @@ export async function* openRouterChatStream(input: {
     response = await fetch(OPENROUTER_CHAT_URL, {
       method: 'POST',
       headers: openRouterHeaders(config),
-      body: JSON.stringify(openRouterRequestBody(config, openaiMessages,
+      body: JSON.stringify(applyWebSearch(openRouterRequestBody(config, openaiMessages,
         typeof input.forwardedProps?.cacheSessionId === 'string' ? input.forwardedProps.cacheSessionId : threadId,
-      )),
+      ), input.forwardedProps)),
       signal,
     })
   } catch (error) {
@@ -299,6 +300,7 @@ export async function* openRouterChatStream(input: {
   }
 
   let receivedText = false
+  const webCitations = createWebCitationCollector()
   try {
     for await (const payload of readSseDataLines(response.body, signal)) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
@@ -309,6 +311,7 @@ export async function* openRouterChatStream(input: {
         yield { type: EventType.RUN_ERROR, message: event.error ? errorMessageFromOpenRouter(response.status, payload) : 'The provider stopped with an error. Try regenerating.', code: 'provider', timestamp: now() }
         return
       }
+      if (webCitations.add(event)) recordRunCitations(threadId, webCitations.citations())
       const delta = contentDeltaFromOpenAIData(payload)
       if (!delta) continue
       receivedText = true
@@ -349,6 +352,19 @@ export async function* openRouterChatStream(input: {
 
 export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   clearRunCitations(input.threadId)
+  // Sources arrive as a CUSTOM event (mock, local API); they belong to the
+  // thread's run, not to the chat engine's message stream.
+  for await (const chunk of routeChat(input)) {
+    if (chunk.type === EventType.CUSTOM && chunk.name === CITATIONS_EVENT) {
+      const citations = parseCitations(chunk.value)
+      if (citations) recordRunCitations(input.threadId, citations)
+      continue
+    }
+    yield chunk
+  }
+}
+
+async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   const config = loadProviderConfig()
   const forwardedProps = mergeForwarded(input.data, input.forwardedProps)
   const backend = await resolveChatBackend(config)
@@ -385,6 +401,7 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
     runId: input.runId,
     quote:
       typeof forwardedProps.quote === 'string' ? forwardedProps.quote : undefined,
+    webSearch: isWebSearch(forwardedProps),
     signal: input.signal,
   })
 }

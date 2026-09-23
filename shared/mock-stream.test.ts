@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { EventType } from '@tanstack/ai'
-import { mockChatStream, textFromMessage } from './mock-stream.ts'
+import { CITATIONS_EVENT, MOCK_WEB_CITATIONS, mockChatStream, textFromMessage } from './mock-stream.ts'
 
 test('textFromMessage reads string content and text parts', () => {
   assert.equal(textFromMessage({ role: 'user', content: 'hello' }), 'hello')
@@ -54,6 +54,29 @@ test('mockChatStream abort keeps streamed text and does not emit RUN_ERROR', asy
   assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_END))
   assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
   assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
+})
+
+test('mockChatStream with web search cites two sources in a CUSTOM event', async () => {
+  const chunks = []
+  for await (const chunk of mockChatStream({
+    messages: [{ role: 'user', content: 'Source?' }],
+    threadId: 't1',
+    runId: 'r1',
+    pace: false,
+    webSearch: true,
+  })) {
+    chunks.push(chunk)
+  }
+  const text = chunks
+    .filter((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT)
+    .map((chunk) => ('delta' in chunk ? chunk.delta : ''))
+    .join('')
+  assert.match(text, /\[1\]/)
+  assert.match(text, /\[2\]/)
+  const event = chunks.find((chunk) => chunk.type === EventType.CUSTOM)
+  assert.ok(event && 'name' in event && event.name === CITATIONS_EVENT)
+  assert.deepEqual(event.value, MOCK_WEB_CITATIONS)
+  assert.equal(chunks.at(-1)?.type, EventType.RUN_FINISHED)
 })
 
 test('mockChatStream answers a code example with a fenced block', async () => {

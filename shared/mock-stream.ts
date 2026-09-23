@@ -8,7 +8,37 @@ type MockInput = {
   signal?: AbortSignal
   /** Skip token delays (tests). Production always paces. */
   pace?: boolean
+  /** Pretend the reply was researched: cite two fake web sources. */
+  webSearch?: boolean
 }
+
+/**
+ * CUSTOM stream event carrying a reply's sources. It survives the local API's
+ * SSE hop as well as the in-browser mock; `runChat` records it for the thread
+ * and keeps it out of the chat engine.
+ */
+export const CITATIONS_EVENT = 'treechat.citations'
+
+/** Shaped like `Citation` in src/types.ts (shared code does not import the app). */
+export const MOCK_WEB_CITATIONS = [
+  {
+    id: '1',
+    kind: 'web' as const,
+    title: 'Branching conversations keep tangents in place',
+    url: 'https://example.com/branching-conversations',
+    snippet: 'A side thread stays attached to the passage that prompted it',
+  },
+  {
+    id: '2',
+    kind: 'web' as const,
+    title: 'Bringing takeaways back',
+    url: 'https://example.com/takeaways',
+    locator: 'Section 2',
+    snippet: 'a short takeaway returns to the main conversation',
+  },
+]
+
+const MOCK_SEARCH_REPLY = `Here is what two sources say (demo search results — add an OpenRouter key for real ones). A side thread stays attached to the passage that prompted it, so the tangent never scrolls the main thread away [1]. When the exploration is done, a short takeaway returns to the main conversation while the branch itself is kept [2]. Open a numbered source to read it beside this lane.`
 
 function inNodeTest() {
   const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -129,7 +159,7 @@ function tokensOf(reply: string): string[] {
 export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamChunk> {
   const { threadId, runId, signal } = input
   const messageId = crypto.randomUUID()
-  const reply = craftReply(lastUserText(input.messages), input.quote)
+  const reply = input.webSearch ? MOCK_SEARCH_REPLY : craftReply(lastUserText(input.messages), input.quote)
   const now = () => Date.now()
   const paced = input.pace ?? !inNodeTest()
 
@@ -170,6 +200,9 @@ export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamCh
     return
   }
 
+  if (input.webSearch) {
+    yield { type: EventType.CUSTOM, name: CITATIONS_EVENT, value: MOCK_WEB_CITATIONS, timestamp: now() }
+  }
   yield { type: EventType.TEXT_MESSAGE_END, messageId, timestamp: now() }
   yield {
     type: EventType.RUN_FINISHED,
