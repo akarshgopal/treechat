@@ -19,11 +19,6 @@ const web: Citation = { id: '1', kind: 'web', title: 'Page', url: 'https://examp
 const doc: Citation = { id: '2', kind: 'document', title: 'notes.pdf', documentId: 'd1', locator: 'p. 4', snippet: 'from the notes' }
 const signal = () => new AbortController().signal
 
-test('documents without a registered loader fall back to their snippet', async () => {
-  assert.deepEqual(await loadSourceContent(doc, signal()), { text: 'from the notes' })
-  await assert.rejects(loadSourceContent({ ...doc, snippet: undefined }, signal()), SourceUnavailableError)
-})
-
 test('a registered loader wins until it is unregistered', async () => {
   const seen: Citation[] = []
   const unregister = registerSourceLoader('document', async (citation) => {
@@ -33,7 +28,8 @@ test('a registered loader wins until it is unregistered', async () => {
   assert.deepEqual(await loadSourceContent(doc, signal()), { markdown: '# Notes\n\nfrom the notes, in full' })
   assert.equal(seen[0], doc)
   unregister()
-  assert.deepEqual(await loadSourceContent(doc, signal()), { text: 'from the notes' })
+  // Back to the built-in document loader; this document is not stored here.
+  await assert.rejects(loadSourceContent(doc, signal()), SourceUnavailableError)
 
   const empty = registerSourceLoader('document', async () => ({ markdown: '  ' }))
   await assert.rejects(loadSourceContent(doc, signal()), SourceUnavailableError)

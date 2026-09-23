@@ -11,6 +11,7 @@ import { useChat } from '@tanstack/ai-react'
 import { ChevronDown, Settings, SquarePen } from 'lucide-react'
 import { BranchHeader } from '@/components/chat/BranchHeader'
 import { BranchPopover } from '@/components/chat/BranchPopover'
+import { DocumentDropZone, DocumentsChip, DocumentsDialog, DocumentsLibraryEntry, DocumentsSidebarSection } from '@/components/chat/Documents'
 import { Lanes, type LaneFrame, type TrailingLane } from '@/components/chat/Lanes'
 import { SourceLane } from '@/components/chat/SourceLane'
 import { TakeawayDialog } from '@/components/chat/TakeawayDialog'
@@ -143,7 +144,7 @@ type PendingRewrite = {
  * rather than overwriting it with its own stale copy.
  */
 function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; openChildId: string | null; frame: LaneFrame }) {
-  const { state, replaceMessages, rewriteThread, setSummary, setWebSearch } = useTree()
+  const { state, replaceMessages, rewriteThread, setSummary, setWebSearch, activeSession } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
 
@@ -157,6 +158,8 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
     forwardedProps: {
       ...forwarded,
       cacheSessionId: shell.sessionId,
+      // The transport retrieves excerpts from these documents before sending.
+      documentIds: activeSession.documentIds ?? [],
       ...(thread?.webSearch ? { webSearch: true } : {}),
       ...(summary ? { threadSummary: { content: summary.content, throughMessageId: summary.throughMessageId } } : {}),
     },
@@ -430,6 +433,7 @@ function TreeChatShell({
   const dismissTakeaway = useCallback(() => setLastTakeaway(null), [])
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const enginesRef = useRef<Record<string, EngineHandle>>({})
@@ -861,6 +865,7 @@ function TreeChatShell({
 
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
+          <DocumentsChip onOpen={() => setDocumentsOpen(true)} />
           {status.mode === 'mock' ? (
             <button
               type="button"
@@ -923,6 +928,7 @@ function TreeChatShell({
                   onDelete={setPendingDeleteId}
                 />
               }
+              documents={<DocumentsSidebarSection onOpen={() => setDocumentsOpen(true)} />}
             />
           )}
           <div className="relative flex min-w-0 flex-1 flex-col">
@@ -993,6 +999,9 @@ function TreeChatShell({
         </div>
       </ShellContext.Provider>
 
+      <DocumentsDialog open={documentsOpen} onOpenChange={setDocumentsOpen} />
+      <DocumentDropZone onDropped={() => setDocumentsOpen(true)} />
+
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
@@ -1045,6 +1054,10 @@ function TreeChatShell({
             }}
             alwaysShowActions
           />
+          <DocumentsLibraryEntry onOpen={() => {
+            setLibraryOpen(false)
+            setDocumentsOpen(true)
+          }} />
         </DialogContent>
       </Dialog>
 

@@ -11,6 +11,7 @@ import { buildSystemPrompts } from '../../shared/system-prompts.ts'
 import { clearRunCitations, parseCitations, recordRunCitations } from './citations.ts'
 import { applyWebSearch, createWebCitationCollector, isWebSearch } from './web-search.ts'
 import { applySummaryToRequest } from './compaction.ts'
+import { withDocumentNote, withDocuments } from './documents/rag.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
@@ -369,11 +370,17 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
 
 async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   const config = loadProviderConfig()
-  // Every backend gets the same compacted request; the UI keeps the full transcript.
-  const { messages, forwardedProps } = applySummaryToRequest(
-    input.messages,
-    mergeForwarded(input.data, input.forwardedProps),
-  )
+  // Documents attached to the chat add an excerpts section and citations.
+  // Retrieval reads the full transcript; compaction then trims what is sent.
+  // Both happen here so every backend below gets the same request, while the
+  // UI keeps the full transcript.
+  const retrieved = await withDocuments({
+    messages: input.messages,
+    forwardedProps: mergeForwarded(input.data, input.forwardedProps),
+    threadId: input.threadId,
+  })
+  const { citations } = retrieved
+  const { messages, forwardedProps } = applySummaryToRequest(input.messages, retrieved.forwardedProps)
   const backend = await resolveChatBackend(config)
 
   if (backend === 'openrouter' && config) {
@@ -402,7 +409,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
     return
   }
 
-  yield* mockChatStream({
+  yield* withDocumentNote(mockChatStream({
     messages,
     threadId: input.threadId,
     runId: input.runId,
@@ -410,7 +417,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
       typeof forwardedProps.quote === 'string' ? forwardedProps.quote : undefined,
     webSearch: isWebSearch(forwardedProps),
     signal: input.signal,
-  })
+  }), citations)
 }
 
 export async function collectAssistantText(

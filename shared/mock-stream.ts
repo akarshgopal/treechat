@@ -121,12 +121,12 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
 
   if (quote) {
     if (text.includes('deep') || text.includes('nest') || text.includes('again')) {
-      return `You can branch from here too — this thread is a conversation like any other, so select a passage in it and fork again. Each level carries upstream context. Past two levels, choose "Expand branch" for a full-width view and "Back to passage" to return to the source.`
+      return `You can branch from here too — this thread is a conversation like any other, so select a passage in it and fork again. Each level carries upstream context. When lanes no longer fit side by side, older ones fold into strips, and the back arrow returns you to the source.`
     }
     if (text.includes('composer') || text.includes('post')) {
       return `This composer posts only into this thread. Every thread has its own — the one at the bottom belongs to whichever thread holds the frame. The quote «${quote}» is this thread's anchor, and Esc walks back up one level.`
     }
-    return `Staying on the branch from «${quote}». This exploration includes context from the conversation above. Expand gives it room to grow, and Back to passage returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
+    return `Staying on the branch from «${quote}». This exploration includes context from the conversation above and has its own lane and composer; the back arrow returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
   }
 
   if (text.includes('select') || text.includes('shortcut') || text.includes('chip')) {
@@ -138,11 +138,11 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
   }
 
   if (text.includes('composer') || text.includes('main') || text.includes('thread')) {
-    return 'Each composer names its reply destination. The one at the bottom belongs to the conversation holding the frame; an inline branch has its own. Expand opens a focused view with its source pinned above, and Back to passage returns you to that source.'
+    return 'Each lane has its own composer at the bottom, so a reply always lands in the thread you type it in. Branches open in lanes to the right, and the back arrow in a branch header returns you to its source passage.'
   }
 
   if (text.includes('discard') || text.includes('chat') || text.includes('conversation')) {
-    return 'Choose Expand to focus on a branch, or Bring back to review and edit a takeaway. The takeaway links to the exploration, and Undo removes just the takeaway. Discard is in the branch options menu and asks before removing the branch and its descendants.'
+    return 'Choose Bring back to review and edit a takeaway for the parent conversation. The takeaway links to the exploration, and Undo removes just the takeaway. The trash button in a branch header asks before removing the branch and its descendants.'
   }
 
   if (text.includes('what is') || text.includes('treechat') || text.includes('how do')) {

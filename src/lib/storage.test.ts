@@ -222,3 +222,35 @@ test('a thread summary survives storage, and a stale one is dropped', () => {
   const branch = Object.values(loadTreeState().threads).find((thread) => thread.parentId)
   assert.ok(branch && !('summary' in branch))
 })
+
+test('a chat keeps its attached document ids across reloads', () => {
+  mockLocalStorage()
+  const tree = createEmptyState()
+  const base = { title: 'Chat', createdAt: 1, updatedAt: 1, treeState: tree, titleLocked: false }
+  saveLibrary({
+    sessions: [
+      { id: 'docs', ...base, documentIds: ['doc-a', 'doc-b'] },
+      { id: 'plain', ...base },
+    ],
+    activeSessionId: 'docs',
+  })
+  const loaded = loadLibrary()
+  assert.deepEqual(loaded.sessions[0], { id: 'docs', ...base, documentIds: ['doc-a', 'doc-b'] })
+  // No key at all when nothing is attached, so older shapes compare equal.
+  assert.deepEqual(loaded.sessions[1], { id: 'plain', ...base })
+})
+
+test('malformed document ids are dropped on load', () => {
+  mockLocalStorage()
+  const treeState = createEmptyState()
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    sessions: [
+      { id: 'a', title: 'A', createdAt: 1, updatedAt: 1, treeState, titleLocked: false, documentIds: ['x', 3, '', 'x', null, 'y'] },
+      { id: 'b', title: 'B', createdAt: 1, updatedAt: 1, treeState, titleLocked: false, documentIds: 'x' },
+    ],
+    activeSessionId: 'a',
+  }))
+  const loaded = loadLibrary()
+  assert.deepEqual(loaded.sessions[0]?.documentIds, ['x', 'y'])
+  assert.equal('documentIds' in loaded.sessions[1]!, false)
+})

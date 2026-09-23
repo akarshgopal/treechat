@@ -97,6 +97,8 @@ export type ChatSession = {
   treeState: TreeState
   /** When true, the first user message no longer overwrites the title. */
   titleLocked: boolean
+  /** Stored documents this chat searches before each request. */
+  documentIds?: string[]
 }
 
 export type SessionLibrary = {

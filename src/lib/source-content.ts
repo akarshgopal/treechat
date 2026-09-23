@@ -40,20 +40,19 @@ export function registerSourceLoader(kind: Citation['kind'], loader: SourceLoade
   }
 }
 
-/** Without a loader for its kind, a citation's snippet is all there is. */
-const snippetLoader: SourceLoader = async (citation) => ({ text: citation.snippet })
-
 function hasContent(content: SourceContent | undefined): content is SourceContent {
   return Boolean(content && (content.markdown?.trim() || content.text?.trim()))
 }
 
 /**
- * Load a citation's content with the loader registered for its kind (or the
- * snippet fallback). Rejects with `SourceUnavailableError` when the result is
- * empty, and passes other loader errors (including aborts) through.
+ * Load a citation's content with the loader registered for its kind. Rejects
+ * with `SourceUnavailableError` when there is no loader or the result is
+ * empty (the lane then shows the citation's own title and snippet), and
+ * passes other loader errors (including aborts) through.
  */
 export async function loadSourceContent(citation: Citation, signal: AbortSignal): Promise<SourceContent> {
-  const loader = loaders.get(citation.kind) ?? snippetLoader
+  const loader = loaders.get(citation.kind)
+  if (!loader) throw new SourceUnavailableError()
   const content = await loader(citation, signal)
   if (!hasContent(content)) throw new SourceUnavailableError()
   return content
@@ -86,6 +85,26 @@ export const webReaderLoader: SourceLoader = async (citation, signal) => {
 }
 
 registerSourceLoader('web', webReaderLoader)
+
+/**
+ * Documents live in this browser's IndexedDB. The store is imported only when
+ * a document source is opened, so plain chats never load it.
+ */
+export const documentLoader: SourceLoader = async (citation, signal) => {
+  if (!citation.documentId) throw new SourceUnavailableError('This source has no document.')
+  let doc, text
+  try {
+    const { getDocument, getDocumentText } = await import('./documents/store.ts')
+    ;[doc, text] = await Promise.all([getDocument(citation.documentId), getDocumentText(citation.documentId)])
+  } catch {
+    throw new SourceUnavailableError('The document library could not be read in this browser.')
+  }
+  signal.throwIfAborted()
+  if (!doc || !text.trim()) throw new SourceUnavailableError('This document is no longer in your library.')
+  return doc.format === 'markdown' ? { markdown: text } : { text }
+}
+
+registerSourceLoader('document', documentLoader)
 
 function normalize(text: string): { value: string; map: number[] } {
   // Collapse whitespace and fold case, remembering where each kept character

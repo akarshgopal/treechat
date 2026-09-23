@@ -40,20 +40,20 @@ const rootMessages: ChatMessage[] = [
     id: 'msg-root-4',
     role: 'assistant',
     content:
-      'Highlight text in any message, in any thread. Choose “Branch” — or press ⌘⇧B / Ctrl+Shift+B — and write a question beside the passage. The branch is created when you send. You can also use the branch icon below any message. Closed branches keep a quiet underline so you can find your way back.',
+      'Highlight text in any message, in any thread. A bar appears right there: tap Explain, Example, Source?, Challenge, Simpler or Deeper to branch in one go, or just start typing your own question (Ask…, ⌘⇧B / Ctrl+Shift+B). The branch opens in its own lane to the right, level with the passage, and a line ties the two together. Closed branches keep a quiet underline so you can find your way back.',
     createdAt: at(3),
   },
   {
     id: 'msg-root-5',
     role: 'user',
-    content: 'Which thread does the composer post to?',
+    content: 'How do I get something useful back out of a branch?',
     createdAt: at(4),
   },
   {
     id: 'msg-root-6',
     role: 'assistant',
     content:
-      '“Expand” gives an exploration the full frame, with its source passage pinned above it. “Back to passage” returns you to that source and highlights it. When you find something useful, choose “Bring back”, edit the takeaway, and add it to the parent conversation. The exploration stays available through a link on the takeaway.',
+      'Every lane has its own composer, so a question always lands in the thread you type it in. When a branch turns up something useful, choose “Bring back”, edit the takeaway, and add it to the parent conversation — the exploration stays available through a link on the takeaway. The back arrow closes a branch and highlights its source; Source? branches search the web and cite what they find.',
     createdAt: at(5),
   },
 ]
@@ -85,7 +85,7 @@ const nestedMessages: ChatMessage[] = [
     id: 'msg-nested-2',
     role: 'assistant',
     content:
-      'As deep as you like — this thread is itself a branch of a branch. Each level carries upstream context. Past two levels the inline cards offer “Expand branch” for a comfortable reading width. On mobile, new branches open in their own full-width view. “Back to passage” takes you one level up to the exact source.',
+      'As deep as you like — this thread is itself a branch of a branch. Each level carries upstream context. When lanes no longer fit side by side, the older ones fold into narrow strips on the left; click one to open it again, or drag the gaps between lanes to resize them. On a phone, each branch gets the full screen and the back arrow takes you one level up to the exact source.',
     createdAt: at(9),
   },
 ]

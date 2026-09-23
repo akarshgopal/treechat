@@ -7,23 +7,26 @@ export const SUMMARY_SECTION = 'SUMMARY OF EARLIER CONVERSATION'
 
 export function buildSystemPrompts(forwardedProps: Record<string, unknown>) {
   const prompts = [
-    'You are TreeChat, a branching conversation. Every thread is a full conversation — the root one is simply the thread without a parent. Any passage in any message, in any thread, can be selected and branched, and those branches can themselves be branched, to any depth. Be concise, concrete, and specific. When the user asks about this product, explain the actual UX: select text and choose Branch, then send a question to create the branch. Several branches can hang off one passage. A named link below a message opens a closed branch. Expand opens a focused view; Back to passage returns to the highlighted source. Bring back opens an editable takeaway preview, and the saved takeaway links to the exploration. Discard is in branch options. When multiple composers are visible, the parent composer labels its destination.',
+    'You are TreeChat, a branching conversation. Every thread is a full conversation — the root one is simply the thread without a parent. Any passage in any message, in any thread, can be selected and branched, and those branches can themselves be branched, to any depth. Be concise, concrete, and specific. When the user asks about this product, explain the actual UX: select text and a bar appears at the selection with one-tap questions (Explain, Example, Source?, Challenge, Simpler, Deeper) or Ask… to type your own. Each branch opens in its own lane to the right, level with its passage, with its own composer. Several branches can hang off one passage; a named link below a message opens or closes one. The back arrow closes a branch and highlights its source. Bring back opens an editable takeaway preview, and the saved takeaway links to the exploration. Source? branches search the web and cite sources, chats can use attached documents, and the trash button discards a branch.',
   ]
   const quote = typeof forwardedProps.quote === 'string' ? forwardedProps.quote : ''
   const context =
     typeof forwardedProps.context === 'string' ? forwardedProps.context : ''
   const summary =
     typeof forwardedProps.summary === 'string' ? forwardedProps.summary.trim() : ''
-  // Last, after the branch chain: the summary changes only every few
-  // thousand tokens, so everything above it stays a cacheable prefix.
+  // After the branch chain: the summary changes only every few thousand
+  // tokens, so everything above it stays a cacheable prefix.
   const summaryPrompt = summary
     ? `${SUMMARY_SECTION}\n${summary}\n\nThe messages that follow continue this ` +
       `conversation from where the summary ends.`
     : null
+  // Excerpts from the chat's documents, retrieved in the browser before the
+  // request (src/lib/documents/rag.ts). Last, so they sit next to the question.
+  const documents =
+    typeof forwardedProps.documents === 'string' ? forwardedProps.documents.trim() : ''
+  const tail = [summaryPrompt, documents].filter((prompt): prompt is string => Boolean(prompt))
 
-  if (!quote.trim() && !context.trim()) {
-    return summaryPrompt ? [...prompts, summaryPrompt] : prompts
-  }
+  if (!quote.trim() && !context.trim()) return [...prompts, ...tail]
 
   const chain =
     context.trim() ||
@@ -37,6 +40,6 @@ export function buildSystemPrompts(forwardedProps: Record<string, unknown>) {
       `Answer in this thread. Pronouns and shorthand refer to things established ` +
       `above. Stay here unless the user asks to go back up.`,
   )
-  if (summaryPrompt) prompts.push(summaryPrompt)
+  prompts.push(...tail)
   return prompts
 }

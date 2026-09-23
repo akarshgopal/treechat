@@ -24,6 +24,7 @@ pnpm preview    # serve the build (Vite plugin still handles /api/chat for mock 
 2. Paste an [OpenRouter](https://openrouter.ai/) API key and optionally a model (default `openai/gpt-4.1-mini`).
 3. **Save**. The header's `Demo replies · Add key` notice disappears.
 4. **Remove key** forgets the key in this browser; the model and generation params stay saved.
+5. Optionally set a **Background model** for summaries and takeaway drafts — e.g. a free `:free` model. Free models may log prompts and have low rate limits; on an error TreeChat retries once with the main model.
 
 Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**: anyone with access to this browser profile can read it, and every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`). TreeChat's GitHub Pages host never sees it.
 
@@ -77,9 +78,20 @@ No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 6. **Bring back** prepares an editable takeaway preview. **Add takeaway** appends it to the parent conversation, scrolls to and highlights it, and preserves the branch. **View exploration** on the takeaway reopens the branch; **Undo** in the confirmation banner removes only the takeaway. If generation fails, retry or write the takeaway yourself.
 7. The tree rail names branches from their first question. The trash button in a branch header asks for confirmation before removing a subtree. A ✓ in the tree marks branches whose takeaway was brought back.
 8. **Esc** closes a question box or dialog first. Otherwise it stops an in-flight reply, dismisses a selection, blurs a dirty branch composer, or closes the rightmost lane, in that order.
-9. **Edit** and **Retry** rewrite a conversation from that point. If that would remove more than the reply being regenerated — later turns or branches anchored below — TreeChat asks first.
-10. The sidebar holds **New chat**, the tree, your chats, and **Settings**. Collapse it to an icon strip with its toggle or **Ctrl/⌘+\\**, and drag its right edge to resize it; both are remembered in this browser.
-11. Chats persist in `localStorage` (`treechat:v3`) as a session library. Older `treechat:v2` trees and `treechat:v1` spines are migrated on load. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the header also lists the current chat's branches. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
+9. **Long threads are summarized for the model.** Once a thread's older messages grow past roughly 8k tokens, they are folded into a running summary in the background; requests then send the summary plus the recent messages, and branches get their parent's summary plus the full turns before the passage. A divider in the thread marks where the summary takes over and shows it. Editing summarized messages discards the summary.
+10. **Edit** and **Retry** rewrite a conversation from that point. If that would remove more than the reply being regenerated — later turns or branches anchored below — TreeChat asks first.
+11. The sidebar holds **New chat**, the tree, your chats, **Documents**, and **Settings**. Collapse it to an icon strip with its toggle or **Ctrl/⌘+\\**, and drag its right edge to resize it; both are remembered in this browser.
+12. Chats persist in `localStorage` (`treechat:v3`) as a session library. Older `treechat:v2` trees and `treechat:v1` spines are migrated on load. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the header also lists the current chat's branches. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
+
+## Documents
+
+Ask about your own files. Add PDFs, Markdown, or plain text from **Documents** in the sidebar (on phones, the chat switcher in the header), from the **Documents** chip in the header, or by dropping files anywhere on the app. The library is shared by all chats; each chat searches only the documents checked for it, and a file added from a chat is checked for that chat.
+
+- **Indexing** runs in the browser: text is extracted (PDFs keep page numbers, Markdown keeps headings), split into ~800-character chunks with overlap, embedded, and stored in IndexedDB (`treechat-documents`).
+- **Embeddings** come from [`Xenova/all-MiniLM-L6-v2`](https://huggingface.co/Xenova/all-MiniLM-L6-v2) (quantized) running in a Web Worker via transformers.js. The first document downloads the model once (~23 MB from Hugging Face, plus the ~7 MB compressed ONNX runtime from jsDelivr); the browser caches both. If the model cannot load (offline on first use, no WebAssembly), documents fall back to keyword search and say so.
+- **Before each request** in a chat with documents, the latest question (plus a branch's quoted passage) is matched against the chunks. Up to five excerpts are added to the system prompt, numbered `[1]`…`[5]` with the file name and page or heading, and the model is asked to cite them. The reply stores those sources as citations. Demo replies list the matching excerpts instead.
+- **Privacy:** files, extracted text, and vectors never leave this browser. Only the retrieved excerpts are sent, with your question, to whichever model answers it (OpenRouter, or the local `/api/chat` in development).
+- Removing a document deletes it and its chunks and unchecks it in every chat. Citations already on replies stay.
 
 ## Browser verification
 
@@ -88,7 +100,7 @@ pnpm exec playwright install chromium   # once, unless using an existing Chromiu
 pnpm test:e2e
 ```
 
-Playwright builds the production app and serves it on `127.0.0.1:5180`. A second Vite server on `127.0.0.1:5190` verifies branch requests under development StrictMode. Tests cover desktop and mobile Chromium, settings-key branch and nested-branch context, user-message regeneration, delayed responses and stream errors, branch cancellation and creation, reply destinations, takeaway review and undo, failed generation, source-link persistence, and drafts across chats. Provider requests are intercepted; no real API keys or model calls are used.
+Playwright builds the production app and serves it on `127.0.0.1:5180`. A second Vite server on `127.0.0.1:5190` verifies branch requests under development StrictMode. Tests cover desktop and mobile Chromium, settings-key branch and nested-branch context, user-message regeneration, delayed responses and stream errors, branch cancellation and creation, reply destinations, takeaway review and undo, failed generation, source-link persistence, drafts across chats, and documents (add, attach, cited retrieval, remove). Provider requests are intercepted; no real API keys or model calls are used, and documents use a deterministic fake embedder (`localStorage["treechat:fake-embedder"] = "1"`) instead of downloading the model.
 
 Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. Screenshots are written to `test-results/`; failed runs also retain Playwright traces. `node verify-treechat.mjs` runs the same suite.
 

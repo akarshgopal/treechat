@@ -48,3 +48,15 @@ test('a running summary is its own last system section', () => {
   assert.deepEqual(branch.slice(0, 2), buildSystemPrompts({ quote: 'pin', context: 'MAIN\nhi\n\nSELECTED QUOTE\n«pin»' }))
   assert.equal(buildSystemPrompts({ summary: '  ' }).length, 1)
 })
+
+test('retrieved document excerpts come last, on the root and in branches', () => {
+  const documents = 'DOCUMENTS\n\n[1] notes.md\n"""\nexcerpt\n"""'
+  const root = buildSystemPrompts({ documents })
+  assert.equal(root.length, 2)
+  assert.equal(root[1], documents)
+  const branch = buildSystemPrompts({ quote: 'pin', documents })
+  assert.equal(branch.length, 3)
+  assert.match(branch[1]!, /SELECTED QUOTE/)
+  assert.equal(branch[2], documents)
+  assert.equal(buildSystemPrompts({ documents: '   ' }).length, 1)
+})
