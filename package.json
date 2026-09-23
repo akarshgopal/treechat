@@ -9,9 +9,10 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test": "tsx --test src/lib/selection.test.ts src/lib/lenses.test.ts src/lib/citations.test.ts src/lib/markdown.test.ts src/lib/tree.test.ts src/lib/provider.test.ts src/lib/client-chat.test.ts src/lib/request-assistant.test.ts src/lib/seed.test.ts src/lib/storage.test.ts src/lib/sessions.test.ts src/lib/rail-collapse.test.ts src/lib/utils.test.ts src/lib/message-actions.test.ts src/store/tree-reducer.test.ts src/store/session-reducer.test.ts shared/system-prompts.test.ts shared/mock-stream.test.ts server/adapter.test.ts server/chat.test.ts vite-base.test.ts"
+    "test": "tsx --test src/lib/selection.test.ts src/lib/lenses.test.ts src/lib/citations.test.ts src/lib/markdown.test.ts src/lib/tree.test.ts src/lib/provider.test.ts src/lib/client-chat.test.ts src/lib/request-assistant.test.ts src/lib/seed.test.ts src/lib/storage.test.ts src/lib/sessions.test.ts src/lib/rail-collapse.test.ts src/lib/utils.test.ts src/lib/message-actions.test.ts src/lib/documents/extract.test.ts src/lib/documents/chunk.test.ts src/lib/documents/keyword.test.ts src/lib/documents/store.test.ts src/lib/documents/retrieve.test.ts src/lib/documents/run-chat.test.ts src/store/tree-reducer.test.ts src/store/session-reducer.test.ts shared/system-prompts.test.ts shared/mock-stream.test.ts server/adapter.test.ts server/chat.test.ts vite-base.test.ts"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.0",
     "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-scroll-area": "^1.2.18",
@@ -25,6 +26,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.46.0",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
@@ -40,6 +42,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.1.0",
     "oxlint": "^1.81.0",
     "puppeteer-core": "^23.11.1",

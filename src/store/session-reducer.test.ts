@@ -157,3 +157,37 @@ test('create-session past the cap drops the oldest non-active chat', () => {
   assert.ok(!next.sessions.some((item) => item.id === 's0'))
   assert.ok(next.sessions.some((item) => item.id === 's1'))
 })
+
+test('set-session-documents attaches documents without reordering chats', () => {
+  const state = library([session('a', createEmptyState(), { updatedAt: 5 }), session('b')])
+  const next = sessionReducer(state, { type: 'set-session-documents', sessionId: 'a', documentIds: ['d1', 'd2', 'd1'] })
+  assert.deepEqual(next.sessions[0]!.documentIds, ['d1', 'd2'])
+  assert.equal(next.sessions[0]!.updatedAt, 5)
+  assert.equal(next.sessions[1], state.sessions[1])
+  // Same list: same state object.
+  assert.equal(sessionReducer(next, { type: 'set-session-documents', sessionId: 'a', documentIds: ['d1', 'd2'] }), next)
+  // Clearing removes the key, matching what storage reads back.
+  const cleared = sessionReducer(next, { type: 'set-session-documents', sessionId: 'a', documentIds: [] })
+  assert.equal('documentIds' in cleared.sessions[0]!, false)
+})
+
+test('forget-document detaches a removed document from every chat', () => {
+  const state = library([
+    { ...session('a'), documentIds: ['d1', 'd2'] },
+    { ...session('b'), documentIds: ['d1'] },
+    session('c'),
+  ])
+  const next = sessionReducer(state, { type: 'forget-document', documentId: 'd1' })
+  assert.deepEqual(next.sessions[0]!.documentIds, ['d2'])
+  assert.equal('documentIds' in next.sessions[1]!, false)
+  assert.equal(next.sessions[2], state.sessions[2])
+  assert.equal(sessionReducer(next, { type: 'forget-document', documentId: 'd1' }), next)
+})
+
+test('tree edits keep the attached documents', () => {
+  const state = library([{ ...session('a'), documentIds: ['d1'] }])
+  const rootId = state.sessions[0]!.treeState.rootId
+  const next = sessionReducer(state, { type: 'tree', action: { type: 'append-message', threadId: rootId, message: msg('m1') } })
+  assert.notEqual(next, state)
+  assert.deepEqual(next.sessions[0]!.documentIds, ['d1'])
+})

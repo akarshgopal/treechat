@@ -10,8 +10,12 @@ export function buildSystemPrompts(forwardedProps: Record<string, unknown>) {
   const quote = typeof forwardedProps.quote === 'string' ? forwardedProps.quote : ''
   const context =
     typeof forwardedProps.context === 'string' ? forwardedProps.context : ''
+  // Excerpts from the chat's documents, retrieved in the browser before the
+  // request (src/lib/documents/rag.ts). Last, so they sit next to the question.
+  const documents =
+    typeof forwardedProps.documents === 'string' ? forwardedProps.documents.trim() : ''
 
-  if (!quote.trim() && !context.trim()) return prompts
+  if (!quote.trim() && !context.trim()) return documents ? [...prompts, documents] : prompts
 
   const chain =
     context.trim() ||
@@ -25,5 +29,6 @@ export function buildSystemPrompts(forwardedProps: Record<string, unknown>) {
       `Answer in this thread. Pronouns and shorthand refer to things established ` +
       `above. Stay here unless the user asks to go back up.`,
   )
+  if (documents) prompts.push(documents)
   return prompts
 }

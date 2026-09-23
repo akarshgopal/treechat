@@ -38,6 +38,8 @@ type TreeContextValue = {
   switchSession: (sessionId: string) => void
   renameSession: (sessionId: string, title: string) => void
   deleteSession: (sessionId: string) => void
+  setSessionDocuments: (sessionId: string, documentIds: string[]) => void
+  forgetDocument: (documentId: string) => void
 }
 
 const TreeContext = createContext<TreeContextValue | null>(null)
@@ -109,6 +111,9 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       renameSession: (sessionId, title) =>
         dispatch({ type: 'rename-session', sessionId, title }),
       deleteSession: (sessionId) => dispatch({ type: 'delete-session', sessionId }),
+      setSessionDocuments: (sessionId, documentIds) =>
+        dispatch({ type: 'set-session-documents', sessionId, documentIds }),
+      forgetDocument: (documentId) => dispatch({ type: 'forget-document', documentId }),
     }),
     [library, state, activeSession, activeThread, rootThread, createThread],
   )

@@ -12,6 +12,10 @@ export type SessionAction =
   | { type: 'switch-session'; sessionId: string }
   | { type: 'rename-session'; sessionId: string; title: string }
   | { type: 'delete-session'; sessionId: string }
+  /** Which stored documents a chat searches. */
+  | { type: 'set-session-documents'; sessionId: string; documentIds: string[] }
+  /** A document was removed from the library: detach it everywhere. */
+  | { type: 'forget-document'; documentId: string }
   | { type: 'tree'; action: TreeAction }
 
 function mapSession(
@@ -27,6 +31,18 @@ function mapSession(
     return next
   })
   return changed ? { ...library, sessions } : library
+}
+
+function sameIds(a: string[] | undefined, b: string[]) {
+  const current = a ?? []
+  return current.length === b.length && current.every((id, index) => id === b[index])
+}
+
+/** An empty list is stored as no key, matching what the storage parser reads back. */
+function withDocumentIds(session: ChatSession, documentIds: string[]): ChatSession {
+  const next: ChatSession = { ...session, documentIds }
+  if (documentIds.length === 0) delete next.documentIds
+  return next
 }
 
 export function sessionReducer(
@@ -69,6 +85,22 @@ export function sessionReducer(
             ).id
           : state.activeSessionId
       return { sessions: remaining, activeSessionId }
+    }
+    case 'set-session-documents': {
+      const ids = [...new Set(action.documentIds)]
+      // Not activity: attaching must not reorder the chat list.
+      return mapSession(state, action.sessionId, (session) =>
+        sameIds(session.documentIds, ids) ? session : withDocumentIds(session, ids),
+      )
+    }
+    case 'forget-document': {
+      let changed = false
+      const sessions = state.sessions.map((session) => {
+        if (!session.documentIds?.includes(action.documentId)) return session
+        changed = true
+        return withDocumentIds(session, session.documentIds.filter((id) => id !== action.documentId))
+      })
+      return changed ? { ...state, sessions } : state
     }
     case 'tree': {
       const current = state.sessions.find(

@@ -9,6 +9,7 @@ import {
 import { mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
 import { buildSystemPrompts } from '../../shared/system-prompts.ts'
 import { clearRunCitations } from './citations.ts'
+import { withDocumentNote, withDocuments } from './documents/rag.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
@@ -350,7 +351,13 @@ export async function* openRouterChatStream(input: {
 export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   clearRunCitations(input.threadId)
   const config = loadProviderConfig()
-  const forwardedProps = mergeForwarded(input.data, input.forwardedProps)
+  // Documents attached to the chat add an excerpts section and citations;
+  // done here so every backend below gets them.
+  const { forwardedProps, citations } = await withDocuments({
+    messages: input.messages,
+    forwardedProps: mergeForwarded(input.data, input.forwardedProps),
+    threadId: input.threadId,
+  })
   const backend = await resolveChatBackend(config)
 
   if (backend === 'openrouter' && config) {
@@ -379,14 +386,14 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
     return
   }
 
-  yield* mockChatStream({
+  yield* withDocumentNote(mockChatStream({
     messages: input.messages,
     threadId: input.threadId,
     runId: input.runId,
     quote:
       typeof forwardedProps.quote === 'string' ? forwardedProps.quote : undefined,
     signal: input.signal,
-  })
+  }), citations)
 }
 
 export async function collectAssistantText(

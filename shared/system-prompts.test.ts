@@ -34,3 +34,15 @@ test('context wins over a synthesized quote chain', () => {
   assert.match(prompts[1]!, /«pin»/)
   assert.doesNotMatch(prompts[1]!, /ignored/)
 })
+
+test('retrieved document excerpts come last, on the root and in branches', () => {
+  const documents = 'DOCUMENTS\n\n[1] notes.md\n"""\nexcerpt\n"""'
+  const root = buildSystemPrompts({ documents })
+  assert.equal(root.length, 2)
+  assert.equal(root[1], documents)
+  const branch = buildSystemPrompts({ quote: 'pin', documents })
+  assert.equal(branch.length, 3)
+  assert.match(branch[1]!, /SELECTED QUOTE/)
+  assert.equal(branch[2], documents)
+  assert.equal(buildSystemPrompts({ documents: '   ' }).length, 1)
+})

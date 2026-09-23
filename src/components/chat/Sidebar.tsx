@@ -39,12 +39,13 @@ const iconButton =
 
 /**
  * The desktop sidebar: new chat on top, the tree and chat list in the middle,
- * settings at the bottom. It folds to an icon strip (Ctrl/⌘+\) and its right
- * edge resizes it.
+ * documents and settings at the bottom. It folds to an icon strip (Ctrl/⌘+\)
+ * and its right edge resizes it.
  */
-export function Sidebar({ tree, sessions, onNewChat, onOpenSettings }: {
+export function Sidebar({ tree, sessions, documents, onNewChat, onOpenSettings }: {
   tree: ReactNode
   sessions: ReactNode
+  documents?: ReactNode
   onNewChat: () => void
   onOpenSettings: () => void
 }) {
@@ -154,6 +155,7 @@ export function Sidebar({ tree, sessions, onNewChat, onOpenSettings }: {
       <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-3">
         {sessions}
       </div>
+      {documents ? <div className="flex max-h-[30%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-2.5">{documents}</div> : null}
       <div className="shrink-0 border-t border-border p-2">{settingsButton(true)}</div>
       <div
         role="separator"

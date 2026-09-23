@@ -189,6 +189,9 @@ function parseSession(value: unknown): ChatSession | null {
     typeof record.title === 'string' && record.title.trim()
       ? record.title.trim()
       : titleFromTree(treeState)
+  const documentIds = Array.isArray(record.documentIds)
+    ? [...new Set(record.documentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+    : []
   return {
     id: record.id,
     title,
@@ -196,6 +199,7 @@ function parseSession(value: unknown): ChatSession | null {
     updatedAt,
     treeState,
     titleLocked,
+    ...(documentIds.length > 0 ? { documentIds } : {}),
   }
 }
 
