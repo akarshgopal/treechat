@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  BACKGROUND_MODEL_OPTIONS,
+  backgroundModelFor,
+  isModelId,
   DEFAULT_OPENROUTER_MODEL,
   TREECHAT_MODEL_HEADER,
   clearProviderConfig,
@@ -206,4 +209,47 @@ test('providerRequestHeaders attaches Bearer and model', () => {
   })
   assert.equal(headers.Authorization, 'Bearer sk-or-v1-test')
   assert.equal(headers[TREECHAT_MODEL_HEADER], 'anthropic/claude-sonnet-4')
+})
+
+test('isModelId accepts vendor/model ids and rejects partial text', () => {
+  assert.equal(isModelId('openai/gpt-4.1-mini'), true)
+  assert.equal(isModelId('nvidia/nemotron-3-ultra-550b-a55b:free'), true)
+  assert.equal(isModelId(' anthropic/claude-sonnet-4 '), true)
+  assert.equal(isModelId('anthro'), false)
+  assert.equal(isModelId('openai/'), false)
+  assert.equal(isModelId('/gpt'), false)
+  assert.equal(isModelId('open ai/gpt'), false)
+})
+
+test('the background model is parsed, validated, and persisted only when set', () => {
+  const parsed = parseProviderConfig(JSON.stringify({
+    apiKey: 'k',
+    model: 'openai/gpt-4.1-mini',
+    backgroundModel: ' meta-llama/llama-3.3-70b-instruct:free ',
+  }))
+  assert.equal(parsed?.backgroundModel, 'meta-llama/llama-3.3-70b-instruct:free')
+  assert.deepEqual(
+    JSON.parse(serializeProviderConfig(parsed!)).backgroundModel,
+    'meta-llama/llama-3.3-70b-instruct:free',
+  )
+
+  for (const junk of ['', '  ', 'llama', 42, null]) {
+    const config = normalizeProviderConfig({ apiKey: 'k', backgroundModel: junk })
+    assert.ok(!('backgroundModel' in config), `kept ${String(junk)}`)
+    assert.ok(!('backgroundModel' in JSON.parse(serializeProviderConfig(config))))
+  }
+})
+
+test('the background model is used only with a key and when it differs', () => {
+  const base = { provider: 'openrouter' as const, apiKey: 'k', model: 'openai/gpt-4.1-mini' }
+  assert.equal(backgroundModelFor(null), undefined)
+  assert.equal(backgroundModelFor(base), undefined)
+  assert.equal(backgroundModelFor({ ...base, backgroundModel: 'openai/gpt-4.1-nano' }), 'openai/gpt-4.1-nano')
+  assert.equal(backgroundModelFor({ ...base, backgroundModel: base.model }), undefined)
+  assert.equal(backgroundModelFor({ ...base, apiKey: '', backgroundModel: 'openai/gpt-4.1-nano' }), undefined)
+})
+
+test('background presets are valid ids and include a free one', () => {
+  assert.ok(BACKGROUND_MODEL_OPTIONS.every((option) => isModelId(option.id)))
+  assert.ok(BACKGROUND_MODEL_OPTIONS.some((option) => option.id.endsWith(':free')))
 })

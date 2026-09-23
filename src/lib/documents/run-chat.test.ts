@@ -1,0 +1,98 @@
+import 'fake-indexeddb/auto'
+import assert from 'node:assert/strict'
+import { afterEach, beforeEach, test } from 'node:test'
+import { EventType, type StreamChunk } from '@tanstack/ai'
+import { takeRunCitations } from '../citations.ts'
+import { resetLocalChatApiProbe, runChat } from '../client-chat.ts'
+import { clearProviderConfig, saveProviderConfig } from '../provider.ts'
+import { setEmbedder } from './active-embedder.ts'
+import { fakeEmbedder } from './embedder.ts'
+import { indexFile } from './ingest.ts'
+
+const originalFetch = globalThis.fetch
+
+function installLocalStorage() {
+  const store = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value) },
+      removeItem: (key: string) => { store.delete(key) },
+      clear: () => store.clear(),
+    },
+  })
+}
+
+beforeEach(async () => {
+  installLocalStorage()
+  resetLocalChatApiProbe()
+  clearProviderConfig()
+  setEmbedder(fakeEmbedder)
+  await indexFile(
+    new File(['# Deploy\n\nThe site deploys to GitHub Pages from the main branch.\n\n# Cooking\n\nBoil pasta in salted water.'], 'handbook.md', { type: 'text/markdown' }),
+    { id: 'handbook', embedder: fakeEmbedder },
+  )
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  resetLocalChatApiProbe()
+  setEmbedder(null)
+})
+
+async function drain(stream: AsyncIterable<StreamChunk>) {
+  const chunks: StreamChunk[] = []
+  for await (const chunk of stream) chunks.push(chunk)
+  return chunks
+}
+
+test('OpenRouter requests carry a DOCUMENTS system message and record citations', async () => {
+  saveProviderConfig({ provider: 'openrouter', apiKey: 'key', model: 'test-model' })
+  let body: { messages: Array<{ role: string; content: string }> } | null = null
+  globalThis.fetch = (async (_input, init) => {
+    body = JSON.parse(String(init?.body))
+    return new Response('data: {"choices":[{"delta":{"content":"Pages [1]"}}]}\n\ndata: [DONE]\n\n')
+  }) as typeof fetch
+
+  await drain(runChat({
+    messages: [{ role: 'user', content: 'Where does the site deploy?' }],
+    forwardedProps: { documentIds: ['handbook'], cacheSessionId: 'chat-1' },
+    threadId: 'thread-or',
+    runId: 'run-1',
+  }))
+
+  const system = body!.messages.filter((message) => message.role === 'system')
+  assert.match(system.at(-1)!.content, /^DOCUMENTS/)
+  assert.match(system.at(-1)!.content, /\[1\] handbook\.md — Deploy/)
+  assert.doesNotMatch(system.at(-1)!.content, /pasta/)
+  const citations = takeRunCitations('thread-or')
+  assert.deepEqual(citations?.map((citation) => [citation.id, citation.kind, citation.title, citation.documentId, citation.locator]), [
+    ['1', 'document', 'handbook.md', 'handbook', 'Deploy'],
+  ])
+})
+
+test('the demo mock lists matching excerpts with markers', async () => {
+  globalThis.fetch = (async () => new Response('missing', { status: 404 })) as typeof fetch
+  const chunks = await drain(runChat({
+    messages: [{ role: 'user', content: 'How do I boil pasta?' }],
+    forwardedProps: { documentIds: ['handbook'] },
+    threadId: 'thread-mock',
+    runId: 'run-2',
+  }))
+  const text = chunks.map((chunk) => (chunk.type === EventType.TEXT_MESSAGE_CONTENT ? chunk.delta : '')).join('')
+  assert.match(text, /Matching excerpts from your documents:\n- handbook\.md, Cooking \[1\]/)
+  assert.equal(takeRunCitations('thread-mock')?.[0]?.locator, 'Cooking')
+})
+
+test('chats without documents are untouched', async () => {
+  globalThis.fetch = (async () => new Response('missing', { status: 404 })) as typeof fetch
+  const chunks = await drain(runChat({
+    messages: [{ role: 'user', content: 'How do I boil pasta?' }],
+    threadId: 'thread-plain',
+    runId: 'run-3',
+  }))
+  const text = chunks.map((chunk) => (chunk.type === EventType.TEXT_MESSAGE_CONTENT ? chunk.delta : '')).join('')
+  assert.doesNotMatch(text, /Matching excerpts/)
+  assert.equal(takeRunCitations('thread-plain'), undefined)
+})

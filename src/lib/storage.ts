@@ -12,9 +12,12 @@ import type {
   ChatSession,
   SessionLibrary,
   Thread,
+  ThreadSummary,
   TreeState,
 } from '@/types'
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
+import { parseCitations } from './citations.ts'
+import { parseAttachments } from './attachments/parse.ts'
 
 function isRole(value: unknown): value is ChatMessage['role'] {
   return value === 'user' || value === 'assistant'
@@ -26,6 +29,8 @@ function parseMessage(value: unknown): ChatMessage | null {
   if (typeof record.id !== 'string') return null
   if (!isRole(record.role)) return null
   if (typeof record.content !== 'string') return null
+  const citations = parseCitations(record.citations)
+  const attachments = parseAttachments(record.attachments)
   return {
     id: record.id,
     role: record.role,
@@ -33,6 +38,9 @@ function parseMessage(value: unknown): ChatMessage | null {
     createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
     kind: record.kind === 'drop-summary' ? 'drop-summary' : 'message',
     quote: typeof record.quote === 'string' ? record.quote : undefined,
+    sourceThreadId: typeof record.sourceThreadId === 'string' ? record.sourceThreadId : undefined,
+    ...(citations ? { citations } : {}),
+    ...(attachments ? { attachments } : {}),
   }
 }
 
@@ -57,6 +65,18 @@ function parseAnchor(value: unknown): Anchor | null {
   }
 }
 
+function parseSummary(value: unknown): ThreadSummary | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (typeof record.content !== 'string' || !record.content.trim()) return null
+  if (typeof record.throughMessageId !== 'string') return null
+  return {
+    content: record.content,
+    throughMessageId: record.throughMessageId,
+    createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
+  }
+}
+
 function parseThread(value: unknown): Thread | null {
   if (!value || typeof value !== 'object') return null
   const record = value as Record<string, unknown>
@@ -65,13 +85,18 @@ function parseThread(value: unknown): Thread | null {
   const anchor = parseAnchor(record.anchor)
   // A non-root thread without a usable anchor has nowhere to attach.
   if (parentId !== null && !anchor) return null
+  const messages = parseMessages(record.messages)
+  const summary = parseSummary(record.summary)
   return {
     id: record.id,
     parentId,
     anchor: parentId === null ? null : anchor,
-    messages: parseMessages(record.messages),
+    messages,
     createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
     rev: typeof record.rev === 'number' ? record.rev : 0,
+    // A summary of messages that are no longer there would describe nothing.
+    ...(summary && messages.some((message) => message.id === summary.throughMessageId) ? { summary } : {}),
+    ...(record.webSearch === true ? { webSearch: true } : {}),
   }
 }
 
@@ -185,6 +210,9 @@ function parseSession(value: unknown): ChatSession | null {
     typeof record.title === 'string' && record.title.trim()
       ? record.title.trim()
       : titleFromTree(treeState)
+  const documentIds = Array.isArray(record.documentIds)
+    ? [...new Set(record.documentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+    : []
   return {
     id: record.id,
     title,
@@ -192,6 +220,7 @@ function parseSession(value: unknown): ChatSession | null {
     updatedAt,
     treeState,
     titleLocked,
+    ...(documentIds.length > 0 ? { documentIds } : {}),
   }
 }
 

@@ -31,3 +31,6 @@ dist-ssr
 
 package-lock.json
 .grok-briefs/
+test-results/
+playwright-report/
+.claude/worktrees/

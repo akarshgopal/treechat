@@ -15,10 +15,15 @@ import type { PluggableList } from 'unified'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
 import { Check, Copy } from 'lucide-react'
+import { CitationContext } from '@/components/chat/citation-context'
+import { CitationSup } from '@/components/chat/Citations'
+import { rehypeCitationMarkers } from '@/lib/citation-markers'
+import { sameCitations } from '@/lib/citations'
 import { languageFromClassName, rehypeBranchMarks } from '@/lib/markdown'
 import { OFFSET_IGNORE_ATTR, plainTextSkippingIgnore, type Mark } from '@/lib/selection'
 import { cycleOpenId } from '@/lib/tree'
 import { cn } from '@/lib/utils'
+import type { Citation } from '@/types'
 
 const remarkPlugins: PluggableList = [remarkGfm]
 const highlightPlugin: PluggableList[number] = [
@@ -36,6 +41,11 @@ type MessageMarkdownProps = {
   marks?: Mark[]
   onOpenBranch?: (threadId: string | null) => void
   className?: string
+  /** Sources behind `[n]` markers; known markers render as chips. */
+  citations?: Citation[]
+  /** The citation whose source lane is open, to mark its chips. */
+  openCitationId?: string | null
+  onOpenCitation?: (citationId: string) => void
 }
 
 export const MessageMarkdown = memo(function MessageMarkdown({
@@ -43,16 +53,28 @@ export const MessageMarkdown = memo(function MessageMarkdown({
   marks = EMPTY_MARKS,
   onOpenBranch,
   className,
+  citations,
+  openCitationId = null,
+  onOpenCitation,
 }: MessageMarkdownProps) {
   const onOpenBranchRef = useRef(onOpenBranch)
+  const onOpenCitationRef = useRef(onOpenCitation)
   useEffect(() => {
     onOpenBranchRef.current = onOpenBranch
-  }, [onOpenBranch])
+    onOpenCitationRef.current = onOpenCitation
+  }, [onOpenBranch, onOpenCitation])
 
+  const citationIds = useMemo(() => (citations ?? []).map((citation) => citation.id).join('\u0000'), [citations])
+  // Chips go in before branch marks: marks count over the chip's text too.
   const rehypePlugins = useMemo<PluggableList>(
-    () => [highlightPlugin, rehypeBranchMarks(marks)],
-    [marks],
+    () => [highlightPlugin, rehypeCitationMarkers(new Set(citationIds ? citationIds.split('\u0000') : [])), rehypeBranchMarks(marks)],
+    [citationIds, marks],
   )
+  const citationContext = useMemo(() => ({
+    byId: new Map((citations ?? []).map((citation) => [citation.id, citation])),
+    openId: openCitationId,
+    onOpen: (citationId: string) => onOpenCitationRef.current?.(citationId),
+  }), [citations, openCitationId])
   const components = useMemo(
     () => ({
       a: MarkdownLink,
@@ -60,6 +82,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       code: MarkdownCode,
       table: MarkdownTable,
       input: MarkdownInput,
+      sup: CitationSup,
       mark: (props: ComponentProps<'mark'> & ExtraProps) => (
         <BranchMark {...props} onOpenBranchRef={onOpenBranchRef} />
       ),
@@ -69,18 +92,23 @@ export const MessageMarkdown = memo(function MessageMarkdown({
 
   return (
     <div className={cn('tc-md', className)}>
-      <Markdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={components}
-      >
-        {content}
-      </Markdown>
+      <CitationContext.Provider value={citationContext}>
+        <Markdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={components}
+        >
+          {content}
+        </Markdown>
+      </CitationContext.Provider>
     </div>
   )
 }, (prev, next) => {
   if (prev.content !== next.content) return false
   if (prev.className !== next.className) return false
+  if ((prev.openCitationId ?? null) !== (next.openCitationId ?? null)) return false
+  if (!sameCitations(prev.citations, next.citations)) return false
+  if (Boolean(prev.onOpenCitation) !== Boolean(next.onOpenCitation)) return false
   return marksKey(prev.marks ?? EMPTY_MARKS) === marksKey(next.marks ?? EMPTY_MARKS)
 })
 

@@ -6,6 +6,7 @@ import {
   editUserMessage,
   retryFromAssistant,
 } from '../lib/message-actions.ts'
+import { prefixFingerprint } from '../lib/compaction.ts'
 import { reducer } from './tree-reducer.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
 
@@ -54,6 +55,15 @@ test('creating a thread expands it inside its parent', () => {
   })
   assert.equal(next.expanded.root, 'b3')
   assert.equal(next.threads.b3.parentId, 'root')
+})
+
+test('web search switches on and off per thread, leaving no key when off', () => {
+  const on = reducer(base(), { type: 'set-web-search', threadId: 'b1', on: true })
+  assert.equal(on.threads.b1.webSearch, true)
+  assert.equal(reducer(on, { type: 'set-web-search', threadId: 'b1', on: true }), on)
+  const off = reducer(on, { type: 'set-web-search', threadId: 'b1', on: false })
+  assert.deepEqual(off.threads.b1, base().threads.b1)
+  assert.equal('webSearch' in off.threads.b1, false)
 })
 
 test('creating a nested thread also expands ancestors', () => {
@@ -249,4 +259,90 @@ test('rewrite-thread against a missing thread is inert', () => {
     }),
     state,
   )
+})
+
+test('undoing a takeaway preserves its branch and later conversation messages', () => {
+  const state = conversation()
+  const withTakeaway = reducer(state, {
+    type: 'append-message', threadId: 'root',
+    message: { id: 'takeaway', role: 'assistant', content: 'Insight', createdAt: 1, kind: 'drop-summary', sourceThreadId: 'b1' },
+  })
+  const withFollowup = reducer(withTakeaway, {
+    type: 'append-message', threadId: 'root',
+    message: { id: 'followup', role: 'user', content: 'Continue', createdAt: 2 },
+  })
+  const undone = reducer(withFollowup, { type: 'undo-takeaway', threadId: 'root', messageId: 'takeaway' })
+  assert.equal(undone.threads.root.messages.at(-1)?.id, 'followup')
+  assert.ok(!undone.threads.root.messages.some((message) => message.id === 'takeaway'))
+  assert.equal(undone.threads.b1, state.threads.b1)
+  assert.equal(undone.threads.b1a, state.threads.b1a)
+  assert.equal(undone.threads.root.rev, withFollowup.threads.root.rev + 1)
+  assert.equal(reducer(undone, { type: 'undo-takeaway', threadId: 'root', messageId: 'followup' }), undone)
+})
+
+function withSummary(): TreeState {
+  const state = base()
+  const root = { ...state.threads.root, messages: ['r1', 'r2', 'r3', 'r4', 'r5'].map((id) => msg(id)) }
+  return {
+    ...state,
+    threads: {
+      ...state.threads,
+      root: { ...root, summary: { content: 'r1 to r3', throughMessageId: 'r3', createdAt: 1 } },
+    },
+  }
+}
+
+test('a summary survives new messages and rewrites below what it covers', () => {
+  const state = withSummary()
+  const appended = reducer(state, {
+    type: 'replace-messages',
+    threadId: 'root',
+    messages: [...state.threads.root.messages, msg('r6')],
+  })
+  assert.equal(appended.threads.root.summary?.throughMessageId, 'r3')
+  const retried = reducer(state, {
+    type: 'rewrite-thread',
+    threadId: 'root',
+    messages: state.threads.root.messages.slice(0, 4),
+    dropAnchorMessageIds: ['r5'],
+  })
+  assert.equal(retried.threads.root.summary?.throughMessageId, 'r3')
+})
+
+test('rewriting a summarized message drops the summary', () => {
+  const state = withSummary()
+  const truncated = reducer(state, {
+    type: 'rewrite-thread',
+    threadId: 'root',
+    messages: state.threads.root.messages.slice(0, 2),
+    dropAnchorMessageIds: [],
+  })
+  assert.equal('summary' in truncated.threads.root, false)
+  const afterEdit = reducer(state, {
+    type: 'rewrite-thread',
+    threadId: 'root',
+    messages: editUserMessage(state.threads.root.messages, 'r3', 'new text')!,
+    dropAnchorMessageIds: [],
+  })
+  assert.equal('summary' in afterEdit.threads.root, false)
+})
+
+test('a summary lands only on the messages it was written from', () => {
+  const state = base()
+  const root = { ...state.threads.root, messages: ['r1', 'r2', 'r3'].map((id) => msg(id)) }
+  const current: TreeState = { ...state, threads: { ...state.threads, root } }
+  const summary = { content: 's', throughMessageId: 'r2', createdAt: 1 }
+  const basis = prefixFingerprint(root.messages, 'r2')!
+  const set = reducer(current, { type: 'set-summary', threadId: 'root', summary, basis })
+  assert.deepEqual(set.threads.root.summary, summary)
+  // No remount: the engine keeps its in-flight state.
+  assert.equal(set.threads.root.rev, root.rev)
+
+  const edited = reducer(current, {
+    type: 'rewrite-thread',
+    threadId: 'root',
+    messages: editUserMessage(root.messages, 'r2', 'changed')!,
+    dropAnchorMessageIds: [],
+  })
+  assert.equal(reducer(edited, { type: 'set-summary', threadId: 'root', summary, basis }), edited)
 })

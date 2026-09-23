@@ -6,15 +6,20 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
-import { ChevronDown, SquarePen } from 'lucide-react'
-import { BranchCard } from '@/components/chat/BranchCard'
-import { BranchChip } from '@/components/chat/BranchChip'
-import { HeaderModelPicker } from '@/components/chat/ModelPicker'
+import { ChevronDown, Settings, SquarePen } from 'lucide-react'
+import { BranchHeader } from '@/components/chat/BranchHeader'
+import { BranchPopover } from '@/components/chat/BranchPopover'
+import { DocumentDropZone, DocumentsChip, DocumentsDialog, DocumentsLibraryEntry, DocumentsSidebarSection } from '@/components/chat/Documents'
+import { Lanes, type LaneFrame, type TrailingLane } from '@/components/chat/Lanes'
+import { SourceLane } from '@/components/chat/SourceLane'
+import { TakeawayDialog } from '@/components/chat/TakeawayDialog'
 import { SessionList } from '@/components/chat/SessionList'
 import { SettingsDialog } from '@/components/chat/SettingsDialog'
-import { MAX_INLINE_DEPTH, ThreadView } from '@/components/chat/ThreadView'
+import { Sidebar } from '@/components/chat/Sidebar'
+import { ThreadView } from '@/components/chat/ThreadView'
 import { TreeRail } from '@/components/chat/TreeRail'
 import {
   AlertDialog,
@@ -33,38 +38,47 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { MAX_ATTACHMENTS, prepareFiles } from '@/lib/attachments/prepare'
+import { pruneAttachments } from '@/lib/attachments/store'
 import { chatConnection } from '@/lib/chat-connection'
+import { addDocumentFiles } from '@/lib/documents/library'
+import { loadModelCapabilities, modelReadsImages } from '@/lib/model-capabilities'
+import { takeRunCitations } from '@/lib/citations'
 import { createId } from '@/lib/ids'
 import {
+  doomedIdsForAnchors,
   dropAnchorIdsForEdit,
   droppedMessageIds,
   editUserMessage,
   retryFromAssistant,
+  retryFromUser,
 } from '@/lib/message-actions'
 import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
 import {
   DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_MODEL_OPTIONS,
   loadProviderConfig,
   patchProviderConfig,
   providerRequestHeaders,
   shortModelName,
   type ClientProviderConfig,
 } from '@/lib/provider'
-import { requestAssistantText } from '@/lib/request-assistant'
+import { lensQuestion, type Lens } from '@/lib/lenses'
 import {
   offsetsInRoot,
   selectableMessageFromRange,
   selectionClientRect,
+  plainTextSkippingIgnore,
+  snapRangeToWords,
 } from '@/lib/selection'
-import {
-  branchForwardedProps,
-  childThreads,
-  depthFrom,
-  pathTo,
-} from '@/lib/tree'
-import { isBranchShortcut, truncate } from '@/lib/utils'
+import { branchForwardedProps, pathTo } from '@/lib/tree'
+import { refreshSummary } from '@/lib/summarize'
+import { isBranchShortcut } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
-import type { ProviderStatus, Thread } from '@/types'
+import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
+
+/** Unreferenced attachments younger than this survive a clean-up. */
+const ATTACHMENT_GRACE_MS = 24 * 60 * 60 * 1000
 
 const idleStatus: ProviderStatus = {
   mode: 'mock',
@@ -81,6 +95,8 @@ type ChipState = {
   top: number
   left: number
   bottom: number
+  /** The passage in the DOM, snapped to whole words. */
+  range: Range | null
 }
 
 /**
@@ -92,9 +108,19 @@ type EngineHandle = {
   isLoading: boolean
 }
 
+/** A source open beside the reply that cites it. Shell state, never persisted. */
+type OpenSource = { threadId: string; messageId: string; citationId: string }
+
+const SOURCE_LANE_ID = 'source-lane'
+
 type ShellValue = {
   draftFor: (threadId: string) => string
   setDraft: (threadId: string, value: string) => void
+  /** Files waiting in a thread's composer, sent with its next message. */
+  attachmentsFor: (threadId: string) => Attachment[]
+  setAttachments: (threadId: string, update: (current: Attachment[]) => Attachment[]) => void
+  status: ProviderStatus
+  onSwitchModel: (model: string) => void
   registerComposer: (threadId: string, el: HTMLTextAreaElement | null) => void
   registerEngine: (threadId: string, handle: EngineHandle | null) => void
   onSelectMessage: (threadId: string, messageId: string) => void
@@ -102,10 +128,54 @@ type ShellValue = {
   onFocus: (threadId: string) => void
   onMerge: (threadId: string) => void
   onDiscard: (threadId: string) => void
-  merging: string | null
+  takeInitialQuestion: (threadId: string) => string | undefined
+  onAskMessage: (threadId: string, messageId: string) => void
+  onReturn: (threadId: string, takeawayId?: string) => void
+  scrollPositions: Map<string, number>
+  sessionId: string
+  onShowDemo: () => void
+  openSource: OpenSource | null
+  onOpenSource: (threadId: string, messageId: string, citationId: string) => void
 }
 
 const ShellContext = createContext<ShellValue | null>(null)
+
+/** Stable empties, so memoized consumers don't see a new array every render. */
+const NO_ATTACHMENTS: Attachment[] = []
+const NO_THREAD_ATTACHMENTS: Record<string, Attachment[]> = {}
+
+/**
+ * Warn before an image goes to a model that can't read it, with a one-click
+ * switch. Only with a key (OpenRouter's list says which models read images);
+ * unknown models get no warning.
+ */
+function useVisionNotice(files: Attachment[], status: ProviderStatus, onSwitch: (model: string) => void): ReactNode {
+  const hasImage = files.some((file) => file.kind === 'image')
+  const live = status.mode === 'live' && status.provider === 'openrouter'
+  const [, setLoaded] = useState(0)
+  useEffect(() => {
+    if (!hasImage || !live) return
+    let cancelled = false
+    void loadModelCapabilities().then(() => {
+      if (!cancelled) setLoaded((count) => count + 1)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [hasImage, live])
+  if (!hasImage || !live || modelReadsImages(status.model) !== false) return null
+  const alternative = OPENROUTER_MODEL_OPTIONS.find((option) => modelReadsImages(option.id) === true)
+  return (
+    <span className="text-amber-300/90" data-testid="vision-warning">
+      {shortModelName(status.model)} can’t read images.{' '}
+      {alternative ? (
+        <button type="button" className="font-medium text-branch-bright underline underline-offset-2" onClick={() => onSwitch(alternative.id)}>
+          Switch to {alternative.label}
+        </button>
+      ) : 'Pick a model that reads images in Settings.'}
+    </span>
+  )
+}
 
 function useShell() {
   const value = useContext(ShellContext)
@@ -113,24 +183,58 @@ function useShell() {
   return value
 }
 
+type PendingRewrite = {
+  lostMessages: number
+  lostBranches: number
+  verb: string
+  apply: () => void
+  resolve: (confirmed: boolean) => void
+}
+
 /**
  * One chat engine per rendered thread. Keyed on `rev` by the caller, so an
  * external write (a merged summary) remounts it and it re-reads the transcript
  * rather than overwriting it with its own stale copy.
  */
-function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) {
-  const { state, replaceMessages, rewriteThread } = useTree()
+function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; openChildId: string | null; frame: LaneFrame }) {
+  const { state, replaceMessages, rewriteThread, setSummary, setWebSearch, activeSession, setSessionDocuments } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
 
-  const initialRef = useRef(toUIMessages(thread?.messages ?? []))
+  const [initialMessages] = useState(() => toUIMessages(thread?.messages ?? []))
   const forwarded = branchForwardedProps(state, threadId)
+  const summary = thread?.summary
+  const anchorAttachments = thread?.anchor && thread.parentId
+    ? state.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
+    : undefined
   const chat = useChat({
     threadId,
     connection: chatConnection,
-    initialMessages: initialRef.current,
-    forwardedProps: forwarded ?? {},
+    initialMessages,
+    forwardedProps: {
+      ...forwarded,
+      cacheSessionId: shell.sessionId,
+      // The transport retrieves excerpts from these documents before sending.
+      documentIds: activeSession.documentIds ?? [],
+      ...(thread?.webSearch ? { webSearch: true } : {}),
+      ...(summary ? { threadSummary: { content: summary.content, throughMessageId: summary.throughMessageId } } : {}),
+      // A branch from a message with images shows the model those images too.
+      ...(anchorAttachments ? { anchorAttachments } : {}),
+    },
   })
+
+  const { sendMessage } = chat
+  const { takeInitialQuestion } = shell
+  useEffect(() => {
+    // StrictMode detaches and reattaches useChat during its mount replay.
+    // Sending in that first effect starts a request that detach immediately
+    // aborts. Consume the pending question only after the mount has settled.
+    const timer = window.setTimeout(() => {
+      const question = takeInitialQuestion(threadId)
+      if (question) void sendMessage(question)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [sendMessage, takeInitialQuestion, threadId])
 
   const initial = useMemo(() => thread?.messages ?? [], [thread])
   useEffect(() => {
@@ -139,6 +243,23 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
     if (!sameTranscript(next, initial)) replaceMessages(threadId, next)
   }, [chat.messages, initial, replaceMessages, threadId])
 
+  // When a reply finishes, attach any sources its transport recorded.
+  const wasLoading = useRef(false)
+  const { setMessages } = chat
+  useEffect(() => {
+    const finished = wasLoading.current && !chat.isLoading
+    wasLoading.current = chat.isLoading
+    if (!finished) return
+    // Off the reply's path: the next request picks the summary up when it lands.
+    if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis))
+    const citations = takeRunCitations(threadId)
+    const last = chat.messages.at(-1)
+    if (!citations || last?.role !== 'assistant') return
+    setMessages(chat.messages.map((message) =>
+      message === last ? { ...message, metadata: { ...(message.metadata ?? {}), citations } } : message,
+    ))
+  }, [chat.error, chat.isLoading, chat.messages, setMessages, setSummary, summary, threadId])
+
   useEffect(() => {
     shell.registerEngine(threadId, {
       stop: () => chat.stop(),
@@ -146,6 +267,12 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
     })
     return () => shell.registerEngine(threadId, null)
   }, [chat, shell, threadId])
+
+  const [pendingRewrite, setPendingRewrite] = useState<PendingRewrite | null>(null)
+  const [attachBusy, setAttachBusy] = useState(false)
+  const [attachProblem, setAttachProblem] = useState<string | null>(null)
+  const pendingFiles = shell.attachmentsFor(threadId)
+  const visionNotice = useVisionNotice(pendingFiles, shell.status, shell.onSwitchModel)
 
   if (!thread) return null
 
@@ -156,39 +283,146 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
 
   const send = () => {
     const text = shell.draftFor(threadId).trim()
-    if (!text) return
+    const attachments = shell.attachmentsFor(threadId)
+    if (!text && attachments.length === 0) return
     shell.setDraft(threadId, '')
-    void chat.sendMessage(text)
+    shell.setAttachments(threadId, () => [])
+    setAttachProblem(null)
+    // The object form carries attachments as metadata (the bytes stay in
+    // IndexedDB) and, unlike a bare string, allows a message with no text.
+    void chat.sendMessage(attachments.length > 0 ? { content: text, metadata: { attachments } } : text)
+  }
+
+  const addFiles = async (files: File[]) => {
+    const current = shell.attachmentsFor(threadId)
+    setAttachBusy(true)
+    try {
+      const prepared = await prepareFiles(files, MAX_ATTACHMENTS - current.length)
+      if (prepared.attachments.length > 0) {
+        shell.setAttachments(threadId, (existing) => [...existing, ...prepared.attachments])
+      }
+      const problems = [...prepared.errors]
+      if (prepared.documents.length > 0) {
+        // PDFs are too big to resend with every turn; they join this chat's Documents.
+        const ids = addDocumentFiles(prepared.documents)
+        if (ids.length > 0) setSessionDocuments(activeSession.id, [...(activeSession.documentIds ?? []), ...ids])
+        problems.push(`${prepared.documents.map((file) => file.name).join(', ')} added to this chat’s Documents — searched, not sent whole.`)
+      }
+      setAttachProblem(problems.length > 0 ? problems.join(' ') : null)
+    } finally {
+      setAttachBusy(false)
+    }
+  }
+
+  /**
+   * Apply a rewrite now if it only replaces the reply being regenerated.
+   * Anything more (later turns, branches anchored below) asks first.
+   * Resolves false when the person keeps the conversation as it is.
+   */
+  const rewrite = (
+    next: ChatMessage[] | null,
+    before: ChatMessage[],
+    anchorIds: string[],
+    replacedId: string | undefined,
+    verb: string,
+  ): Promise<boolean> => {
+    if (!next) return Promise.resolve(false)
+    const dropped = droppedMessageIds(before, next)
+    const lostMessages = dropped.filter((id) => id !== replacedId).length
+    const lostBranches = doomedIdsForAnchors(state, threadId, anchorIds).length
+    const apply = () => {
+      if (chat.isLoading) chat.stop()
+      chat.setMessages(toUIMessages(next))
+      rewriteThread(threadId, next, anchorIds)
+      void chat.reload()
+    }
+    if (lostMessages === 0 && lostBranches === 0) {
+      apply()
+      return Promise.resolve(true)
+    }
+    return new Promise((resolve) => {
+      setPendingRewrite({ lostMessages, lostBranches, verb, apply, resolve })
+    })
+  }
+
+  /** The reply that directly answers a user turn, if any — it is being replaced anyway. */
+  const replyAfter = (messages: ChatMessage[], messageId: string) => {
+    const index = messages.findIndex((message) => message.id === messageId)
+    const reply = messages[index + 1]
+    return reply?.role === 'assistant' && reply.kind !== 'drop-summary' ? reply.id : undefined
   }
 
   const retryAssistant = (messageId: string) => {
-    if (chat.isLoading) chat.stop()
     const before = snapshot()
     const next = retryFromAssistant(before, messageId)
-    if (!next) return
-    chat.setMessages(toUIMessages(next))
-    rewriteThread(threadId, next, droppedMessageIds(before, next))
-    void chat.reload()
+    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate')
   }
 
   const editUser = (messageId: string, content: string) => {
-    if (chat.isLoading) chat.stop()
     const before = snapshot()
     const next = editUserMessage(before, messageId, content)
-    if (!next) return
-    chat.setMessages(toUIMessages(next))
-    rewriteThread(threadId, next, dropAnchorIdsForEdit(before, next, messageId))
-    void chat.reload()
+    return rewrite(next, before, next ? dropAnchorIdsForEdit(before, next, messageId) : [], replyAfter(before, messageId), 'Edit & resend')
+  }
+
+  const regenerateUser = (messageId: string) => {
+    const before = snapshot()
+    const next = retryFromUser(before, messageId)
+    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], replyAfter(before, messageId), 'Regenerate')
+  }
+
+  const closeRewrite = (confirmed: boolean) => {
+    if (!pendingRewrite) return
+    if (confirmed) pendingRewrite.apply()
+    pendingRewrite.resolve(confirmed)
+    setPendingRewrite(null)
   }
 
   return (
+    <>
     <ThreadView
       thread={thread}
       state={state}
-      depth={depth}
-      framed={depth === 0}
+      openChildId={openChildId}
+      scrollPositions={shell.scrollPositions}
+      scrollKey={`${shell.sessionId}:${threadId}`}
+      error={chat.error?.message}
+      onRetryError={() => { void chat.reload() }}
+      onShowDemo={shell.onShowDemo}
+      onAskMessage={shell.onAskMessage}
+      leadOffset={frame.leadOffset}
+      openCitation={shell.openSource?.threadId === threadId ? shell.openSource : null}
+      onOpenCitation={shell.onOpenSource}
+      header={thread.parentId ? (
+        <BranchHeader
+          thread={thread}
+          onMerge={() => shell.onMerge(threadId)}
+          onDiscard={() => shell.onDiscard(threadId)}
+          onReturn={() => shell.onReturn(threadId)}
+          summarized={Object.values(state.threads).some((entry) => entry.messages.some((message) => message.sourceThreadId === threadId))}
+          controls={frame.controls}
+          webSearch={Boolean(thread.webSearch)}
+          onToggleWebSearch={() => setWebSearch(threadId, !thread.webSearch)}
+        />
+      ) : frame.controls ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate py-2 text-sm text-muted-foreground">Main conversation</span>
+          {frame.controls}
+        </div>
+      ) : undefined}
       draft={shell.draftFor(threadId)}
       onDraftChange={(value) => shell.setDraft(threadId, value)}
+      composerAttach={{
+        items: pendingFiles,
+        busy: attachBusy,
+        onAdd: (files) => void addFiles(files),
+        onRemove: (id) => shell.setAttachments(threadId, (current) => current.filter((item) => item.id !== id)),
+      }}
+      composerNotice={attachProblem || visionNotice ? (
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {attachProblem ? <span data-testid="attach-problem">{attachProblem}</span> : null}
+          {visionNotice}
+        </span>
+      ) : undefined}
       onSend={send}
       onStop={() => chat.stop()}
       isLoading={chat.isLoading}
@@ -196,6 +430,7 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
       onOpenChild={shell.onOpenChild}
       onFocusChild={shell.onFocus}
       onRetryAssistant={retryAssistant}
+      onRegenerateUser={regenerateUser}
       onEditUser={editUser}
       composerRef={(el) => shell.registerComposer(threadId, el)}
       accentComposer={Boolean(thread.anchor)}
@@ -208,38 +443,48 @@ function ThreadEngine({ threadId, depth }: { threadId: string; depth: number }) 
       }
       emptyLabel={
         thread.anchor
-          ? 'This branch is empty. Write below — it stays on this thread, and it already knows everything above it.'
+          ? 'Ask a follow-up…'
           : undefined
       }
-      renderChild={(childId, childDepth) => (
-        <NestedBranch threadId={childId} depth={childDepth} />
-      )}
     />
+    {/* Mounted only while pending: reopening a closing Radix dialog can
+        strand its overlay on top of the new one. */}
+    {pendingRewrite ? (
+    <AlertDialog open onOpenChange={(open) => { if (!open) closeRewrite(false) }}>
+      <AlertDialogContent data-testid="rewrite-confirm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Rewrite the conversation from here?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {rewriteLoss(pendingRewrite.lostMessages, pendingRewrite.lostBranches)}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep conversation</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            data-testid="rewrite-confirm-action"
+            onClick={() => closeRewrite(true)}
+          >
+            {pendingRewrite.verb}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    ) : null}
+    </>
   )
 }
 
-/** An expanded child: the branch card, with that thread's own engine inside. */
-function NestedBranch({ threadId, depth }: { threadId: string; depth: number }) {
-  const { state } = useTree()
-  const shell = useShell()
-  const thread = state.threads[threadId]
-  if (!thread) return null
-  return (
-    <BranchCard
-      thread={thread}
-      merging={shell.merging === threadId}
-      onMerge={() => shell.onMerge(threadId)}
-      onDiscard={() => shell.onDiscard(threadId)}
-      onFocus={() => shell.onFocus(threadId)}
-      onHide={
-        thread.parentId
-          ? () => shell.onOpenChild(thread.parentId!, null)
-          : undefined
-      }
-    >
-      <ThreadEngine key={`${thread.id}:${thread.rev}`} threadId={threadId} depth={depth} />
-    </BranchCard>
-  )
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+function rewriteLoss(messages: number, branches: number) {
+  const parts = [
+    messages > 0 ? plural(messages, 'later message', 'later messages') : '',
+    branches > 0 ? plural(branches, 'branch', 'branches') : '',
+  ].filter(Boolean)
+  return `This removes ${parts.join(' and ')} in this conversation. This cannot be undone.`
 }
 
 function TreeChatShell({
@@ -248,14 +493,24 @@ function TreeChatShell({
   onNewChat,
   onRestoreDemo,
   onProviderConfigChange,
-  onModelChange,
+  drafts,
+  onDraftChange,
+  attachments,
+  onAttachmentsChange,
+  onSwitchModel,
+  scrollPositions,
 }: {
   epoch: number
   status: ProviderStatus
   onNewChat: () => void
   onRestoreDemo: () => void
   onProviderConfigChange: (config: ClientProviderConfig | null) => void
-  onModelChange: (model: string) => void
+  drafts: Record<string, string>
+  onDraftChange: (threadId: string, value: string) => void
+  attachments: Record<string, Attachment[]>
+  onAttachmentsChange: (threadId: string, update: (current: Attachment[]) => Attachment[]) => void
+  onSwitchModel: (model: string) => void
+  scrollPositions: Map<string, number>
 }) {
   const {
     state,
@@ -268,25 +523,38 @@ function TreeChatShell({
     focus,
     discard,
     appendMessage,
+    undoTakeaway,
     switchSession,
     renameSession,
     deleteSession,
   } = useTree()
+  const [source, setSource] = useState<OpenSource | null>(null)
 
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [chip, setChip] = useState<ChipState | null>(null)
-  const [merging, setMerging] = useState<string | null>(null)
+  /** A question being written about a passage, in the popover beside it. */
+  const [asking, setAsking] = useState<{ passage: ChipState; initial: string; returnFocus?: HTMLElement | null } | null>(null)
+  const [previewThreadId, setPreviewThreadId] = useState<string | null>(null)
+  const [returnTarget, setReturnTarget] = useState<{ threadId: string; messageId: string; branchId: string; takeawayId?: string } | null>(null)
+  const [lastTakeaway, setLastTakeaway] = useState<{ threadId: string; messageId: string } | null>(null)
+  const dismissTakeaway = useCallback(() => setLastTakeaway(null), [])
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const enginesRef = useRef<Record<string, EngineHandle>>({})
   const lastRangeRef = useRef<ChipState | null>(null)
   const focusNextRef = useRef<string | null>(null)
   const holdChipRef = useRef(false)
+  const initialQuestionsRef = useRef<Record<string, string>>({})
 
   const draftFor = useCallback((threadId: string) => drafts[threadId] ?? '', [drafts])
-  const setDraft = useCallback((threadId: string, value: string) => {
-    setDrafts((current) => ({ ...current, [threadId]: value }))
+  const attachmentsFor = useCallback((threadId: string) => attachments[threadId] ?? NO_ATTACHMENTS, [attachments])
+  const setDraft = onDraftChange
+  const takeInitialQuestion = useCallback((threadId: string) => {
+    const question = initialQuestionsRef.current[threadId]
+    delete initialQuestionsRef.current[threadId]
+    return question
   }, [])
 
   const registerComposer = useCallback(
@@ -332,20 +600,26 @@ function TreeChatShell({
 
   const syncChipFromSelection = useCallback(() => {
     const selection = window.getSelection()
+    // Forget the range with the chip: the shortcut must never branch from a
+    // passage the person has already deselected.
+    const clear = () => {
+      setChip(null)
+      lastRangeRef.current = null
+    }
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-      if (!holdChipRef.current) setChip(null)
+      if (!holdChipRef.current) clear()
       return
     }
     holdChipRef.current = false
-    const range = selection.getRangeAt(0)
+    const range = snapRangeToWords(selection.getRangeAt(0))
     const el = selectableMessageFromRange(range)
     if (!el) {
-      setChip(null)
+      clear()
       return
     }
     const offsets = offsetsInRoot(el, range)
     if (!offsets) {
-      setChip(null)
+      clear()
       return
     }
     const threadId = el.dataset.threadId
@@ -366,6 +640,7 @@ function TreeChatShell({
       top: rect.top,
       left: rect.left,
       bottom: rect.bottom,
+      range,
     }
     lastRangeRef.current = next
     setChip(next)
@@ -378,88 +653,172 @@ function TreeChatShell({
     [syncChipFromSelection],
   )
 
-  const branchFromChip = useCallback(
-    (range: ChipState) => {
-      const id = createThread(range.threadId, {
-        messageId: range.messageId,
-        start: range.start,
-        end: range.end,
-        quote: range.quote,
-      })
-      setChip(null)
-      lastRangeRef.current = null
-      holdChipRef.current = false
-      window.getSelection()?.removeAllRanges()
-      focusNextRef.current = id
-      const parentDepth = depthFrom(state, state.activeThreadId, range.threadId)
-      if (parentDepth >= MAX_INLINE_DEPTH) focus(id)
-    },
-    [createThread, focus, state],
-  )
+  const clearSelection = useCallback(() => {
+    setChip(null)
+    lastRangeRef.current = null
+    holdChipRef.current = false
+    window.getSelection()?.removeAllRanges()
+  }, [])
 
+  /** Open the question popover on a passage, optionally with what was typed. */
+  const openAsk = useCallback((passage: ChipState, initial = '', returnFocus?: HTMLElement | null) => {
+    setAsking({ passage, initial, returnFocus })
+    setChip(null)
+    lastRangeRef.current = null
+    holdChipRef.current = false
+  }, [])
+
+  /** Grow the branch and give it the frame to the right of its source. */
+  const startBranch = useCallback((passage: ChipState, question: string, options?: { webSearch?: boolean }) => {
+    const id = createThread(passage.threadId, {
+      messageId: passage.messageId,
+      start: passage.start,
+      end: passage.end,
+      quote: passage.quote,
+    }, options)
+    initialQuestionsRef.current[id] = question
+    focusNextRef.current = id
+    setAsking(null)
+    clearSelection()
+    focus(id)
+  }, [clearSelection, createThread, focus])
+
+  const onLens = useCallback((passage: ChipState, lens: Lens) => {
+    // "Source?" wants evidence, so that branch searches the web from the start.
+    startBranch(passage, lensQuestion(lens, passage.quote), { webSearch: lens.id === 'source' })
+  }, [startBranch])
+
+  const onAskMessage = useCallback((threadId: string, messageId: string) => {
+    const element = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"][data-thread-id="${CSS.escape(threadId)}"]`)
+    if (!element) return
+    const quote = plainTextSkippingIgnore(element)
+    if (!quote.trim()) return
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const rect = selectionClientRect(range) ?? { top: 0, left: window.innerWidth / 2, bottom: 0 }
+    const button = document.querySelector<HTMLElement>(`[data-ask-message="${CSS.escape(messageId)}"]`)
+    openAsk({ threadId, messageId, quote, start: 0, end: quote.length, ...rect, range }, '', button)
+  }, [openAsk])
+
+  /** Close the branch and land on its source — or, after a takeaway, on the takeaway. */
+  const returnToPassage = useCallback((threadId: string, takeawayId?: string) => {
+    const thread = state.threads[threadId]
+    if (!thread?.parentId || !thread.anchor) return
+    setAsking(null)
+    expand(thread.parentId, null)
+    focus(thread.parentId)
+    setReturnTarget({ threadId: thread.parentId, messageId: thread.anchor.messageId, branchId: threadId, takeawayId })
+  }, [state, expand, focus])
+
+  useEffect(() => {
+    if (!returnTarget || state.activeThreadId !== returnTarget.threadId) return
+    let timer = 0
+    let highlighted: HTMLElement | null = null
+    const frame = requestAnimationFrame(() => {
+      const source = returnTarget.takeawayId
+        ? document.querySelector<HTMLElement>(`[data-takeaway-id="${CSS.escape(returnTarget.takeawayId)}"]`)
+        : document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(returnTarget.messageId)}"][data-thread-id="${CSS.escape(returnTarget.threadId)}"]`)
+      if (!source) return
+      highlighted = returnTarget.takeawayId
+        ? source
+        : source.querySelector<HTMLElement>(`[data-mark-ids~="${CSS.escape(returnTarget.branchId)}"]`) ?? source
+      const viewport = source.closest('[data-radix-scroll-area-viewport]')
+      const bounds = viewport?.getBoundingClientRect()
+      const rect = highlighted.getBoundingClientRect()
+      if (bounds && (rect.top < bounds.top || rect.bottom > bounds.bottom)) highlighted.scrollIntoView({ block: 'center' })
+      source.tabIndex = -1
+      source.focus({ preventScroll: true })
+      highlighted.classList.add('source-return')
+      timer = window.setTimeout(() => highlighted?.classList.remove('source-return'), 2400)
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      highlighted?.classList.remove('source-return')
+    }
+  }, [returnTarget, state.activeThreadId])
+
+  /** Branches open in the lane to the right; `null` closes whatever is there. */
   const onOpenChild = useCallback(
     (parentId: string, childId: string | null) => {
-      expand(parentId, childId)
+      if (childId) focusNextRef.current = childId
+      focus(childId ?? parentId)
     },
-    [expand],
+    [focus],
   )
 
+  /**
+   * Open a cited source in a lane right after the thread citing it, closing
+   * any deeper lanes (Miller columns). The same source again closes it.
+   */
+  const onOpenSource = useCallback((threadId: string, messageId: string, citationId: string) => {
+    if (source?.threadId === threadId && source.messageId === messageId && source.citationId === citationId) {
+      setSource(null)
+      return
+    }
+    setAsking(null)
+    focus(threadId)
+    setSource({ threadId, messageId, citationId })
+  }, [focus, source])
+
+  const closeSource = useCallback(() => {
+    if (!source) return
+    setSource(null)
+    // Back to the chip it opened from, so keyboard readers keep their place.
+    requestAnimationFrame(() => document
+      .querySelector<HTMLElement>(`[data-message-id="${CSS.escape(source.messageId)}"][data-thread-id="${CSS.escape(source.threadId)}"] [data-citation-id="${CSS.escape(source.citationId)}"] button`)
+      ?.focus({ preventScroll: true }))
+  }, [source])
+
+  // Opening any other lane replaces the source: it only sits beside its
+  // thread. Adjusted while rendering so a stale source never reappears later.
+  const [sourceFrame, setSourceFrame] = useState(activeThread.id)
+  if (sourceFrame !== activeThread.id) {
+    setSourceFrame(activeThread.id)
+    if (source && source.threadId !== activeThread.id) setSource(null)
+  }
+
   const onMerge = useCallback(
-    async (threadId: string) => {
+    (threadId: string) => {
       const thread = state.threads[threadId]
       if (!thread || !thread.parentId || !thread.anchor) return
-      setMerging(threadId)
-      try {
-        const quote = thread.anchor.quote
-        const transcript = thread.messages
-          .map((message) => `${message.role}: ${message.content}`)
-          .join('\n')
-        const prompt = `Summarize this TreeChat side-thread so it can be folded back into its parent thread. Two to four sentences, no preamble. Quote: "${quote}". Transcript:\n${transcript || '(empty branch)'}`
-        let summary = ''
-        try {
-          const forwarded = branchForwardedProps(state, threadId)
-          summary = await requestAssistantText(
-            prompt,
-            forwarded?.quote ?? quote,
-            forwarded?.context ?? '',
-          )
-        } catch {
-          const last = thread.messages.at(-1)?.content ?? 'The tangent was closed.'
-          summary = `From the branch on «${quote}»: ${last}`
-        }
-        appendMessage(thread.parentId, {
-          id: createId('merge'),
-          role: 'assistant',
-          content: summary || 'Summary merged from the branch.',
-          createdAt: Date.now(),
-          kind: 'drop-summary',
-          quote,
-        })
-        expand(thread.parentId, null)
-        if (state.activeThreadId === threadId) focus(thread.parentId)
-      } finally {
-        setMerging(null)
-      }
+      enginesRef.current[threadId]?.stop()
+      setPreviewThreadId(threadId)
     },
-    [appendMessage, expand, focus, state],
+    [state],
   )
 
   const shell = useMemo<ShellValue>(
     () => ({
       draftFor,
       setDraft,
+      attachmentsFor,
+      setAttachments: onAttachmentsChange,
+      status,
+      onSwitchModel,
       registerComposer,
       registerEngine,
       onSelectMessage,
       onOpenChild,
       onFocus: focus,
-      onMerge: (threadId) => void onMerge(threadId),
+      onMerge,
       onDiscard: discard,
-      merging,
+      takeInitialQuestion,
+      onAskMessage,
+      onReturn: returnToPassage,
+      scrollPositions,
+      sessionId: activeSessionId,
+      onShowDemo: onRestoreDemo,
+      openSource: source,
+      onOpenSource,
     }),
     [
       draftFor,
       setDraft,
+      attachmentsFor,
+      onAttachmentsChange,
+      status,
+      onSwitchModel,
       registerComposer,
       registerEngine,
       onSelectMessage,
@@ -467,16 +826,33 @@ function TreeChatShell({
       focus,
       onMerge,
       discard,
-      merging,
+      takeInitialQuestion,
+      onAskMessage,
+      returnToPassage,
+      scrollPositions,
+      activeSessionId,
+      onRestoreDemo,
+      source,
+      onOpenSource,
     ],
   )
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || document.querySelector('[role="dialog"], [role="alertdialog"]')) return
       if (isBranchShortcut(event)) {
         event.preventDefault()
         const range = chip ?? lastRangeRef.current
-        if (range) branchFromChip(range)
+        if (range) openAsk(range)
+        return
+      }
+      // With a passage selected, just start typing to ask about it. The chip
+      // only exists while the selection sits in a message, so keys go nowhere
+      // useful otherwise — even if a composer still holds focus.
+      const typing = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.trim()
+      if (chip && typing) {
+        event.preventDefault()
+        openAsk(chip, event.key)
         return
       }
       if (event.key !== 'Escape') return
@@ -486,10 +862,13 @@ function TreeChatShell({
       }
       if (chip) {
         event.preventDefault()
-        setChip(null)
-        lastRangeRef.current = null
-        holdChipRef.current = false
-        window.getSelection()?.removeAllRanges()
+        clearSelection()
+        return
+      }
+      // The source lane is the rightmost lane, so it closes first.
+      if (source) {
+        event.preventDefault()
+        closeSource()
         return
       }
       const parentId = activeThread.parentId
@@ -502,11 +881,11 @@ function TreeChatShell({
         return
       }
       event.preventDefault()
-      focus(parentId)
+      returnToPassage(activeThread.id)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeThread, branchFromChip, chip, drafts, focus, stopGenerating])
+  }, [activeThread, chip, clearSelection, closeSource, drafts, openAsk, returnToPassage, source, stopGenerating])
 
   useEffect(() => {
     let frame = 0
@@ -528,7 +907,6 @@ function TreeChatShell({
     }
   }, [syncChipFromSelection])
 
-  const path = pathTo(state, activeThread.id)
   const pendingDelete = sessions.find((session) => session.id === pendingDeleteId)
   const onSelectSession = useCallback(
     (sessionId: string) => {
@@ -537,19 +915,34 @@ function TreeChatShell({
     },
     [switchSession],
   )
-  const onCreateSession = useCallback(() => {
-    onNewChat()
-    setLibraryOpen(false)
-  }, [onNewChat])
-  const chipExisting = chip
-    ? childThreads(state, chip.threadId).filter(
-        (thread) =>
-          thread.anchor?.messageId === chip.messageId &&
-          thread.anchor.start === chip.start &&
-          thread.anchor.end === chip.end,
-      ).length
-    : 0
-
+  const hasBranches = Object.keys(state.threads).length > 1
+  const lanePath = useMemo(() => pathTo(state, activeThread.id), [state, activeThread.id])
+  const narrow = useNarrow()
+  const sourceCitation = source ? citationFor(state.threads[source.threadId]?.messages, source) : undefined
+  const trailing = useMemo<TrailingLane | null>(() => {
+    if (!source || !sourceCitation || source.threadId !== activeThread.id) return null
+    const message = `[data-message-id="${CSS.escape(source.messageId)}"]`
+    const cite = `[data-citation-id="${CSS.escape(sourceCitation.id)}"]`
+    return {
+      id: SOURCE_LANE_ID,
+      title: sourceCitation.title,
+      label: `Source: ${sourceCitation.title}`,
+      testId: 'source-lane',
+      ownerId: source.threadId,
+      // The chip in the reply; the sources list when the text never cites it.
+      selector: `${message} ${cite}, [data-sources-for="${CSS.escape(source.messageId)}"] ${cite}`,
+      render: (frame) => (
+        <SourceLane
+          key={`${source.messageId}:${sourceCitation.id}`}
+          laneId={SOURCE_LANE_ID}
+          citation={sourceCitation}
+          leadOffset={frame.leadOffset}
+          narrow={narrow}
+          onClose={closeSource}
+        />
+      ),
+    }
+  }, [activeThread.id, closeSource, narrow, source, sourceCitation])
   return (
     <div
       className="flex h-svh flex-col bg-background"
@@ -576,7 +969,7 @@ function TreeChatShell({
           <button
             type="button"
             onClick={() => setLibraryOpen(true)}
-            aria-label="Switch chat"
+            aria-label="Branches and chats"
             title={activeSession.title}
             data-testid="session-switcher"
             className="flex min-w-0 max-w-[52vw] items-center gap-1 truncate rounded-md px-1.5 py-[3px] text-[12px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:hidden"
@@ -584,129 +977,191 @@ function TreeChatShell({
             <span className="truncate">{activeSession.title}</span>
             <ChevronDown className="size-3.5 shrink-0" />
           </button>
-          {path.slice(1).map((thread, index) => {
-            const isLast = index === path.length - 2
-            return (
-              <span key={thread.id} className="flex min-w-0 items-center gap-1.5">
-                <span className="shrink-0 text-[12px] text-muted-foreground">/</span>
-                <button
-                  type="button"
-                  onClick={() => focus(thread.id)}
-                  title={thread.anchor?.quote}
-                  className={`truncate rounded-full px-2 py-[3px] text-[10.5px] font-medium ${
-                    isLast
-                      ? 'bg-branch/15 text-branch-bright'
-                      : 'text-muted-foreground hover:bg-foreground/[0.07]'
-                  }`}
-                >
-                  {truncate(thread.anchor?.quote ?? '', 28)}
-                </button>
-              </span>
-            )
-          })}
+
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
-          <span
-            data-testid="provider-mode"
-            className="hidden font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground sm:inline"
-          >
-            {status.mode === 'mock' ? 'Mock stream' : `Live · ${status.provider}`}
-          </span>
-          <span
-            data-testid="active-model"
-            title={status.model}
-            className="max-w-[7.5rem] truncate font-mono text-[10px] text-muted-foreground sm:max-w-[10rem]"
-          >
-            {shortModelName(status.model)}
-          </span>
-          <div className="hidden md:block">
-            <HeaderModelPicker model={status.model} onCommit={onModelChange} />
-          </div>
-          {activeThread.parentId ? (
+          <DocumentsChip onOpen={() => setDocumentsOpen(true)} />
+          {status.mode === 'mock' ? (
             <button
               type="button"
-              onClick={() => focus(activeThread.parentId!)}
-              data-testid="back-to-spine"
-              className="rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              data-testid="provider-mode"
+              onClick={() => setSettingsOpen(true)}
+              title="Replies are demo text. Add an OpenRouter key for real answers."
+              className="rounded-md border border-dashed border-border px-2 py-[3px] text-[11px] text-muted-foreground transition-colors hover:border-branch/50 hover:text-foreground"
             >
-              ← back to thread
+              Demo replies<span className="hidden sm:inline"> · Add key</span>
             </button>
           ) : null}
-          <SettingsDialog
-            status={status}
-            onConfigChange={onProviderConfigChange}
-            onRestoreDemo={onRestoreDemo}
-          />
-          <button
-            type="button"
-            onClick={onNewChat}
-            aria-label="New chat"
-            title="New chat"
-            data-testid="new-chat"
-            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-[5px] text-[10.5px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <SquarePen className="size-3.5" />
-            <span className="hidden sm:inline">New chat</span>
-          </button>
+          {/* Phones have no sidebar, so its two actions live up here. */}
+          {narrow ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Settings"
+                title="Settings"
+                data-testid="settings-button"
+                className="flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <Settings className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onNewChat}
+                aria-label="New chat"
+                title="New chat"
+                data-testid="new-chat"
+                className="flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <SquarePen className="size-4" />
+              </button>
+            </>
+          ) : null}
         </div>
       </header>
 
       <ShellContext.Provider value={shell}>
         <div className="flex min-h-0 flex-1">
-          <aside
-            className="hidden min-h-0 w-[252px] shrink-0 flex-col border-r border-border bg-rail md:flex"
-            data-testid="chat-sidebar"
-          >
-            <TreeRail
-              state={state}
-              sessionId={activeSessionId}
-              rootTitle={activeSession.title}
-              onFocus={focus}
+          {narrow ? null : (
+            <Sidebar
+              onNewChat={onNewChat}
+              onOpenSettings={() => setSettingsOpen(true)}
+              tree={
+                <TreeRail
+                  state={state}
+                  sessionId={activeSessionId}
+                  rootTitle={activeSession.title}
+                  onFocus={focus}
+                />
+              }
+              sessions={
+                <SessionList
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  onSelect={onSelectSession}
+                  onRename={renameSession}
+                  onDelete={setPendingDeleteId}
+                />
+              }
+              documents={<DocumentsSidebarSection onOpen={() => setDocumentsOpen(true)} />}
             />
-            <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-3">
-              <SessionList
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                onSelect={onSelectSession}
-                onCreate={onCreateSession}
-                onRename={renameSession}
-                onDelete={setPendingDeleteId}
+          )}
+          <div className="relative flex min-w-0 flex-1 flex-col">
+            {asking ? (
+              <BranchPopover
+                key={`${asking.passage.messageId}:${asking.passage.start}:${asking.passage.end}`}
+                mode="ask"
+                anchor={asking.passage}
+                range={asking.passage.range}
+                quote={asking.passage.quote}
+                initialQuestion={asking.initial}
+                onLens={(lens) => onLens(asking.passage, lens)}
+                onAsk={(question) => startBranch(asking.passage, question)}
+                onOpenAsk={() => undefined}
+                onCancel={() => {
+                  asking.returnFocus?.focus({ preventScroll: true })
+                  setAsking(null)
+                }}
               />
-            </div>
-            <div className="flex shrink-0 items-center gap-2 border-t border-border px-3.5 py-2.5">
-              <span className="text-[12px] leading-none text-branch">+</span>
-              <span className="eyebrow text-muted-foreground">select text to branch</span>
-            </div>
-          </aside>
-          <div className="min-w-0 flex-1">
-            {chip ? (
-              <BranchChip
-                top={chip.top}
-                left={chip.left}
-                bottom={chip.bottom}
-                existing={chipExisting}
-                onBranch={() => branchFromChip(chip)}
+            ) : chip ? (
+              <BranchPopover
+                mode="lenses"
+                anchor={chip}
+                quote={chip.quote}
+                onLens={(lens) => onLens(chip, lens)}
+                onAsk={(question) => startBranch(chip, question)}
+                onOpenAsk={() => openAsk(chip)}
+                onCancel={clearSelection}
                 onHold={() => {
                   holdChipRef.current = true
                 }}
               />
             ) : null}
-            <FramedThread thread={activeThread} epoch={epoch} />
+            {lastTakeaway ? (
+              <TakeawayNotice
+                onView={() => {
+                  focus(lastTakeaway.threadId)
+                  requestAnimationFrame(() => document.querySelector(`[data-takeaway-id="${CSS.escape(lastTakeaway.messageId)}"]`)?.scrollIntoView({ block: 'center' }))
+                }}
+                onUndo={() => {
+                  enginesRef.current[lastTakeaway.threadId]?.stop()
+                  undoTakeaway(lastTakeaway.threadId, lastTakeaway.messageId)
+                  setLastTakeaway(null)
+                }}
+                onDismiss={dismissTakeaway}
+              />
+            ) : null}
+            <div className="min-h-0 flex-1">
+              <Lanes
+                path={lanePath}
+                single={narrow}
+                rootTitle={activeSession.title}
+                trailing={trailing}
+                renderLane={(thread, frame) => {
+                  const index = lanePath.findIndex((entry) => entry.id === thread.id)
+                  return (
+                    <ThreadEngine
+                      key={`${thread.id}:${thread.rev}:${epoch}`}
+                      threadId={thread.id}
+                      openChildId={lanePath[index + 1]?.id ?? null}
+                      frame={frame}
+                    />
+                  )
+                }}
+              />
+            </div>
           </div>
         </div>
       </ShellContext.Provider>
 
+      <DocumentsDialog open={documentsOpen} onOpenChange={setDocumentsOpen} />
+      <DocumentDropZone onDropped={() => setDocumentsOpen(true)} />
+
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onConfigChange={onProviderConfigChange}
+        onRestoreDemo={onRestoreDemo}
+      />
+
+      {previewThreadId && state.threads[previewThreadId] ? (
+        <TakeawayDialog key={previewThreadId} thread={state.threads[previewThreadId]} state={state} onClose={() => setPreviewThreadId(null)} onConfirm={(content) => {
+          const thread = state.threads[previewThreadId]
+          if (!thread?.parentId || !thread.anchor || !state.threads[thread.parentId]) return
+          enginesRef.current[thread.parentId]?.stop()
+          const id = createId('takeaway')
+          appendMessage(thread.parentId, { id, role: 'assistant', content, createdAt: Date.now(), kind: 'drop-summary', quote: thread.anchor.quote, sourceThreadId: thread.id })
+          setPreviewThreadId(null)
+          setLastTakeaway({ threadId: thread.parentId, messageId: id })
+          returnToPassage(thread.id, id)
+        }} />
+      ) : null}
+
       <Dialog open={libraryOpen} onOpenChange={setLibraryOpen}>
-        <DialogContent className="max-w-sm gap-4 sm:rounded-lg" data-testid="session-library">
+        <DialogContent className="flex max-h-[85svh] max-w-sm flex-col gap-4 sm:rounded-lg" data-testid="session-library">
           <DialogHeader>
-            <DialogTitle>Chats</DialogTitle>
-            <DialogDescription>Switch, rename, or start a new chat.</DialogDescription>
+            <DialogTitle>{hasBranches ? 'Branches & chats' : 'Chats'}</DialogTitle>
+            <DialogDescription>
+              {hasBranches ? 'Jump to a branch, or switch chats.' : 'Switch or rename chats.'}
+            </DialogDescription>
           </DialogHeader>
+          {hasBranches ? (
+            <div className="-mx-3.5 flex max-h-[40svh] min-h-0 flex-col border-b border-border pb-2">
+              <TreeRail
+                state={state}
+                sessionId={activeSessionId}
+                rootTitle={activeSession.title}
+                onFocus={(threadId) => {
+                  focus(threadId)
+                  setLibraryOpen(false)
+                }}
+              />
+            </div>
+          ) : null}
           <SessionList
             sessions={sessions}
             activeSessionId={activeSessionId}
             onSelect={onSelectSession}
-            onCreate={onCreateSession}
             onRename={renameSession}
             onDelete={(sessionId) => {
               setLibraryOpen(false)
@@ -714,6 +1169,10 @@ function TreeChatShell({
             }}
             alwaysShowActions
           />
+          <DocumentsLibraryEntry onOpen={() => {
+            setLibraryOpen(false)
+            setDocumentsOpen(true)
+          }} />
         </DialogContent>
       </Dialog>
 
@@ -750,14 +1209,56 @@ function TreeChatShell({
   )
 }
 
-function FramedThread({ thread, epoch }: { thread: Thread; epoch: number }) {
+/**
+ * Confirms a takeaway without pushing the conversation down, and leaves on
+ * its own. Hovering or focusing it holds it open so Undo stays reachable.
+ */
+function TakeawayNotice({ onView, onUndo, onDismiss }: {
+  onView: () => void
+  onUndo: () => void
+  onDismiss: () => void
+}) {
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    if (held) return
+    const timer = window.setTimeout(onDismiss, 10_000)
+    return () => window.clearTimeout(timer)
+  }, [held, onDismiss])
   return (
-    <ThreadEngine
-      key={`${thread.id}:${thread.rev}:${epoch}`}
-      threadId={thread.id}
-      depth={0}
-    />
+    <div
+      className="rise absolute inset-x-0 top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-branch/20 bg-paper/95 px-5 py-2 text-sm shadow-lg backdrop-blur"
+      role="status"
+      data-testid="takeaway-notice"
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+    >
+      <span>Takeaway added</span>
+      <div className="flex items-center gap-2">
+        <button type="button" className="branch-secondary" onClick={onView}>View takeaway</button>
+        <button type="button" className="branch-secondary" onClick={onUndo}>Undo</button>
+        <button type="button" className="branch-icon-button" aria-label="Dismiss takeaway notice" onClick={onDismiss}>×</button>
+      </div>
+    </div>
   )
+}
+
+function citationFor(messages: ChatMessage[] | undefined, source: OpenSource): Citation | undefined {
+  return messages?.find((message) => message.id === source.messageId)?.citations?.find((citation) => citation.id === source.citationId)
+}
+
+/** Phones get one lane at a time; there is no room for depth side by side. */
+function useNarrow() {
+  const query = '(max-width: 767px)'
+  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const media = window.matchMedia(query)
+    const update = () => setNarrow(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return narrow
 }
 
 function resolveStatus(
@@ -781,35 +1282,87 @@ function resolveStatus(
 }
 
 export function TreeChatApp() {
-  const { restoreDemo, createSession, activeSessionId } = useTree()
+  const { restoreDemo, createSession, switchSession, sessions, activeSessionId } = useTree()
+
+  // Once per visit, when idle: forget stored files no chat refers to. Recent
+  // ones stay — they may sit in a composer here or in another tab.
+  const sessionsRef = useRef(sessions)
+  useEffect(() => {
+    sessionsRef.current = sessions
+  }, [sessions])
+  useEffect(() => {
+    const prune = () => {
+      const referenced = new Set<string>()
+      for (const session of sessionsRef.current) {
+        for (const thread of Object.values(session.treeState.threads)) {
+          for (const message of thread.messages) for (const file of message.attachments ?? []) referenced.add(file.id)
+        }
+      }
+      void pruneAttachments(referenced, Date.now() - ATTACHMENT_GRACE_MS).catch(() => undefined)
+    }
+    const idle = window.requestIdleCallback?.(prune, { timeout: 10_000 }) ?? window.setTimeout(prune, 5_000)
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idle)
+      else window.clearTimeout(idle)
+    }
+  }, [])
   const [epoch, setEpoch] = useState(0)
+  const [draftsBySession, setDraftsBySession] = useState<Record<string, Record<string, string>>>({})
+  const [attachmentsBySession, setAttachmentsBySession] = useState<Record<string, Record<string, Attachment[]>>>({})
+  const onAttachmentsChange = useCallback((threadId: string, update: (current: Attachment[]) => Attachment[]) => {
+    setAttachmentsBySession((current) => ({
+      ...current,
+      [activeSessionId]: { ...current[activeSessionId], [threadId]: update(current[activeSessionId]?.[threadId] ?? []) },
+    }))
+  }, [activeSessionId])
+  const [scrollPositions] = useState(() => new Map<string, number>())
+  const onDraftChange = useCallback((threadId: string, value: string) => {
+    setDraftsBySession((current) => ({
+      ...current,
+      [activeSessionId]: { ...current[activeSessionId], [threadId]: value },
+    }))
+  }, [activeSessionId])
   const [clientConfig, setClientConfig] = useState<ClientProviderConfig | null>(
     () => loadProviderConfig(),
   )
   const [serverStatus, setServerStatus] = useState<ProviderStatus>(idleStatus)
   const status = resolveStatus(clientConfig, serverStatus)
 
+  const onSwitchModel = useCallback((model: string) => {
+    setClientConfig(patchProviderConfig({ model }))
+  }, [])
+
   const onProviderConfigChange = useCallback((config: ClientProviderConfig | null) => {
     setClientConfig(config)
   }, [])
 
-  const onModelChange = useCallback((model: string) => {
-    const next = patchProviderConfig({ model })
-    setClientConfig(next)
-  }, [])
 
   const bumpEpoch = useCallback(() => {
     setEpoch((value) => value + 1)
   }, [])
 
   const onNewChat = useCallback(() => {
-    createSession()
-  }, [createSession])
+    // A chat with no messages, branches, or drafts is already a new chat.
+    // Reuse it rather than stacking identical "New chat" rows.
+    const blank = (session: ChatSession) => {
+      const tree = session.treeState
+      return Object.keys(tree.threads).length === 1
+        && (tree.threads[tree.rootId]?.messages.length ?? 1) === 0
+        && !Object.values(draftsBySession[session.id] ?? {}).some((draft) => draft.trim())
+        && !Object.values(attachmentsBySession[session.id] ?? {}).some((files) => files.length > 0)
+    }
+    const active = sessions.find((session) => session.id === activeSessionId)
+    const reusable = active && blank(active) ? active : sessions.find(blank)
+    if (!reusable) createSession()
+    else if (reusable.id !== activeSessionId) switchSession(reusable.id)
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-testid="thread-composer"]')?.focus())
+  }, [activeSessionId, attachmentsBySession, createSession, draftsBySession, sessions, switchSession])
 
   const onRestoreDemo = useCallback(() => {
+    setDraftsBySession((current) => ({ ...current, [activeSessionId]: {} }))
     restoreDemo()
     bumpEpoch()
-  }, [bumpEpoch, restoreDemo])
+  }, [activeSessionId, bumpEpoch, restoreDemo])
 
   useEffect(() => {
     if (clientConfig?.apiKey) return
@@ -835,8 +1388,13 @@ export function TreeChatApp() {
       key={`${activeSessionId}:${epoch}`}
       epoch={epoch}
       status={status}
+      drafts={draftsBySession[activeSessionId] ?? {}}
+      onDraftChange={onDraftChange}
+      attachments={attachmentsBySession[activeSessionId] ?? NO_THREAD_ATTACHMENTS}
+      onAttachmentsChange={onAttachmentsChange}
+      onSwitchModel={onSwitchModel}
+      scrollPositions={scrollPositions}
       onProviderConfigChange={onProviderConfigChange}
-      onModelChange={onModelChange}
       onNewChat={onNewChat}
       onRestoreDemo={onRestoreDemo}
     />

@@ -16,6 +16,7 @@ import {
   runChat,
   toOpenAIChatMessages,
 } from './client-chat.ts'
+import { takeRunCitations } from './citations.ts'
 
 const originalFetch = globalThis.fetch
 
@@ -379,4 +380,117 @@ test('runChat without a key and without /api uses the client mock', async () => 
   assert.ok(urls.every((url) => url.includes('/api/status')))
   assert.ok(urls.every((url) => !url.includes('/api/chat')))
   assert.ok(urls.every((url) => !url.includes('openrouter.ai')))
+})
+
+const streamInput = {
+  messages: [{ role: 'user', content: 'hello' }],
+  config: { provider: 'openrouter' as const, apiKey: 'test', model: 'test-model' },
+  threadId: 'branch-1',
+  runId: 'run-1',
+  forwardedProps: { cacheSessionId: 'chat-session-1' },
+}
+
+test('streaming preserves split UTF-8, CRLF frames and a final unterminated frame', async () => {
+  const encoded = new TextEncoder().encode(
+    ': heartbeat\r\n\r\ndata: {"choices":[{"delta":{"content":"Hi 🌱"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"!"}}]}',
+  )
+  globalThis.fetch = (async (_input, init) => {
+    assert.equal(JSON.parse(String(init?.body)).session_id, 'chat-session-1')
+    return new Response(new ReadableStream({
+      start(controller) {
+        for (const byte of encoded) controller.enqueue(new Uint8Array([byte]))
+        controller.close()
+      },
+    }))
+  }) as typeof fetch
+  assert.equal(await collectAssistantText(openRouterChatStream(streamInput)), 'Hi 🌱!')
+})
+
+test('provider errors inside a successful HTTP stream surface instead of silently finishing', async () => {
+  globalThis.fetch = (async () => new Response(
+    'data: {"choices":[{"delta":{"content":"Partial"}}]}\n\ndata: {"error":{"message":"Provider overloaded"}}\n\n',
+  )) as typeof fetch
+  const chunks = []
+  for await (const chunk of openRouterChatStream(streamInput)) chunks.push(chunk)
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT))
+  assert.ok(chunks.some((chunk) => chunk.type === EventType.RUN_ERROR && chunk.message === 'Provider overloaded'))
+  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_FINISHED))
+})
+
+test('empty provider streams and error finish reasons surface a retryable error', async () => {
+  for (const body of ['', 'data: [DONE]\n\n', 'data: {"choices":[{"finish_reason":"error"}]}\n\n']) {
+    globalThis.fetch = (async () => new Response(body)) as typeof fetch
+    await assert.rejects(collectAssistantText(openRouterChatStream(streamInput)), /provider/i)
+  }
+})
+
+test('routing sessions are bounded to the provider limit', () => {
+  assert.equal(openRouterRequestBody(streamInput.config, [], 'a'.repeat(300)).session_id?.length, 256)
+})
+
+test('runChat sends a summarized thread as its summary plus the later messages', async () => {
+  saveProviderConfig({ provider: 'openrouter', apiKey: 'sk-or-v1-live', model: 'openai/gpt-4.1-mini' })
+  let sent: Array<{ role: string; content: string }> = []
+  globalThis.fetch = (async (_input, init) => {
+    sent = (JSON.parse(String(init?.body)) as { messages: typeof sent }).messages
+    return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  await collectAssistantText(runChat({
+    messages: [
+      { id: 'a', role: 'user', content: 'old question' },
+      { id: 'b', role: 'assistant', content: 'old answer' },
+      { id: 'c', role: 'user', content: 'new question' },
+    ],
+    forwardedProps: { threadSummary: { content: 'They asked an old question.', throughMessageId: 'b' } },
+    threadId: 't1',
+    runId: 'r1',
+  }))
+  assert.deepEqual(sent.map((message) => message.role), ['system', 'system', 'user'])
+  assert.match(sent[1].content, /^SUMMARY OF EARLIER CONVERSATION\nThey asked an old question\./)
+  assert.equal(sent[2].content, 'new question')
+  assert.ok(sent.every((message) => !message.content.includes('old answer')))
+})
+
+test('runChat sends the full transcript when the summary does not match it', async () => {
+  saveProviderConfig({ provider: 'openrouter', apiKey: 'sk-or-v1-live', model: 'openai/gpt-4.1-mini' })
+  let sent: Array<{ role: string; content: string }> = []
+  globalThis.fetch = (async (_input, init) => {
+    sent = (JSON.parse(String(init?.body)) as { messages: typeof sent }).messages
+    return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  await collectAssistantText(runChat({
+    messages: [
+      { id: 'a', role: 'user', content: 'edited question' },
+    ],
+    forwardedProps: { threadSummary: { content: 'stale', throughMessageId: 'gone' } },
+    threadId: 't1',
+    runId: 'r1',
+  }))
+  assert.deepEqual(sent.map((message) => message.role), ['system', 'user'])
+  assert.ok(sent.every((message) => !message.content.includes('stale')))
+})
+
+test('a web-search run in mock mode cites two sources and keeps the event out of the stream', async () => {
+  globalThis.fetch = (async () => new Response('missing', { status: 404 })) as typeof fetch
+  const chunks = []
+  for await (const chunk of runChat({
+    messages: [{ role: 'user', content: 'Source?' }],
+    forwardedProps: { webSearch: true, quote: 'side thread' },
+    threadId: 'cited',
+    runId: 'r1',
+  })) chunks.push(chunk)
+  const text = chunks.map((chunk) => (chunk.type === EventType.TEXT_MESSAGE_CONTENT ? chunk.delta : '')).join('')
+  assert.match(text, /\[1\][\s\S]*\[2\]/)
+  assert.ok(chunks.every((chunk) => chunk.type !== EventType.CUSTOM))
+  const citations = takeRunCitations('cited')
+  assert.deepEqual(citations?.map((citation) => [citation.id, citation.kind, new URL(citation.url!).hostname]), [['1', 'web', 'example.com'], ['2', 'web', 'example.com']])
+  for (const citation of citations ?? []) assert.ok(text.includes(citation.snippet!), 'each snippet is quoted in the reply')
 })

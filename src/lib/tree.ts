@@ -1,13 +1,29 @@
 import type { ChatMessage, Thread, TreeState } from '@/types'
+import { summaryIndex } from './compaction.ts'
 
 const CONTEXT_TURNS = 6
 const CONTEXT_CHARS_PER_TURN = 480
 const CONTEXT_QUOTE_CHARS = 240
 const CONTEXT_MAX_ANCESTORS = 4
 const CONTEXT_BUDGET = 4200
+const CONTEXT_SUMMARY_CHARS = 1600
+const CONTEXT_SUMMARY_LEVEL_CHARS = 5000
+const CONTEXT_SUMMARY_BUDGET = 9000
 
 export const CONTEXT_MAIN = 'MAIN'
 export const CONTEXT_QUOTE = 'SELECTED QUOTE'
+/** Heads an ancestor level told through its running summary. */
+export const CONTEXT_EARLIER = 'Earlier, summarized:'
+
+/** A question gives an exploration a recognizable name, even on the same quote. */
+export function threadTitle(thread: Thread): string {
+  if (!thread.parentId) return 'Main conversation'
+  return clipText(
+    thread.messages.find((message) => message.role === 'user' && message.content.trim())?.content
+      ?? thread.anchor?.quote ?? 'New exploration',
+    64,
+  )
+}
 
 export function contextBranchLabel(depth: number) {
   return `BRANCH depth ${depth}`
@@ -183,13 +199,108 @@ function formatAncestorSection(
   return `${title}\n${body}`
 }
 
+/** Clip without collapsing whitespace: summaries are often bullet lists. */
+function clipBlock(text: string, max: number): string {
+  const trimmed = text.trim()
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, Math.max(0, max - 1)).trimEnd()}…`
+}
+
+type SummaryWindow = { summaryChars: number; levelChars: number }
+
+/**
+ * An ancestor level told through its running summary: the summary, then the
+ * turns just before the anchor in full while they fit `levelChars`, then the
+ * anchor itself. Null when the summary does not end at or before the anchor —
+ * it would describe turns after the passage this branch grew from.
+ */
+export function summarizedTranscriptUpTo(
+  thread: Thread,
+  messageId: string,
+  turns: number,
+  charsPerTurn: number,
+  { summaryChars, levelChars }: SummaryWindow,
+): string | null {
+  const { messages, summary } = thread
+  const anchorIndex = messages.findIndex((message) => message.id === messageId)
+  const through = summaryIndex(messages, summary)
+  if (!summary || anchorIndex < 0 || through < 0 || through > anchorIndex) return null
+
+  const head = `${CONTEXT_EARLIER}\n${clipBlock(summary.content, summaryChars)}`
+  if (through === anchorIndex) {
+    const anchor = messages[anchorIndex]
+    return `${head}\n\n${anchor.role}: ${anchor.content}`
+  }
+  const anchor = messages[anchorIndex]
+  const anchorLine = `${anchor.role}: ${anchor.content}`
+  let used = head.length + anchorLine.length
+  const recent: string[] = []
+  for (let i = anchorIndex - 1; i > through && recent.length < turns - 1; i -= 1) {
+    const message = messages[i]
+    const full = `${message.role}: ${message.content}`
+    const line = used + full.length <= levelChars || message.content.length <= charsPerTurn
+      ? full
+      : `${message.role}: ${message.content.slice(0, charsPerTurn)}…`
+    if (used + line.length > levelChars) break
+    recent.unshift(line)
+    used += line.length
+  }
+  const skipped = anchorIndex - 1 - through - recent.length
+  return [
+    head,
+    ...(skipped > 0 ? [`[${skipped} message${skipped === 1 ? '' : 's'} omitted]`] : []),
+    ...recent,
+    anchorLine,
+  ].join('\n\n')
+}
+
+function contextSections(
+  path: Thread[],
+  turnsAt: (level: number) => number,
+  charsPerTurn: number,
+  summaryWindow: SummaryWindow,
+): { text: string; summarized: boolean } {
+  const leaf = path[path.length - 1]
+  const ancestors = path.slice(0, -1)
+  const omitCount = Math.max(0, ancestors.length - CONTEXT_MAX_ANCESTORS)
+  const keepTail = CONTEXT_MAX_ANCESTORS - 1
+  const keepFrom = omitCount > 0 ? ancestors.length - keepTail : 1
+
+  const sections: string[] = []
+  let summarized = false
+  for (let i = 0; i < ancestors.length; i += 1) {
+    if (omitCount > 0 && i >= 1 && i < keepFrom) {
+      if (i === 1) sections.push(contextOmittedLabel(omitCount))
+      continue
+    }
+
+    const thread = ancestors[i]
+    const child = path[i + 1]
+    const anchor = child.anchor
+    if (!anchor) continue
+
+    const turns = turnsAt(i)
+    const fromSummary = summarizedTranscriptUpTo(thread, anchor.messageId, turns, charsPerTurn, summaryWindow)
+    if (fromSummary) summarized = true
+    const transcript = fromSummary
+      ?? transcriptUpTo(thread.messages, anchor.messageId, turns, charsPerTurn)
+    const originatingQuote = i === 0 ? null : (thread.anchor?.quote ?? null)
+    sections.push(formatAncestorSection(i, transcript, originatingQuote))
+  }
+
+  const selected = leaf.anchor?.quote ?? ''
+  sections.push(`${CONTEXT_QUOTE}\n«${clipText(selected, CONTEXT_QUOTE_CHARS)}»`)
+  return { text: sections.join('\n\n'), summarized }
+}
+
 /**
  * Everything upstream of a thread: a bounded ancestor chain from the root
  * down to the quote this thread is pinned to.
  *
  * Sections are labeled MAIN, BRANCH depth N, then SELECTED QUOTE so the
  * model can see structure instead of a mushy blob. Deep trees keep the root
- * and the nearest ancestors and drop the middle.
+ * and the nearest ancestors and drop the middle. An ancestor with a running
+ * summary is told through it, which buys a larger budget: it replaces
+ * fragments with the whole story up to the anchor.
  */
 export function threadContext(
   state: TreeState,
@@ -199,73 +310,24 @@ export function threadContext(
   const path = pathTo(state, threadId)
   if (path.length <= 1) return ''
 
-  const leaf = path[path.length - 1]
-  const ancestors = path.slice(0, -1)
-  const omitCount = Math.max(0, ancestors.length - CONTEXT_MAX_ANCESTORS)
-  const keepTail = CONTEXT_MAX_ANCESTORS - 1
-  const keepFrom = omitCount > 0 ? ancestors.length - keepTail : 1
-
-  const sections: string[] = []
-  for (let i = 0; i < ancestors.length; i += 1) {
-    if (omitCount > 0 && i >= 1 && i < keepFrom) {
-      if (i === 1) sections.push(contextOmittedLabel(omitCount))
-      continue
-    }
-
-    const thread = ancestors[i]
-    const child = path[i + 1]
-    const anchor = child.anchor
-    if (!anchor) continue
-
-    const turns =
-      i === 0 ? turnsPerLevel : Math.max(3, turnsPerLevel - Math.min(i, 3))
-    const transcript = transcriptUpTo(thread.messages, anchor.messageId, turns)
-    const originatingQuote = i === 0 ? null : (thread.anchor?.quote ?? null)
-    sections.push(formatAncestorSection(i, transcript, originatingQuote))
-  }
-
-  const selected = leaf.anchor?.quote ?? ''
-  sections.push(`${CONTEXT_QUOTE}\n«${clipText(selected, CONTEXT_QUOTE_CHARS)}»`)
-
-  let out = sections.join('\n\n')
-  if (out.length <= CONTEXT_BUDGET) return out
+  const full = contextSections(
+    path,
+    (i) => (i === 0 ? turnsPerLevel : Math.max(3, turnsPerLevel - Math.min(i, 3))),
+    CONTEXT_CHARS_PER_TURN,
+    { summaryChars: CONTEXT_SUMMARY_CHARS, levelChars: CONTEXT_SUMMARY_LEVEL_CHARS },
+  )
+  const budget = full.summarized ? CONTEXT_SUMMARY_BUDGET : CONTEXT_BUDGET
+  if (full.text.length <= budget) return full.text
 
   // Over budget: rebuild with a tighter turn window, then hard-clip.
-  const tight = threadContextTight(path, Math.max(2, turnsPerLevel - 3))
-  out = tight.length <= CONTEXT_BUDGET ? tight : `${tight.slice(0, CONTEXT_BUDGET - 1)}…`
-  return out
-}
-
-function threadContextTight(path: Thread[], turns: number): string {
-  const leaf = path[path.length - 1]
-  const ancestors = path.slice(0, -1)
-  const omitCount = Math.max(0, ancestors.length - CONTEXT_MAX_ANCESTORS)
-  const keepTail = CONTEXT_MAX_ANCESTORS - 1
-  const keepFrom = omitCount > 0 ? ancestors.length - keepTail : 1
-  const sections: string[] = []
-
-  for (let i = 0; i < ancestors.length; i += 1) {
-    if (omitCount > 0 && i >= 1 && i < keepFrom) {
-      if (i === 1) sections.push(contextOmittedLabel(omitCount))
-      continue
-    }
-    const thread = ancestors[i]
-    const child = path[i + 1]
-    const anchor = child.anchor
-    if (!anchor) continue
-    const transcript = transcriptUpTo(
-      thread.messages,
-      anchor.messageId,
-      turns,
-      Math.min(CONTEXT_CHARS_PER_TURN, 280),
-    )
-    const originatingQuote = i === 0 ? null : (thread.anchor?.quote ?? null)
-    sections.push(formatAncestorSection(i, transcript, originatingQuote))
-  }
-
-  const selected = leaf.anchor?.quote ?? ''
-  sections.push(`${CONTEXT_QUOTE}\n«${clipText(selected, CONTEXT_QUOTE_CHARS)}»`)
-  return sections.join('\n\n')
+  const tightTurns = Math.max(2, turnsPerLevel - 3)
+  const tight = contextSections(
+    path,
+    () => tightTurns,
+    Math.min(CONTEXT_CHARS_PER_TURN, 280),
+    { summaryChars: CONTEXT_SUMMARY_CHARS / 2, levelChars: CONTEXT_SUMMARY_LEVEL_CHARS / 3 },
+  ).text
+  return tight.length <= budget ? tight : `${tight.slice(0, budget - 1)}…`
 }
 
 /**

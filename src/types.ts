@@ -2,6 +2,43 @@ export type Role = 'user' | 'assistant'
 
 export type MessageKind = 'message' | 'drop-summary'
 
+/**
+ * A source backing part of a message. Web search and local documents share
+ * this shape so they render, persist, and open as source lanes the same way.
+ * Message text refers to a citation by its marker, e.g. `[1]`.
+ */
+export type Citation = {
+  /** The marker used in the message text: `"1"` for `[1]`. Unique per message. */
+  id: string
+  kind: 'web' | 'document'
+  title: string
+  /** Web sources. */
+  url?: string
+  /** Local documents: the stored document this came from. */
+  documentId?: string
+  /** Where inside the source, e.g. "p. 4" or a heading. */
+  locator?: string
+  /** The cited text, when the provider returns it. */
+  snippet?: string
+}
+
+/**
+ * A file sent with a message. Only this small record lives in the chat; the
+ * image or text itself is kept in IndexedDB (src/lib/attachments/store.ts)
+ * so screenshots never crowd localStorage.
+ */
+export type Attachment = {
+  id: string
+  kind: 'image' | 'text'
+  name: string
+  /** Stored type: prepared images are re-encoded (webp or jpeg). */
+  mime: string
+  /** Bytes as stored, after resizing. */
+  size: number
+  width?: number
+  height?: number
+}
+
 export type ChatMessage = {
   id: string
   role: Role
@@ -10,6 +47,24 @@ export type ChatMessage = {
   kind?: MessageKind
   /** For a merged summary: the quote of the thread it came from. */
   quote?: string
+  /** Link a takeaway to the exploration that produced it. */
+  sourceThreadId?: string
+  /** Sources behind this message, in marker order. */
+  citations?: Citation[]
+  /** Images and files the user sent with this message. */
+  attachments?: Attachment[]
+}
+
+/**
+ * A running summary of a thread's older messages, so long threads fit the
+ * model's context. Requests send it plus only the messages after
+ * `throughMessageId`; the transcript itself is never trimmed.
+ */
+export type ThreadSummary = {
+  content: string
+  /** The last message the summary covers. */
+  throughMessageId: string
+  createdAt: number
 }
 
 /** Where a thread is pinned inside its parent's message. */
@@ -38,6 +93,9 @@ export type Thread = {
    * picks the new transcript up instead of overwriting it.
    */
   rev: number
+  summary?: ThreadSummary
+  /** Replies in this thread search the web and cite their sources. Set only when on. */
+  webSearch?: boolean
 }
 
 export type TreeState = {
@@ -58,6 +116,8 @@ export type ChatSession = {
   treeState: TreeState
   /** When true, the first user message no longer overwrites the title. */
   titleLocked: boolean
+  /** Stored documents this chat searches before each request. */
+  documentIds?: string[]
 }
 
 export type SessionLibrary = {

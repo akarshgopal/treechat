@@ -9,12 +9,24 @@ export const OPENROUTER_MODEL_OPTIONS = [
   { id: 'x-ai/grok-4', label: 'Grok 4' },
 ] as const
 
+/**
+ * Cheap presets for background work. `:free` ids cost nothing but may log
+ * prompts and are tightly rate limited, so failures fall back to the main model.
+ */
+export const BACKGROUND_MODEL_OPTIONS = [
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)' },
+  { id: 'openai/gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+  { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+] as const
+
 export type ClientProviderConfig = {
   provider: 'openrouter'
   apiKey: string
   model: string
   temperature?: number
   maxTokens?: number
+  /** Used for summaries and takeaway drafts. Unset means the main model. */
+  backgroundModel?: string
 }
 
 export function defaultProviderConfig(): ClientProviderConfig {
@@ -61,6 +73,10 @@ export function normalizeProviderConfig(
       : DEFAULT_OPENROUTER_MODEL
   const temperature = parseTemperature(record.temperature)
   const maxTokens = parseMaxTokens(record.maxTokens)
+  const backgroundModel =
+    typeof record.backgroundModel === 'string' && isModelId(record.backgroundModel)
+      ? record.backgroundModel.trim()
+      : undefined
   const next: ClientProviderConfig = {
     provider: 'openrouter',
     apiKey,
@@ -68,6 +84,7 @@ export function normalizeProviderConfig(
   }
   if (temperature !== undefined) next.temperature = temperature
   if (maxTokens !== undefined) next.maxTokens = maxTokens
+  if (backgroundModel !== undefined) next.backgroundModel = backgroundModel
   return next
 }
 
@@ -91,6 +108,7 @@ export function serializeProviderConfig(config: ClientProviderConfig): string {
   }
   if (next.temperature !== undefined) payload.temperature = next.temperature
   if (next.maxTokens !== undefined) payload.maxTokens = next.maxTokens
+  if (next.backgroundModel !== undefined) payload.backgroundModel = next.backgroundModel
   return JSON.stringify(payload)
 }
 
@@ -124,6 +142,23 @@ export function clearProviderConfig() {
 
 export function hasClientApiKey(config: ClientProviderConfig | null): boolean {
   return Boolean(config?.apiKey)
+}
+
+/**
+ * OpenRouter ids are `vendor/model`, optionally with a `:variant` suffix.
+ * Catches half-typed text before it is saved and sent with every request.
+ */
+export function isModelId(value: string): boolean {
+  return /^[\w.-]+\/[\w.:@-]+$/.test(value.trim())
+}
+
+/**
+ * The model to try first for background work, when it differs from the main
+ * one. Needs a key: without one requests go to the local API or the mock.
+ */
+export function backgroundModelFor(config: ClientProviderConfig | null): string | undefined {
+  if (!config?.apiKey || !config.backgroundModel) return undefined
+  return config.backgroundModel === config.model ? undefined : config.backgroundModel
 }
 
 export function shortModelName(model: string): string {

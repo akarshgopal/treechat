@@ -357,3 +357,41 @@ export function splitMarkedText(content: string, marks: Mark[]): Segment[] {
   }
   return segments
 }
+
+const WORD_CHAR = /[\p{L}\p{N}_'’-]/u
+
+/**
+ * Widen `[start, end)` so it never cuts a word in half: a drag that begins in
+ * "se|ries" becomes "series". Boundaries already between words stay put.
+ */
+export function snapOffsetsToWords(text: string, start: number, end: number): { start: number; end: number } {
+  let from = Math.max(0, Math.min(start, text.length))
+  let to = Math.max(from, Math.min(end, text.length))
+  if (from < to && WORD_CHAR.test(text[from] ?? '')) {
+    while (from > 0 && WORD_CHAR.test(text[from - 1] ?? '')) from -= 1
+  }
+  if (to > from && WORD_CHAR.test(text[to - 1] ?? '')) {
+    while (to < text.length && WORD_CHAR.test(text[to] ?? '')) to += 1
+  }
+  return { start: from, end: to }
+}
+
+/**
+ * A copy of `range` snapped to whole words at each end. Only text-node ends
+ * move; the live selection is left alone so a drag in progress never jumps.
+ */
+export function snapRangeToWords(range: Range): Range {
+  const snapped = range.cloneRange()
+  const { startContainer, endContainer } = range
+  if (startContainer.nodeType === 3) {
+    const text = startContainer.textContent ?? ''
+    const end = startContainer === endContainer ? range.endOffset : text.length
+    snapped.setStart(startContainer, snapOffsetsToWords(text, range.startOffset, end).start)
+  }
+  if (endContainer.nodeType === 3) {
+    const text = endContainer.textContent ?? ''
+    const start = startContainer === endContainer ? range.startOffset : 0
+    snapped.setEnd(endContainer, snapOffsetsToWords(text, start, range.endOffset).end)
+  }
+  return snapped
+}

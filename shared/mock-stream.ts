@@ -8,7 +8,37 @@ type MockInput = {
   signal?: AbortSignal
   /** Skip token delays (tests). Production always paces. */
   pace?: boolean
+  /** Pretend the reply was researched: cite two fake web sources. */
+  webSearch?: boolean
 }
+
+/**
+ * CUSTOM stream event carrying a reply's sources. It survives the local API's
+ * SSE hop as well as the in-browser mock; `runChat` records it for the thread
+ * and keeps it out of the chat engine.
+ */
+export const CITATIONS_EVENT = 'treechat.citations'
+
+/** Shaped like `Citation` in src/types.ts (shared code does not import the app). */
+export const MOCK_WEB_CITATIONS = [
+  {
+    id: '1',
+    kind: 'web' as const,
+    title: 'Branching conversations keep tangents in place',
+    url: 'https://example.com/branching-conversations',
+    snippet: 'A side thread stays attached to the passage that prompted it',
+  },
+  {
+    id: '2',
+    kind: 'web' as const,
+    title: 'Bringing takeaways back',
+    url: 'https://example.com/takeaways',
+    locator: 'Section 2',
+    snippet: 'a short takeaway returns to the main conversation',
+  },
+]
+
+const MOCK_SEARCH_REPLY = `Here is what two sources say (demo search results — add an OpenRouter key for real ones). A side thread stays attached to the passage that prompted it, so the tangent never scrolls the main thread away [1]. When the exploration is done, a short takeaway returns to the main conversation while the branch itself is kept [2]. Open a numbered source to read it beside this lane.`
 
 function inNodeTest() {
   const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -69,6 +99,17 @@ function lastUserText(messages: unknown[]): string {
 function craftReply(userText: string, quote?: string): string {
   const text = userText.toLowerCase()
 
+  // Attachments reach the mock as bracketed notes (it cannot see images).
+  const images = [...userText.matchAll(/\[Image: ([^\]]+?) — [^\]]*\]/g)].map((match) => match[1])
+  const files = [...userText.matchAll(/^Attached file (.+):$/gm)].map((match) => match[1])
+  if (images.length > 0 || files.length > 0) {
+    const received = [
+      images.length > 0 ? `${images.length} image${images.length === 1 ? '' : 's'} (${images.join(', ')})` : '',
+      files.length > 0 ? `${files.length} file${files.length === 1 ? '' : 's'} (${files.join(', ')})` : '',
+    ].filter(Boolean).join(' and ')
+    return `I received ${received}. This is a demo reply, so nothing was actually read — add an OpenRouter key and pick a model that reads images for a real answer.`
+  }
+
   if (
     text.includes('```') ||
     /\b(code (sample|block|fence|example)|syntax highlight|markdown)\b/.test(text)
@@ -86,21 +127,21 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
 
   if (text.includes('summarize') || text.includes('merge') || text.includes('drop')) {
     const q = quote ? `«${quote}»` : 'the selected passage'
-    return `Merged up from the branch on ${q}. The tangent stayed pinned to that character range and used its own composer, so it never stole the thread above it. What is left behind is a quiet underline and a pill you can reopen.`
+    return `The exploration on ${q} stays connected to its source passage. A takeaway carries the useful conclusion back to the parent, with a link to revisit the full exploration.`
   }
 
   if (quote) {
     if (text.includes('deep') || text.includes('nest') || text.includes('again')) {
-      return `You can branch from here too — this thread is a conversation like any other, so select a passage in it and fork again. Each level carries the whole chain above it as context. Past two levels the cards stop nesting inline and offer "open as chat" instead.`
+      return `You can branch from here too — this thread is a conversation like any other, so select a passage in it and fork again. Each level carries upstream context. When lanes no longer fit side by side, older ones fold into strips, and the back arrow returns you to the source.`
     }
     if (text.includes('composer') || text.includes('post')) {
       return `This composer posts only into this thread. Every thread has its own — the one at the bottom belongs to whichever thread holds the frame. The quote «${quote}» is this thread's anchor, and Esc walks back up one level.`
     }
-    return `Staying on the branch from «${quote}». I can see the whole chain this grew out of, so ask anything about it. Merge up folds a recap into the parent thread, Discard removes this branch and everything under it, and Open as chat gives it the full frame.`
+    return `Staying on the branch from «${quote}». This exploration includes context from the conversation above and has its own lane and composer; the back arrow returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
   }
 
   if (text.includes('select') || text.includes('shortcut') || text.includes('chip')) {
-    return 'Select any span in any message, in any thread. A "branch from selection" chip floats over the highlight — or press ⌘⇧B / Ctrl+Shift+B. The new thread is anchored to that character range and stores the quote, so the underline survives as the thread grows.'
+    return 'Select any span in any message, in any thread. Choose "Branch" — or press ⌘⇧B / Ctrl+Shift+B — to open a question beside the passage. Send to start the branch, or cancel without creating one. You can also use the button below each message.'
   }
 
   if (text.includes('pip') || text.includes('underline') || text.includes('closed') || text.includes('hover')) {
@@ -108,18 +149,18 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
   }
 
   if (text.includes('composer') || text.includes('main') || text.includes('thread')) {
-    return 'Every thread has its own composer, so there is never a question of where a message lands. The one at the bottom belongs to the thread holding the frame; an expanded branch carries its own inside its card. Open as chat hands the frame to a branch, and the header shows the path back up.'
+    return 'Each lane has its own composer at the bottom, so a reply always lands in the thread you type it in. Branches open in lanes to the right, and the back arrow in a branch header returns you to its source passage.'
   }
 
   if (text.includes('discard') || text.includes('chat') || text.includes('conversation')) {
-    return 'Every branch header has three moves: Merge up (a recap lands in the parent thread), Discard (confirm first — it takes any branches growing out of it too), and Open as chat (the branch takes the full frame, with the tree rail beside it).'
+    return 'Choose Bring back to review and edit a takeaway for the parent conversation. The takeaway links to the exploration, and Undo removes just the takeaway. The trash button in a branch header asks before removing the branch and its descendants.'
   }
 
   if (text.includes('what is') || text.includes('treechat') || text.includes('how do')) {
     return 'TreeChat treats a chat as an actual tree. Every thread is a full conversation; the root one is just the thread with no parent. Highlight a passage to grow a side-thread, branch that branch if you want, and each level carries the chain above it as context. The whole tree persists in localStorage.'
   }
 
-  return `Noted. This lands in whichever thread you are in — nothing retargets. Select a phrase above and press ⌘⇧B / Ctrl+Shift+B if you want to fork from here.`
+  return `This is a demo reply — TreeChat has no model connected yet, so it can't answer that. Add an OpenRouter key in Settings for real answers. You can still try branching: select a phrase here and press ⌘⇧B / Ctrl+Shift+B.`
 }
 
 function tokensOf(reply: string): string[] {
@@ -129,7 +170,7 @@ function tokensOf(reply: string): string[] {
 export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamChunk> {
   const { threadId, runId, signal } = input
   const messageId = crypto.randomUUID()
-  const reply = craftReply(lastUserText(input.messages), input.quote)
+  const reply = input.webSearch ? MOCK_SEARCH_REPLY : craftReply(lastUserText(input.messages), input.quote)
   const now = () => Date.now()
   const paced = input.pace ?? !inNodeTest()
 
@@ -170,6 +211,9 @@ export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamCh
     return
   }
 
+  if (input.webSearch) {
+    yield { type: EventType.CUSTOM, name: CITATIONS_EVENT, value: MOCK_WEB_CITATIONS, timestamp: now() }
+  }
   yield { type: EventType.TEXT_MESSAGE_END, messageId, timestamp: now() }
   yield {
     type: EventType.RUN_FINISHED,

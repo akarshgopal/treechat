@@ -1,5 +1,5 @@
 import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { Check, ChevronRight } from 'lucide-react'
 import {
   loadExpandedIds,
   revealThreadInRail,
@@ -8,7 +8,7 @@ import {
   toggleExpandedId,
   visibleRailThreads,
 } from '@/lib/rail-collapse'
-import { childThreads, depthOf, subtreeSize } from '@/lib/tree'
+import { childThreads, depthOf, subtreeSize, threadTitle } from '@/lib/tree'
 import { cn } from '@/lib/utils'
 import type { Thread, TreeState } from '@/types'
 
@@ -40,10 +40,12 @@ function Row({
   const active = thread.id === activeId
   const isRoot = thread.parentId === null
   const depth = depthOf(state, thread.id)
-  const label = isRoot ? rootTitle : (thread.anchor?.quote ?? 'branch')
+  const label = isRoot ? rootTitle : threadTitle(thread)
   const count = subtreeSize(state, thread.id)
   const hasChildren = children.length > 0
   const open = hasChildren && expandedIds.has(thread.id)
+  const summarized = !isRoot && Object.values(state.threads).some((entry) =>
+    entry.messages.some((message) => message.sourceThreadId === thread.id))
 
   const onCaret = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
@@ -127,8 +129,17 @@ function Row({
           >
             {label}
           </span>
+          {summarized ? (
+            <Check className="ml-auto size-3 shrink-0 text-branch" aria-label="Takeaway brought back" />
+          ) : null}
           {count > 0 ? (
-            <span className="eyebrow ml-auto shrink-0 text-muted-foreground">{count}</span>
+            <span
+              className={cn('eyebrow shrink-0 text-muted-foreground', !summarized && 'ml-auto')}
+              title={`${count} ${count === 1 ? 'message' : 'messages'}, including branches below`}
+              aria-label={`${count} ${count === 1 ? 'message' : 'messages'}`}
+            >
+              {count}
+            </span>
           ) : null}
         </div>
       </div>

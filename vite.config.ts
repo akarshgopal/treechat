@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
     base: resolveViteBase(process.env),
     plugins: [react(), tailwindcss(), treeChatApi()],
     resolve: {

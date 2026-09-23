@@ -63,11 +63,13 @@ export async function handleApiRequest(
       threadId: params.threadId,
       runId: params.runId,
       quote,
+      webSearch: params.forwardedProps.webSearch === true,
       signal: abortController.signal,
     })
     return toServerSentEventsResponse(stream, { abortController })
   }
 
+  // Web search is browser-only (OpenRouter's web plugin, src/lib/web-search.ts); this local fallback ignores `webSearch`.
   const stream = chat({
     adapter,
     messages: params.messages,

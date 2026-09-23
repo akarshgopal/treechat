@@ -3,6 +3,8 @@ packages:
 
 allowBuilds:
   esbuild: true
+  onnxruntime-node: false
+  protobufjs: false
   sharp: false
 minimumReleaseAgeExclude:
   - '@types/node@24.13.5'

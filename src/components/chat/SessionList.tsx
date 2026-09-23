@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Pencil, SquarePen, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { sortSessions } from '@/lib/sessions'
 import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/types'
@@ -11,7 +11,6 @@ type SessionListProps = {
   sessions: ChatSession[]
   activeSessionId: string
   onSelect: (sessionId: string) => void
-  onCreate: () => void
   onRename: (sessionId: string, title: string) => void
   onDelete: (sessionId: string) => void
   /** Show rename/delete without hover — used in the mobile dialog. */
@@ -22,7 +21,6 @@ export function SessionList({
   sessions,
   activeSessionId,
   onSelect,
-  onCreate,
   onRename,
   onDelete,
   alwaysShowActions = false,
@@ -70,17 +68,6 @@ export function SessionList({
     <div className="flex min-h-0 flex-1 flex-col gap-2" data-testid="session-list">
       <span className="eyebrow shrink-0 px-0.5 text-muted-foreground">chats</span>
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-        <button
-          type="button"
-          onClick={onCreate}
-          aria-label="New chat"
-          title="New chat"
-          data-testid="session-new"
-          className="flex min-w-0 items-center gap-2 rounded-[7px] px-2 py-[6px] text-left text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-        >
-          <SquarePen className="size-3.5 shrink-0" />
-          <span className="min-w-0 truncate text-[12px] leading-tight">New chat</span>
-        </button>
         {ordered.map((session) => {
           const active = session.id === activeSessionId
           const editing = session.id === editingId

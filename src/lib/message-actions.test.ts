@@ -7,6 +7,7 @@ import {
   droppedMessageIds,
   editUserMessage,
   retryFromAssistant,
+  retryFromUser,
   truncateAfterMessage,
 } from './message-actions.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
@@ -98,6 +99,19 @@ test('retryFromAssistant is inert on user turns and missing ids', () => {
   assert.equal(retryFromAssistant(messages, 'u2'), null)
   assert.equal(retryFromAssistant(messages, 'gone'), null)
   assert.equal(retryFromAssistant([msg('a1', 'assistant')], 'a1'), null)
+})
+
+test('regenerating a user turn preserves its anchors and removes only later turns', () => {
+  const state = tree()
+  const before = state.threads.root.messages
+  const after = retryFromUser(before, 'u2')!
+  assert.deepEqual(after.map((message) => message.id), ['u1', 'a1', 'u2'])
+  assert.equal(after.at(-1), before[2])
+  assert.deepEqual(droppedMessageIds(before, after), ['a2'])
+  assert.deepEqual(doomedIdsForAnchors(state, 'root', droppedMessageIds(before, after)), [])
+  assert.deepEqual(retryFromUser(after, 'u2'), after)
+  assert.equal(retryFromUser(before, 'a2'), null)
+  assert.equal(retryFromUser(before, 'missing'), null)
 })
 
 test('editUserMessage rewrites content and truncates subsequent turns', () => {

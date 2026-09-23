@@ -11,7 +11,7 @@ import { createId } from '@/lib/ids'
 import { activeSessionOf } from '@/lib/sessions'
 import { loadLibrary, saveLibrary } from '@/lib/storage'
 import { sessionReducer } from '@/store/session-reducer'
-import type { Anchor, ChatMessage, ChatSession, Thread, TreeState } from '@/types'
+import type { Anchor, ChatMessage, ChatSession, Thread, ThreadSummary, TreeState } from '@/types'
 
 type TreeContextValue = {
   state: TreeState
@@ -20,23 +20,28 @@ type TreeContextValue = {
   activeSession: ChatSession
   activeThread: Thread
   rootThread: Thread
-  createThread: (parentId: string, anchor: Anchor) => string
+  createThread: (parentId: string, anchor: Anchor, options?: { webSearch?: boolean }) => string
+  setWebSearch: (threadId: string, on: boolean) => void
   expand: (parentId: string, childId: string | null) => void
   focus: (threadId: string) => void
   discard: (threadId: string) => void
   replaceMessages: (threadId: string, messages: ChatMessage[]) => void
   appendMessage: (threadId: string, message: ChatMessage) => void
+  undoTakeaway: (threadId: string, messageId: string) => void
   rewriteThread: (
     threadId: string,
     messages: ChatMessage[],
     dropAnchorMessageIds: string[],
   ) => void
+  setSummary: (threadId: string, summary: ThreadSummary, basis: string) => void
   reset: () => void
   restoreDemo: () => void
   createSession: () => void
   switchSession: (sessionId: string) => void
   renameSession: (sessionId: string, title: string) => void
   deleteSession: (sessionId: string) => void
+  setSessionDocuments: (sessionId: string, documentIds: string[]) => void
+  forgetDocument: (documentId: string) => void
 }
 
 const TreeContext = createContext<TreeContextValue | null>(null)
@@ -53,7 +58,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
   const rootThread = state.threads[state.rootId]
   const activeThread = state.threads[state.activeThreadId] ?? rootThread
 
-  const createThread = useCallback((parentId: string, anchor: Anchor) => {
+  const createThread = useCallback((parentId: string, anchor: Anchor, options?: { webSearch?: boolean }) => {
     const thread: Thread = {
       id: createId('thread'),
       parentId,
@@ -61,6 +66,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       messages: [],
       createdAt: Date.now(),
       rev: 0,
+      ...(options?.webSearch ? { webSearch: true } : {}),
     }
     dispatch({ type: 'tree', action: { type: 'create-thread', thread } })
     return thread.id
@@ -78,6 +84,8 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       expand: (parentId, childId) =>
         dispatch({ type: 'tree', action: { type: 'expand', parentId, childId } }),
       focus: (threadId) => dispatch({ type: 'tree', action: { type: 'focus', threadId } }),
+      setWebSearch: (threadId, on) =>
+        dispatch({ type: 'tree', action: { type: 'set-web-search', threadId, on } }),
       discard: (threadId) => dispatch({ type: 'tree', action: { type: 'discard', threadId } }),
       replaceMessages: (threadId, messages) =>
         dispatch({
@@ -89,6 +97,8 @@ export function TreeProvider({ children }: { children: ReactNode }) {
           type: 'tree',
           action: { type: 'append-message', threadId, message },
         }),
+      undoTakeaway: (threadId, messageId) =>
+        dispatch({ type: 'tree', action: { type: 'undo-takeaway', threadId, messageId } }),
       rewriteThread: (threadId, messages, dropAnchorMessageIds) =>
         dispatch({
           type: 'tree',
@@ -99,6 +109,8 @@ export function TreeProvider({ children }: { children: ReactNode }) {
             dropAnchorMessageIds,
           },
         }),
+      setSummary: (threadId, summary, basis) =>
+        dispatch({ type: 'tree', action: { type: 'set-summary', threadId, summary, basis } }),
       reset: () => dispatch({ type: 'tree', action: { type: 'reset' } }),
       restoreDemo: () => dispatch({ type: 'tree', action: { type: 'restoreDemo' } }),
       createSession: () => dispatch({ type: 'create-session' }),
@@ -106,6 +118,9 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       renameSession: (sessionId, title) =>
         dispatch({ type: 'rename-session', sessionId, title }),
       deleteSession: (sessionId) => dispatch({ type: 'delete-session', sessionId }),
+      setSessionDocuments: (sessionId, documentIds) =>
+        dispatch({ type: 'set-session-documents', sessionId, documentIds }),
+      forgetDocument: (documentId) => dispatch({ type: 'forget-document', documentId }),
     }),
     [library, state, activeSession, activeThread, rootThread, createThread],
   )
