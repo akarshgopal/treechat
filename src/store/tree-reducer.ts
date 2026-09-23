@@ -1,7 +1,8 @@
+import { prefixFingerprint, summaryHolds } from '../lib/compaction.ts'
 import { doomedIdsForAnchors } from '../lib/message-actions.ts'
 import { createEmptyState, createSeedState } from '../lib/seed.ts'
 import { descendantIds, expansionToReveal } from '../lib/tree.ts'
-import type { ChatMessage, Thread, TreeState } from '@/types'
+import type { ChatMessage, Thread, ThreadSummary, TreeState } from '@/types'
 
 export type Action =
   | { type: 'replace-messages'; threadId: string; messages: ChatMessage[] }
@@ -13,6 +14,8 @@ export type Action =
       messages: ChatMessage[]
       dropAnchorMessageIds: string[]
     }
+  /** `basis` fingerprints the messages the summary was written from. */
+  | { type: 'set-summary'; threadId: string; summary: ThreadSummary; basis: string }
   | { type: 'create-thread'; thread: Thread }
   | { type: 'expand'; parentId: string; childId: string | null }
   | { type: 'focus'; threadId: string }
@@ -22,6 +25,16 @@ export type Action =
 
 function withThread(state: TreeState, thread: Thread): TreeState {
   return { ...state, threads: { ...state.threads, [thread.id]: thread } }
+}
+
+/** New messages for a thread, dropping a summary they no longer agree with. */
+function withMessages(thread: Thread, messages: ChatMessage[]): Thread {
+  if (!thread.summary || summaryHolds(thread.messages, messages, thread.summary)) {
+    return { ...thread, messages }
+  }
+  const next: Thread = { ...thread, messages }
+  delete next.summary
+  return next
 }
 
 /**
@@ -59,15 +72,14 @@ export function reducer(state: TreeState, action: Action): TreeState {
       const thread = state.threads[action.threadId]
       if (!thread?.messages.some((message) => message.id === action.messageId && message.kind === 'drop-summary')) return state
       return withThread(state, {
-        ...thread,
-        messages: thread.messages.filter((message) => message.id !== action.messageId),
+        ...withMessages(thread, thread.messages.filter((message) => message.id !== action.messageId)),
         rev: thread.rev + 1,
       })
     }
     case 'replace-messages': {
       const thread = state.threads[action.threadId]
       if (!thread) return state
-      return withThread(state, { ...thread, messages: action.messages })
+      return withThread(state, withMessages(thread, action.messages))
     }
     case 'append-message': {
       const thread = state.threads[action.threadId]
@@ -85,11 +97,18 @@ export function reducer(state: TreeState, action: Action): TreeState {
       if (!thread) return state
       // No rev bump: the live engine already holds this transcript and will
       // reload from it. Remounting would drop that in-flight generate.
-      const next = withThread(state, { ...thread, messages: action.messages })
+      const next = withThread(state, withMessages(thread, action.messages))
       const doomed = new Set(
         doomedIdsForAnchors(next, action.threadId, action.dropAnchorMessageIds),
       )
       return removeThreads(next, doomed, action.threadId)
+    }
+    case 'set-summary': {
+      const thread = state.threads[action.threadId]
+      if (!thread) return state
+      // The thread moved on (edit, retry) while the summary was being written.
+      if (prefixFingerprint(thread.messages, action.summary.throughMessageId) !== action.basis) return state
+      return withThread(state, { ...thread, summary: action.summary })
     }
     case 'create-thread': {
       const parentId = action.thread.parentId

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowUpLeft, LoaderCircle } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { compactTranscript } from '@/lib/compaction'
 import { requestAssistantText } from '@/lib/request-assistant'
 import { branchForwardedProps, threadTitle } from '@/lib/tree'
 import type { Thread, TreeState } from '@/types'
@@ -29,10 +30,9 @@ export function TakeawayDialog({ thread, state, onClose, onConfirm }: {
       setError('')
       try {
         const forwarded = branchForwardedProps(snapshot.state, snapshot.thread.id)
-        const transcript = snapshot.thread.messages.map((message) => `${message.role}: ${message.content}`).join('\n\n')
         const summary = await requestAssistantText(
-          `Summarize this TreeChat side-thread for its parent conversation. Capture the useful conclusion and any important uncertainty in two to four sentences, no preamble. Transcript:\n${transcript}`,
-          forwarded?.quote, forwarded?.context, abort.signal,
+          `Summarize this TreeChat side-thread for its parent conversation. Capture the useful conclusion and any important uncertainty in two to four sentences, no preamble. Transcript:\n${compactTranscript(snapshot.thread)}`,
+          forwarded?.quote, forwarded?.context, abort.signal, { background: true },
         )
         if (!abort.signal.aborted) {
           if (!summary) throw new Error('No takeaway was returned. Try again or write your own.')

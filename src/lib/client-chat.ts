@@ -9,6 +9,7 @@ import {
 import { mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
 import { buildSystemPrompts } from '../../shared/system-prompts.ts'
 import { clearRunCitations } from './citations.ts'
+import { applySummaryToRequest } from './compaction.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
@@ -27,6 +28,8 @@ type RunChatInput = {
   threadId: string
   runId: string
   signal?: AbortSignal
+  /** OpenRouter model override for this one request (the background model). */
+  model?: string
 }
 
 const localChatConnection = fetchServerSentEvents('/api/chat', () => ({
@@ -350,13 +353,17 @@ export async function* openRouterChatStream(input: {
 export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   clearRunCitations(input.threadId)
   const config = loadProviderConfig()
-  const forwardedProps = mergeForwarded(input.data, input.forwardedProps)
+  // Every backend gets the same compacted request; the UI keeps the full transcript.
+  const { messages, forwardedProps } = applySummaryToRequest(
+    input.messages,
+    mergeForwarded(input.data, input.forwardedProps),
+  )
   const backend = await resolveChatBackend(config)
 
   if (backend === 'openrouter' && config) {
     yield* openRouterChatStream({
-      messages: input.messages,
-      config,
+      messages,
+      config: input.model ? { ...config, model: input.model } : config,
       forwardedProps,
       threadId: input.threadId,
       runId: input.runId,
@@ -367,7 +374,7 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
 
   if (backend === 'local-api') {
     yield* localChatConnection.connect(
-      input.messages as never,
+      messages as never,
       forwardedProps,
       input.signal,
       {
@@ -380,7 +387,7 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
   }
 
   yield* mockChatStream({
-    messages: input.messages,
+    messages,
     threadId: input.threadId,
     runId: input.runId,
     quote:

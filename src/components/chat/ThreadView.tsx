@@ -4,6 +4,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Composer } from '@/components/chat/Composer'
 import { MessageBubble } from '@/components/chat/MessageBubble'
 import { ReplyProgress } from '@/components/chat/ReplyProgress'
+import { SummaryDivider } from '@/components/chat/SummaryDivider'
 import { childThreadsForMessage, threadTitle } from '@/lib/tree'
 import type { Thread, TreeState } from '@/types'
 
@@ -149,6 +150,7 @@ export function ThreadView({
         const children = childThreadsForMessage(state, thread.id, message.id)
         return (
           <div key={message.id} className="flex flex-col gap-0.5">
+            {thread.summary && thread.messages[index - 1]?.id === thread.summary.throughMessageId ? <SummaryDivider summary={thread.summary} /> : null}
             <MessageBubble
               message={message}
               threadId={thread.id}

@@ -12,6 +12,7 @@ import type {
   ChatSession,
   SessionLibrary,
   Thread,
+  ThreadSummary,
   TreeState,
 } from '@/types'
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
@@ -61,6 +62,18 @@ function parseAnchor(value: unknown): Anchor | null {
   }
 }
 
+function parseSummary(value: unknown): ThreadSummary | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (typeof record.content !== 'string' || !record.content.trim()) return null
+  if (typeof record.throughMessageId !== 'string') return null
+  return {
+    content: record.content,
+    throughMessageId: record.throughMessageId,
+    createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
+  }
+}
+
 function parseThread(value: unknown): Thread | null {
   if (!value || typeof value !== 'object') return null
   const record = value as Record<string, unknown>
@@ -69,13 +82,17 @@ function parseThread(value: unknown): Thread | null {
   const anchor = parseAnchor(record.anchor)
   // A non-root thread without a usable anchor has nowhere to attach.
   if (parentId !== null && !anchor) return null
+  const messages = parseMessages(record.messages)
+  const summary = parseSummary(record.summary)
   return {
     id: record.id,
     parentId,
     anchor: parentId === null ? null : anchor,
-    messages: parseMessages(record.messages),
+    messages,
     createdAt: typeof record.createdAt === 'number' ? record.createdAt : Date.now(),
     rev: typeof record.rev === 'number' ? record.rev : 0,
+    // A summary of messages that are no longer there would describe nothing.
+    ...(summary && messages.some((message) => message.id === summary.throughMessageId) ? { summary } : {}),
   }
 }
 

@@ -194,3 +194,20 @@ test('takeaway source links survive the chat engine and storage round-trip', () 
     kind: 'drop-summary', quote: 'The source passage', sourceThreadId: 'thread-branch-1',
   })
 })
+
+test('a thread summary survives storage, and a stale one is dropped', () => {
+  mockLocalStorage()
+  const state = createSeedState()
+  const root = state.threads[state.rootId]
+  const throughMessageId = root.messages[1].id
+  root.summary = { content: 'Earlier: the basics', throughMessageId, createdAt: 5 }
+  saveTreeState(state)
+  assert.deepEqual(loadTreeState().threads[state.rootId].summary, root.summary)
+
+  root.summary = { content: 'Earlier: gone', throughMessageId: 'not-a-message', createdAt: 5 }
+  saveTreeState(state)
+  assert.ok(!('summary' in loadTreeState().threads[state.rootId]))
+  // Threads without one stay free of the key (strict round-trips elsewhere rely on it).
+  const branch = Object.values(loadTreeState().threads).find((thread) => thread.parentId)
+  assert.ok(branch && !('summary' in branch))
+})

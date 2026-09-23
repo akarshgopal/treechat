@@ -11,7 +11,7 @@ import { createId } from '@/lib/ids'
 import { activeSessionOf } from '@/lib/sessions'
 import { loadLibrary, saveLibrary } from '@/lib/storage'
 import { sessionReducer } from '@/store/session-reducer'
-import type { Anchor, ChatMessage, ChatSession, Thread, TreeState } from '@/types'
+import type { Anchor, ChatMessage, ChatSession, Thread, ThreadSummary, TreeState } from '@/types'
 
 type TreeContextValue = {
   state: TreeState
@@ -32,6 +32,7 @@ type TreeContextValue = {
     messages: ChatMessage[],
     dropAnchorMessageIds: string[],
   ) => void
+  setSummary: (threadId: string, summary: ThreadSummary, basis: string) => void
   reset: () => void
   restoreDemo: () => void
   createSession: () => void
@@ -102,6 +103,8 @@ export function TreeProvider({ children }: { children: ReactNode }) {
             dropAnchorMessageIds,
           },
         }),
+      setSummary: (threadId, summary, basis) =>
+        dispatch({ type: 'tree', action: { type: 'set-summary', threadId, summary, basis } }),
       reset: () => dispatch({ type: 'tree', action: { type: 'reset' } }),
       restoreDemo: () => dispatch({ type: 'tree', action: { type: 'restoreDemo' } }),
       createSession: () => dispatch({ type: 'create-session' }),

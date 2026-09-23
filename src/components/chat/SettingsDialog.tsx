@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { ModelPicker, ModelPresetChips } from '@/components/chat/ModelPicker'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  BACKGROUND_MODEL_OPTIONS,
   DEFAULT_OPENROUTER_MODEL,
   isModelId,
   loadProviderConfig,
@@ -64,17 +66,20 @@ function SettingsBody({
   const [maxTokens, setMaxTokens] = useState(
     initial?.maxTokens !== undefined ? String(initial.maxTokens) : '',
   )
+  const [backgroundModel, setBackgroundModel] = useState(initial?.backgroundModel ?? '')
   const [saved, setSaved] = useState(false)
   const [savedModel, setSavedModel] = useState(initial?.model || DEFAULT_OPENROUTER_MODEL)
   const [hasKey, setHasKey] = useState(Boolean(initial?.apiKey))
   const modelValid = isModelId(model)
+  const backgroundValid = !backgroundModel.trim() || isModelId(backgroundModel)
 
   const persist = (event: FormEvent) => {
     event.preventDefault()
-    if (!modelValid) return
+    if (!modelValid || !backgroundValid) return
     const next = normalizeProviderConfig({
       apiKey,
       model,
+      backgroundModel,
       temperature: temperature.trim() === '' ? undefined : temperature,
       maxTokens: maxTokens.trim() === '' ? undefined : maxTokens,
     })
@@ -84,6 +89,7 @@ function SettingsBody({
     setModel(next.model)
     setTemperature(next.temperature !== undefined ? String(next.temperature) : '')
     setMaxTokens(next.maxTokens !== undefined ? String(next.maxTokens) : '')
+    setBackgroundModel(next.backgroundModel ?? '')
     setSavedModel(next.model)
     setHasKey(Boolean(next.apiKey))
     setSaved(true)
@@ -159,6 +165,56 @@ function SettingsBody({
               </p>
             )}
           </div>
+          <div className="grid gap-1.5">
+            <label htmlFor="settings-background-model" className="text-[12px] font-medium text-foreground">
+              Background model
+            </label>
+            <input
+              id="settings-background-model"
+              name="openrouter-background-model"
+              value={backgroundModel}
+              onChange={(event) => {
+                setBackgroundModel(event.target.value)
+                setSaved(false)
+              }}
+              placeholder="Same as the main model"
+              spellCheck={false}
+              autoComplete="off"
+              aria-invalid={!backgroundValid || undefined}
+              data-testid="settings-background-model"
+              className={cn(fieldClass, 'aria-invalid:border-destructive')}
+            />
+            <div className="flex flex-wrap gap-1">
+              {[{ id: '', label: 'Main model' }, ...BACKGROUND_MODEL_OPTIONS].map((option) => (
+                <button
+                  key={option.id || 'main'}
+                  type="button"
+                  onClick={() => {
+                    setBackgroundModel(option.id)
+                    setSaved(false)
+                  }}
+                  data-testid={`background-preset-${option.id || 'main'}`}
+                  className={cn(
+                    'rounded-full border px-2 py-[3px] font-mono text-[10px] transition-colors',
+                    backgroundModel.trim() === option.id
+                      ? 'border-branch/50 bg-branch/10 text-branch-bright'
+                      : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {backgroundValid ? (
+              <p className="text-[11px] text-muted-foreground">
+                Writes summaries of long threads and takeaway drafts. Free models (<span className="font-mono">:free</span>) may log prompts and have low rate limits; failures fall back to the main model.
+              </p>
+            ) : (
+              <p className="text-[11px] text-destructive" role="alert">
+                Model ids look like <span className="font-mono">vendor/model</span>. Leave empty to use the main model.
+              </p>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="grid gap-1.5">
               <span className="text-[12px] font-medium text-foreground">
@@ -218,7 +274,7 @@ function SettingsBody({
               {saved ? (
                 <span className="text-[11px] text-muted-foreground">Saved in this browser</span>
               ) : null}
-              <Button type="submit" size="sm" data-testid="settings-save" disabled={!modelValid}>
+              <Button type="submit" size="sm" data-testid="settings-save" disabled={!modelValid || !backgroundValid}>
                 Save
               </Button>
             </div>

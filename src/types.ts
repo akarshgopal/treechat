@@ -36,6 +36,18 @@ export type ChatMessage = {
   citations?: Citation[]
 }
 
+/**
+ * A running summary of a thread's older messages, so long threads fit the
+ * model's context. Requests send it plus only the messages after
+ * `throughMessageId`; the transcript itself is never trimmed.
+ */
+export type ThreadSummary = {
+  content: string
+  /** The last message the summary covers. */
+  throughMessageId: string
+  createdAt: number
+}
+
 /** Where a thread is pinned inside its parent's message. */
 export type Anchor = {
   messageId: string
@@ -62,6 +74,7 @@ export type Thread = {
    * picks the new transcript up instead of overwriting it.
    */
   rev: number
+  summary?: ThreadSummary
 }
 
 export type TreeState = {

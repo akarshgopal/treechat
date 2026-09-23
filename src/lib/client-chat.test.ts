@@ -426,3 +426,53 @@ test('empty provider streams and error finish reasons surface a retryable error'
 test('routing sessions are bounded to the provider limit', () => {
   assert.equal(openRouterRequestBody(streamInput.config, [], 'a'.repeat(300)).session_id?.length, 256)
 })
+
+test('runChat sends a summarized thread as its summary plus the later messages', async () => {
+  saveProviderConfig({ provider: 'openrouter', apiKey: 'sk-or-v1-live', model: 'openai/gpt-4.1-mini' })
+  let sent: Array<{ role: string; content: string }> = []
+  globalThis.fetch = (async (_input, init) => {
+    sent = (JSON.parse(String(init?.body)) as { messages: typeof sent }).messages
+    return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  await collectAssistantText(runChat({
+    messages: [
+      { id: 'a', role: 'user', content: 'old question' },
+      { id: 'b', role: 'assistant', content: 'old answer' },
+      { id: 'c', role: 'user', content: 'new question' },
+    ],
+    forwardedProps: { threadSummary: { content: 'They asked an old question.', throughMessageId: 'b' } },
+    threadId: 't1',
+    runId: 'r1',
+  }))
+  assert.deepEqual(sent.map((message) => message.role), ['system', 'system', 'user'])
+  assert.match(sent[1].content, /^SUMMARY OF EARLIER CONVERSATION\nThey asked an old question\./)
+  assert.equal(sent[2].content, 'new question')
+  assert.ok(sent.every((message) => !message.content.includes('old answer')))
+})
+
+test('runChat sends the full transcript when the summary does not match it', async () => {
+  saveProviderConfig({ provider: 'openrouter', apiKey: 'sk-or-v1-live', model: 'openai/gpt-4.1-mini' })
+  let sent: Array<{ role: string; content: string }> = []
+  globalThis.fetch = (async (_input, init) => {
+    sent = (JSON.parse(String(init?.body)) as { messages: typeof sent }).messages
+    return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+  }) as typeof fetch
+
+  await collectAssistantText(runChat({
+    messages: [
+      { id: 'a', role: 'user', content: 'edited question' },
+    ],
+    forwardedProps: { threadSummary: { content: 'stale', throughMessageId: 'gone' } },
+    threadId: 't1',
+    runId: 'r1',
+  }))
+  assert.deepEqual(sent.map((message) => message.role), ['system', 'user'])
+  assert.ok(sent.every((message) => !message.content.includes('stale')))
+})

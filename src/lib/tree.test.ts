@@ -4,6 +4,7 @@ import {
   branchForwardedProps,
   childThreadsForMessage,
   clipText,
+  CONTEXT_EARLIER,
   CONTEXT_MAIN,
   CONTEXT_QUOTE,
   contextBranchLabel,
@@ -264,4 +265,62 @@ test('groupThreadsBySpan keeps oldest-first groups', () => {
     grouped.map((group) => group.map((t) => t.id)),
     [['b1'], ['b2', extra.id]],
   )
+})
+
+function summarizedRoot(through: string, filler = 700) {
+  const long = (label: string) => `${label} `.padEnd(filler, 'z')
+  const messages = [
+    msg('s1', 'user', long('first question')),
+    msg('s2', 'assistant', long('first answer')),
+    msg('s3', 'user', long('second question')),
+    msg('s4', 'assistant', long('second answer')),
+    msg('s5', 'user', long('third question')),
+    msg('s6', 'assistant', 'the anchor with a quotable passage'),
+    msg('s7', 'user', 'after the anchor'),
+  ]
+  const summarizedRoot: Thread = {
+    ...thread('root', null, null, '', messages),
+    summary: { content: 'SUMMARY: first and second exchange', throughMessageId: through, createdAt: 1 },
+  }
+  const branch = thread('b', 'root', 's6', 'a quotable passage', [msg('bm1', 'user', 'what?')], 1)
+  return {
+    threads: { root: summarizedRoot, b: branch },
+    rootId: 'root',
+    activeThreadId: 'b',
+    expanded: {},
+  } satisfies TreeState
+}
+
+test('an ancestor with a summary before the anchor is told through it', () => {
+  const context = threadContext(summarizedRoot('s2'), 'b')
+  assert.ok(context.startsWith(`${CONTEXT_MAIN}\n${CONTEXT_EARLIER}\nSUMMARY: first and second exchange`))
+  // Turns between the summary and the anchor go in full, not clipped to 480.
+  assert.match(context, /user: second question z{600,}/)
+  assert.match(context, /assistant: second answer z{600,}/)
+  assert.match(context, /assistant: the anchor with a quotable passage/)
+  assert.doesNotMatch(context, /first question/)
+  assert.doesNotMatch(context, /after the anchor/)
+  assert.ok(context.endsWith(`${CONTEXT_QUOTE}\n«a quotable passage»`))
+})
+
+test('a summary ending on the anchor itself still frames it', () => {
+  const context = threadContext(summarizedRoot('s6'), 'b')
+  assert.match(context, /SUMMARY: first and second exchange\n\nassistant: the anchor/)
+})
+
+test('a summary that runs past the anchor is ignored for that branch', () => {
+  const context = threadContext(summarizedRoot('s7'), 'b')
+  assert.doesNotMatch(context, /SUMMARY:/)
+  assert.doesNotMatch(context, new RegExp(CONTEXT_EARLIER))
+  // Back to clipped fragments.
+  assert.match(context, /user: third question z+…/)
+})
+
+test('summarized ancestor context stays within its budget', () => {
+  const huge = threadContext(summarizedRoot('s1', 20_000), 'b')
+  assert.ok(huge.length <= 9000, `context is ${huge.length} chars`)
+  assert.match(huge, /SUMMARY: first and second exchange/)
+  assert.match(huge, /the anchor with a quotable passage/)
+  // Turns too long to fit whole fall back to clipped fragments.
+  assert.match(huge, /user: second question z+…\n/)
 })

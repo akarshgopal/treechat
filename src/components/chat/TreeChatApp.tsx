@@ -62,6 +62,7 @@ import {
   snapRangeToWords,
 } from '@/lib/selection'
 import { branchForwardedProps, pathTo } from '@/lib/tree'
+import { refreshSummary } from '@/lib/summarize'
 import { isBranchShortcut } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
 import type { ChatMessage, ChatSession, ProviderStatus } from '@/types'
@@ -134,17 +135,22 @@ type PendingRewrite = {
  * rather than overwriting it with its own stale copy.
  */
 function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; openChildId: string | null; frame: LaneFrame }) {
-  const { state, replaceMessages, rewriteThread } = useTree()
+  const { state, replaceMessages, rewriteThread, setSummary } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
 
   const [initialMessages] = useState(() => toUIMessages(thread?.messages ?? []))
   const forwarded = branchForwardedProps(state, threadId)
+  const summary = thread?.summary
   const chat = useChat({
     threadId,
     connection: chatConnection,
     initialMessages,
-    forwardedProps: { ...forwarded, cacheSessionId: shell.sessionId },
+    forwardedProps: {
+      ...forwarded,
+      cacheSessionId: shell.sessionId,
+      ...(summary ? { threadSummary: { content: summary.content, throughMessageId: summary.throughMessageId } } : {}),
+    },
   })
 
   const { sendMessage } = chat
@@ -174,13 +180,15 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
     const finished = wasLoading.current && !chat.isLoading
     wasLoading.current = chat.isLoading
     if (!finished) return
+    // Off the reply's path: the next request picks the summary up when it lands.
+    if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis))
     const citations = takeRunCitations(threadId)
     const last = chat.messages.at(-1)
     if (!citations || last?.role !== 'assistant') return
     setMessages(chat.messages.map((message) =>
       message === last ? { ...message, metadata: { ...(message.metadata ?? {}), citations } } : message,
     ))
-  }, [chat.isLoading, chat.messages, setMessages, threadId])
+  }, [chat.error, chat.isLoading, chat.messages, setMessages, setSummary, summary, threadId])
 
   useEffect(() => {
     shell.registerEngine(threadId, {
