@@ -17,6 +17,7 @@ import type {
 } from '@/types'
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
 import { parseCitations } from './citations.ts'
+import { parseAttachments } from './attachments/parse.ts'
 
 function isRole(value: unknown): value is ChatMessage['role'] {
   return value === 'user' || value === 'assistant'
@@ -29,6 +30,7 @@ function parseMessage(value: unknown): ChatMessage | null {
   if (!isRole(record.role)) return null
   if (typeof record.content !== 'string') return null
   const citations = parseCitations(record.citations)
+  const attachments = parseAttachments(record.attachments)
   return {
     id: record.id,
     role: record.role,
@@ -38,6 +40,7 @@ function parseMessage(value: unknown): ChatMessage | null {
     quote: typeof record.quote === 'string' ? record.quote : undefined,
     sourceThreadId: typeof record.sourceThreadId === 'string' ? record.sourceThreadId : undefined,
     ...(citations ? { citations } : {}),
+    ...(attachments ? { attachments } : {}),
   }
 }
 

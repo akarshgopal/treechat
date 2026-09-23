@@ -22,6 +22,23 @@ export type Citation = {
   snippet?: string
 }
 
+/**
+ * A file sent with a message. Only this small record lives in the chat; the
+ * image or text itself is kept in IndexedDB (src/lib/attachments/store.ts)
+ * so screenshots never crowd localStorage.
+ */
+export type Attachment = {
+  id: string
+  kind: 'image' | 'text'
+  name: string
+  /** Stored type: prepared images are re-encoded (webp or jpeg). */
+  mime: string
+  /** Bytes as stored, after resizing. */
+  size: number
+  width?: number
+  height?: number
+}
+
 export type ChatMessage = {
   id: string
   role: Role
@@ -34,6 +51,8 @@ export type ChatMessage = {
   sourceThreadId?: string
   /** Sources behind this message, in marker order. */
   citations?: Citation[]
+  /** Images and files the user sent with this message. */
+  attachments?: Attachment[]
 }
 
 /**

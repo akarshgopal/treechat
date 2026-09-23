@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowUpRight, GitBranch, Pencil, RotateCw } from 'lucide-react'
 import { SourcesList } from '@/components/chat/Citations'
+import { MessageAttachments } from '@/components/chat/Attachments'
 import { MessageMarkdown } from '@/components/chat/MessageMarkdown'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -210,18 +211,23 @@ export function MessageBubble({
   ) : null
 
   if (isUser) {
+    // An image-only message has no text bubble, just its attachments.
+    const bubble = editing || message.content.trim() || !message.attachments
     return (
       <article className="group flex flex-col items-end gap-1.5">
         {labels ? <span className="eyebrow text-muted-foreground">you</span> : null}
-        <div
-          className={cn(
-            'max-w-[78%] min-w-0 rounded-[9px] bg-branch/10 px-3.5 py-2.5 text-foreground',
-            editing && 'w-full max-w-[78%]',
-            size,
-          )}
-        >
-          {body}
-        </div>
+        {message.attachments ? <MessageAttachments attachments={message.attachments} alignEnd /> : null}
+        {bubble ? (
+          <div
+            className={cn(
+              'max-w-[78%] min-w-0 rounded-[9px] bg-branch/10 px-3.5 py-2.5 text-foreground',
+              editing && 'w-full max-w-[78%]',
+              size,
+            )}
+          >
+            {body}
+          </div>
+        ) : null}
         {actions}
       </article>
     )

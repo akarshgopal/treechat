@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
 import { ChevronDown, Settings, SquarePen } from 'lucide-react'
@@ -37,7 +38,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { MAX_ATTACHMENTS, prepareFiles } from '@/lib/attachments/prepare'
+import { pruneAttachments } from '@/lib/attachments/store'
 import { chatConnection } from '@/lib/chat-connection'
+import { addDocumentFiles } from '@/lib/documents/library'
+import { loadModelCapabilities, modelReadsImages } from '@/lib/model-capabilities'
 import { takeRunCitations } from '@/lib/citations'
 import { createId } from '@/lib/ids'
 import {
@@ -51,8 +56,11 @@ import {
 import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
 import {
   DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_MODEL_OPTIONS,
   loadProviderConfig,
+  patchProviderConfig,
   providerRequestHeaders,
+  shortModelName,
   type ClientProviderConfig,
 } from '@/lib/provider'
 import { lensQuestion, type Lens } from '@/lib/lenses'
@@ -67,7 +75,10 @@ import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { refreshSummary } from '@/lib/summarize'
 import { isBranchShortcut } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
-import type { ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
+import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
+
+/** Unreferenced attachments younger than this survive a clean-up. */
+const ATTACHMENT_GRACE_MS = 24 * 60 * 60 * 1000
 
 const idleStatus: ProviderStatus = {
   mode: 'mock',
@@ -105,6 +116,11 @@ const SOURCE_LANE_ID = 'source-lane'
 type ShellValue = {
   draftFor: (threadId: string) => string
   setDraft: (threadId: string, value: string) => void
+  /** Files waiting in a thread's composer, sent with its next message. */
+  attachmentsFor: (threadId: string) => Attachment[]
+  setAttachments: (threadId: string, update: (current: Attachment[]) => Attachment[]) => void
+  status: ProviderStatus
+  onSwitchModel: (model: string) => void
   registerComposer: (threadId: string, el: HTMLTextAreaElement | null) => void
   registerEngine: (threadId: string, handle: EngineHandle | null) => void
   onSelectMessage: (threadId: string, messageId: string) => void
@@ -123,6 +139,43 @@ type ShellValue = {
 }
 
 const ShellContext = createContext<ShellValue | null>(null)
+
+/** Stable empties, so memoized consumers don't see a new array every render. */
+const NO_ATTACHMENTS: Attachment[] = []
+const NO_THREAD_ATTACHMENTS: Record<string, Attachment[]> = {}
+
+/**
+ * Warn before an image goes to a model that can't read it, with a one-click
+ * switch. Only with a key (OpenRouter's list says which models read images);
+ * unknown models get no warning.
+ */
+function useVisionNotice(files: Attachment[], status: ProviderStatus, onSwitch: (model: string) => void): ReactNode {
+  const hasImage = files.some((file) => file.kind === 'image')
+  const live = status.mode === 'live' && status.provider === 'openrouter'
+  const [, setLoaded] = useState(0)
+  useEffect(() => {
+    if (!hasImage || !live) return
+    let cancelled = false
+    void loadModelCapabilities().then(() => {
+      if (!cancelled) setLoaded((count) => count + 1)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [hasImage, live])
+  if (!hasImage || !live || modelReadsImages(status.model) !== false) return null
+  const alternative = OPENROUTER_MODEL_OPTIONS.find((option) => modelReadsImages(option.id) === true)
+  return (
+    <span className="text-amber-300/90" data-testid="vision-warning">
+      {shortModelName(status.model)} can’t read images.{' '}
+      {alternative ? (
+        <button type="button" className="font-medium text-branch-bright underline underline-offset-2" onClick={() => onSwitch(alternative.id)}>
+          Switch to {alternative.label}
+        </button>
+      ) : 'Pick a model that reads images in Settings.'}
+    </span>
+  )
+}
 
 function useShell() {
   const value = useContext(ShellContext)
@@ -144,13 +197,16 @@ type PendingRewrite = {
  * rather than overwriting it with its own stale copy.
  */
 function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; openChildId: string | null; frame: LaneFrame }) {
-  const { state, replaceMessages, rewriteThread, setSummary, setWebSearch, activeSession } = useTree()
+  const { state, replaceMessages, rewriteThread, setSummary, setWebSearch, activeSession, setSessionDocuments } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
 
   const [initialMessages] = useState(() => toUIMessages(thread?.messages ?? []))
   const forwarded = branchForwardedProps(state, threadId)
   const summary = thread?.summary
+  const anchorAttachments = thread?.anchor && thread.parentId
+    ? state.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
+    : undefined
   const chat = useChat({
     threadId,
     connection: chatConnection,
@@ -162,6 +218,8 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
       documentIds: activeSession.documentIds ?? [],
       ...(thread?.webSearch ? { webSearch: true } : {}),
       ...(summary ? { threadSummary: { content: summary.content, throughMessageId: summary.throughMessageId } } : {}),
+      // A branch from a message with images shows the model those images too.
+      ...(anchorAttachments ? { anchorAttachments } : {}),
     },
   })
 
@@ -211,6 +269,10 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
   }, [chat, shell, threadId])
 
   const [pendingRewrite, setPendingRewrite] = useState<PendingRewrite | null>(null)
+  const [attachBusy, setAttachBusy] = useState(false)
+  const [attachProblem, setAttachProblem] = useState<string | null>(null)
+  const pendingFiles = shell.attachmentsFor(threadId)
+  const visionNotice = useVisionNotice(pendingFiles, shell.status, shell.onSwitchModel)
 
   if (!thread) return null
 
@@ -221,9 +283,35 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
 
   const send = () => {
     const text = shell.draftFor(threadId).trim()
-    if (!text) return
+    const attachments = shell.attachmentsFor(threadId)
+    if (!text && attachments.length === 0) return
     shell.setDraft(threadId, '')
-    void chat.sendMessage(text)
+    shell.setAttachments(threadId, () => [])
+    setAttachProblem(null)
+    // The object form carries attachments as metadata (the bytes stay in
+    // IndexedDB) and, unlike a bare string, allows a message with no text.
+    void chat.sendMessage(attachments.length > 0 ? { content: text, metadata: { attachments } } : text)
+  }
+
+  const addFiles = async (files: File[]) => {
+    const current = shell.attachmentsFor(threadId)
+    setAttachBusy(true)
+    try {
+      const prepared = await prepareFiles(files, MAX_ATTACHMENTS - current.length)
+      if (prepared.attachments.length > 0) {
+        shell.setAttachments(threadId, (existing) => [...existing, ...prepared.attachments])
+      }
+      const problems = [...prepared.errors]
+      if (prepared.documents.length > 0) {
+        // PDFs are too big to resend with every turn; they join this chat's Documents.
+        const ids = addDocumentFiles(prepared.documents)
+        if (ids.length > 0) setSessionDocuments(activeSession.id, [...(activeSession.documentIds ?? []), ...ids])
+        problems.push(`${prepared.documents.map((file) => file.name).join(', ')} added to this chat’s Documents — searched, not sent whole.`)
+      }
+      setAttachProblem(problems.length > 0 ? problems.join(' ') : null)
+    } finally {
+      setAttachBusy(false)
+    }
   }
 
   /**
@@ -323,6 +411,18 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
       ) : undefined}
       draft={shell.draftFor(threadId)}
       onDraftChange={(value) => shell.setDraft(threadId, value)}
+      composerAttach={{
+        items: pendingFiles,
+        busy: attachBusy,
+        onAdd: (files) => void addFiles(files),
+        onRemove: (id) => shell.setAttachments(threadId, (current) => current.filter((item) => item.id !== id)),
+      }}
+      composerNotice={attachProblem || visionNotice ? (
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {attachProblem ? <span data-testid="attach-problem">{attachProblem}</span> : null}
+          {visionNotice}
+        </span>
+      ) : undefined}
       onSend={send}
       onStop={() => chat.stop()}
       isLoading={chat.isLoading}
@@ -395,6 +495,9 @@ function TreeChatShell({
   onProviderConfigChange,
   drafts,
   onDraftChange,
+  attachments,
+  onAttachmentsChange,
+  onSwitchModel,
   scrollPositions,
 }: {
   epoch: number
@@ -404,6 +507,9 @@ function TreeChatShell({
   onProviderConfigChange: (config: ClientProviderConfig | null) => void
   drafts: Record<string, string>
   onDraftChange: (threadId: string, value: string) => void
+  attachments: Record<string, Attachment[]>
+  onAttachmentsChange: (threadId: string, update: (current: Attachment[]) => Attachment[]) => void
+  onSwitchModel: (model: string) => void
   scrollPositions: Map<string, number>
 }) {
   const {
@@ -443,6 +549,7 @@ function TreeChatShell({
   const initialQuestionsRef = useRef<Record<string, string>>({})
 
   const draftFor = useCallback((threadId: string) => drafts[threadId] ?? '', [drafts])
+  const attachmentsFor = useCallback((threadId: string) => attachments[threadId] ?? NO_ATTACHMENTS, [attachments])
   const setDraft = onDraftChange
   const takeInitialQuestion = useCallback((threadId: string) => {
     const question = initialQuestionsRef.current[threadId]
@@ -685,6 +792,10 @@ function TreeChatShell({
     () => ({
       draftFor,
       setDraft,
+      attachmentsFor,
+      setAttachments: onAttachmentsChange,
+      status,
+      onSwitchModel,
       registerComposer,
       registerEngine,
       onSelectMessage,
@@ -704,6 +815,10 @@ function TreeChatShell({
     [
       draftFor,
       setDraft,
+      attachmentsFor,
+      onAttachmentsChange,
+      status,
+      onSwitchModel,
       registerComposer,
       registerEngine,
       onSelectMessage,
@@ -1168,8 +1283,38 @@ function resolveStatus(
 
 export function TreeChatApp() {
   const { restoreDemo, createSession, switchSession, sessions, activeSessionId } = useTree()
+
+  // Once per visit, when idle: forget stored files no chat refers to. Recent
+  // ones stay — they may sit in a composer here or in another tab.
+  const sessionsRef = useRef(sessions)
+  useEffect(() => {
+    sessionsRef.current = sessions
+  }, [sessions])
+  useEffect(() => {
+    const prune = () => {
+      const referenced = new Set<string>()
+      for (const session of sessionsRef.current) {
+        for (const thread of Object.values(session.treeState.threads)) {
+          for (const message of thread.messages) for (const file of message.attachments ?? []) referenced.add(file.id)
+        }
+      }
+      void pruneAttachments(referenced, Date.now() - ATTACHMENT_GRACE_MS).catch(() => undefined)
+    }
+    const idle = window.requestIdleCallback?.(prune, { timeout: 10_000 }) ?? window.setTimeout(prune, 5_000)
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idle)
+      else window.clearTimeout(idle)
+    }
+  }, [])
   const [epoch, setEpoch] = useState(0)
   const [draftsBySession, setDraftsBySession] = useState<Record<string, Record<string, string>>>({})
+  const [attachmentsBySession, setAttachmentsBySession] = useState<Record<string, Record<string, Attachment[]>>>({})
+  const onAttachmentsChange = useCallback((threadId: string, update: (current: Attachment[]) => Attachment[]) => {
+    setAttachmentsBySession((current) => ({
+      ...current,
+      [activeSessionId]: { ...current[activeSessionId], [threadId]: update(current[activeSessionId]?.[threadId] ?? []) },
+    }))
+  }, [activeSessionId])
   const [scrollPositions] = useState(() => new Map<string, number>())
   const onDraftChange = useCallback((threadId: string, value: string) => {
     setDraftsBySession((current) => ({
@@ -1182,6 +1327,10 @@ export function TreeChatApp() {
   )
   const [serverStatus, setServerStatus] = useState<ProviderStatus>(idleStatus)
   const status = resolveStatus(clientConfig, serverStatus)
+
+  const onSwitchModel = useCallback((model: string) => {
+    setClientConfig(patchProviderConfig({ model }))
+  }, [])
 
   const onProviderConfigChange = useCallback((config: ClientProviderConfig | null) => {
     setClientConfig(config)
@@ -1200,13 +1349,14 @@ export function TreeChatApp() {
       return Object.keys(tree.threads).length === 1
         && (tree.threads[tree.rootId]?.messages.length ?? 1) === 0
         && !Object.values(draftsBySession[session.id] ?? {}).some((draft) => draft.trim())
+        && !Object.values(attachmentsBySession[session.id] ?? {}).some((files) => files.length > 0)
     }
     const active = sessions.find((session) => session.id === activeSessionId)
     const reusable = active && blank(active) ? active : sessions.find(blank)
     if (!reusable) createSession()
     else if (reusable.id !== activeSessionId) switchSession(reusable.id)
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[data-testid="thread-composer"]')?.focus())
-  }, [activeSessionId, createSession, draftsBySession, sessions, switchSession])
+  }, [activeSessionId, attachmentsBySession, createSession, draftsBySession, sessions, switchSession])
 
   const onRestoreDemo = useCallback(() => {
     setDraftsBySession((current) => ({ ...current, [activeSessionId]: {} }))
@@ -1240,6 +1390,9 @@ export function TreeChatApp() {
       status={status}
       drafts={draftsBySession[activeSessionId] ?? {}}
       onDraftChange={onDraftChange}
+      attachments={attachmentsBySession[activeSessionId] ?? NO_THREAD_ATTACHMENTS}
+      onAttachmentsChange={onAttachmentsChange}
+      onSwitchModel={onSwitchModel}
       scrollPositions={scrollPositions}
       onProviderConfigChange={onProviderConfigChange}
       onNewChat={onNewChat}

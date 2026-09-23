@@ -99,6 +99,17 @@ function lastUserText(messages: unknown[]): string {
 function craftReply(userText: string, quote?: string): string {
   const text = userText.toLowerCase()
 
+  // Attachments reach the mock as bracketed notes (it cannot see images).
+  const images = [...userText.matchAll(/\[Image: ([^\]]+?) — [^\]]*\]/g)].map((match) => match[1])
+  const files = [...userText.matchAll(/^Attached file (.+):$/gm)].map((match) => match[1])
+  if (images.length > 0 || files.length > 0) {
+    const received = [
+      images.length > 0 ? `${images.length} image${images.length === 1 ? '' : 's'} (${images.join(', ')})` : '',
+      files.length > 0 ? `${files.length} file${files.length === 1 ? '' : 's'} (${files.join(', ')})` : '',
+    ].filter(Boolean).join(' and ')
+    return `I received ${received}. This is a demo reply, so nothing was actually read — add an OpenRouter key and pick a model that reads images for a real answer.`
+  }
+
   if (
     text.includes('```') ||
     /\b(code (sample|block|fence|example)|syntax highlight|markdown)\b/.test(text)

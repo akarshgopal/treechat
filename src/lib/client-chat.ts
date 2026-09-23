@@ -12,15 +12,23 @@ import { clearRunCitations, parseCitations, recordRunCitations } from './citatio
 import { applyWebSearch, createWebCitationCollector, isWebSearch } from './web-search.ts'
 import { applySummaryToRequest } from './compaction.ts'
 import { withDocumentNote, withDocuments } from './documents/rag.ts'
+import { describeImagesInBackground } from './attachments/describe.ts'
+import { parseAttachments } from './attachments/parse.ts'
+import { prepareRequestMessages, type RequestImage } from './attachments/request.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
 
 export type ChatBackend = 'openrouter' | 'local-api' | 'mock'
 
+export type OpenAIContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export type OpenAIChatMessage = {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  /** Parts only when a user turn carries images. */
+  content: string | OpenAIContentPart[]
 }
 
 type RunChatInput = {
@@ -121,7 +129,19 @@ export function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
     if (!message || typeof message !== 'object') continue
     const role = (message as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant' && role !== 'system') continue
-    out.push({ role, content: textFromMessage(message) })
+    const text = textFromMessage(message)
+    const images = (message as { requestImages?: RequestImage[] }).requestImages
+    if (role === 'user' && images?.length) {
+      out.push({
+        role,
+        content: [
+          ...(text.trim() ? [{ type: 'text' as const, text }] : []),
+          ...images.map((image) => ({ type: 'image_url' as const, image_url: { url: image.url } })),
+        ],
+      })
+      continue
+    }
+    out.push({ role, content: text })
   }
   return out
 }
@@ -382,10 +402,19 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   const { citations } = retrieved
   const { messages, forwardedProps } = applySummaryToRequest(input.messages, retrieved.forwardedProps)
   const backend = await resolveChatBackend(config)
+  // Attachments are resolved from IndexedDB last, per backend: only the
+  // browser's OpenRouter path sends images; the others get them by name.
+  const imagesInline = backend === 'openrouter'
+  const prepared = await prepareRequestMessages(messages, {
+    imagesInline,
+    anchorAttachments: parseAttachments(forwardedProps.anchorAttachments),
+  })
+  if (imagesInline && forwardedProps.describing !== true) describeImagesInBackground(prepared.sentImages)
+  const requestMessages = prepared.messages
 
   if (backend === 'openrouter' && config) {
     yield* openRouterChatStream({
-      messages,
+      messages: requestMessages,
       config: input.model ? { ...config, model: input.model } : config,
       forwardedProps,
       threadId: input.threadId,
@@ -397,7 +426,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
 
   if (backend === 'local-api') {
     yield* localChatConnection.connect(
-      messages as never,
+      requestMessages as never,
       forwardedProps,
       input.signal,
       {
@@ -410,7 +439,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   }
 
   yield* withDocumentNote(mockChatStream({
-    messages,
+    messages: requestMessages,
     threadId: input.threadId,
     runId: input.runId,
     quote:

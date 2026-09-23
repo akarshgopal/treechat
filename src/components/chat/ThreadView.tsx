@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Composer } from '@/components/chat/Composer'
+import { Composer, type ComposerAttach } from '@/components/chat/Composer'
 import { MessageBubble } from '@/components/chat/MessageBubble'
 import { ReplyProgress } from '@/components/chat/ReplyProgress'
 import { SummaryDivider } from '@/components/chat/SummaryDivider'
@@ -27,6 +27,9 @@ type ThreadViewProps = {
   placeholder: string
   accentComposer?: boolean
   composerTrailing?: ReactNode
+  /** Files for the next message in this thread. */
+  composerAttach?: ComposerAttach
+  composerNotice?: ReactNode
   emptyLabel?: string
   onRetryAssistant?: (messageId: string) => void
   onRegenerateUser?: (messageId: string) => void
@@ -75,6 +78,8 @@ export function ThreadView({
   placeholder,
   accentComposer,
   composerTrailing,
+  composerAttach,
+  composerNotice,
   emptyLabel,
   onRetryAssistant,
   onRegenerateUser,
@@ -209,6 +214,8 @@ export function ThreadView({
       testId="thread-composer"
       accent={accentComposer}
       trailing={composerTrailing}
+      attach={composerAttach}
+      notice={composerNotice}
     />
   )
 

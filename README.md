@@ -83,6 +83,15 @@ No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 11. The sidebar holds **New chat**, the tree, your chats, **Documents**, and **Settings**. Collapse it to an icon strip with its toggle or **Ctrl/⌘+\\**, and drag its right edge to resize it; both are remembered in this browser.
 12. Chats persist in `localStorage` (`treechat:v3`) as a session library. Older `treechat:v2` trees and `treechat:v1` spines are migrated on load. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the header also lists the current chat's branches. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
 
+## Attachments
+
+Paste a screenshot (Ctrl/⌘+V), drop images or text files onto any composer, or use the 📎 button. They send with that message:
+
+- **Images** are resized in the browser (long edge ≤ 1568 px, WebP or JPEG) and stored in IndexedDB (`treechat-attachments`); the chat keeps only a small reference, so screenshots never fill localStorage. With a key they go to the model as image parts. If the selected model can't read images (per OpenRouter's model list), the composer says so and offers a one-click switch.
+- Images are re-sent only from the last few messages. Each image gets a one-time text description from a model that reads images (the background model when it can, else the main one); older turns, and anything summarized, refer to that description instead. A branch from a message with images gets those images too.
+- **Text files** (code, Markdown, CSV, JSON, logs…) are quoted into the message, up to 60k characters. **PDFs** dropped on a composer join the chat's **Documents** instead: they are searched per question rather than sent whole.
+- Without a key the demo acknowledges attachments by name. Stored files that no chat refers to are cleaned up after a day.
+
 ## Documents
 
 Ask about your own files. Add PDFs, Markdown, or plain text from **Documents** in the sidebar (on phones, the chat switcher in the header), from the **Documents** chip in the header, or by dropping files anywhere on the app. The library is shared by all chats; each chat searches only the documents checked for it, and a file added from a chat is checked for that chat.

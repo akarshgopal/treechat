@@ -327,10 +327,15 @@ export function DocumentDropZone({ onDropped }: { onDropped: () => void }) {
       depth.current += 1
       setActive(true)
     }
+    // A composer takes its own drops (attachments for the next message);
+    // over one, this overlay steps aside.
+    const overComposer = (event: DragEvent) =>
+      event.target instanceof Element && Boolean(event.target.closest('[data-attach-drop]'))
     const onOver = (event: DragEvent) => {
       if (!hasFiles(event)) return
       event.preventDefault()
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+      setActive(!overComposer(event))
     }
     const onLeave = (event: DragEvent) => {
       if (!hasFiles(event)) return
@@ -339,9 +344,10 @@ export function DocumentDropZone({ onDropped }: { onDropped: () => void }) {
     }
     const onDrop = (event: DragEvent) => {
       if (!hasFiles(event)) return
-      event.preventDefault()
       depth.current = 0
       setActive(false)
+      if (event.defaultPrevented) return
+      event.preventDefault()
       const files = [...(event.dataTransfer?.files ?? [])]
       if (files.length === 0) return
       const ids = addDocumentFiles(files)
