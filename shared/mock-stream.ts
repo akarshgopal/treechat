@@ -126,7 +126,7 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
   }
 
   if (text.includes('summarize') || text.includes('merge') || text.includes('drop')) {
-    const q = quote ? `«${quote}»` : 'the selected passage'
+    const q = quote ? `“${quote}”` : 'the selected passage'
     return `The exploration on ${q} stays connected to its source passage. A takeaway carries the useful conclusion back to the parent, with a link to revisit the full exploration.`
   }
 
@@ -135,9 +135,9 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
       return `You can branch from here too — this thread is a conversation like any other, so select a passage in it and fork again. Each level carries upstream context. When lanes no longer fit side by side, older ones fold into strips, and the back arrow returns you to the source.`
     }
     if (text.includes('composer') || text.includes('post')) {
-      return `This composer posts only into this thread. Every thread has its own — the one at the bottom belongs to whichever thread holds the frame. The quote «${quote}» is this thread's anchor, and Esc walks back up one level.`
+      return `This composer posts only into this thread. Every thread has its own — the one at the bottom belongs to whichever thread holds the frame. The quote “${quote}” is this thread's anchor, and Esc walks back up one level.`
     }
-    return `Staying on the branch from «${quote}». This exploration includes context from the conversation above and has its own lane and composer; the back arrow returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
+    return `Staying on the branch from “${quote}”. This exploration includes context from the conversation above and has its own lane and composer; the back arrow returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
   }
 
   if (text.includes('select') || text.includes('shortcut') || text.includes('chip')) {
