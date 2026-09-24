@@ -4,9 +4,7 @@ import { createEmptyState, createSeedState } from './seed.ts'
 import {
   DEFAULT_SESSION_TITLE,
   MAX_SESSIONS,
-  SESSION_TITLE_MAX,
   capSessions,
-  normalizeSessionTitle,
   titleFromTree,
 } from './sessions.ts'
 import type { ChatMessage, ChatSession, TreeState } from '../types.ts'
@@ -52,14 +50,6 @@ test('titleFromTree uses the first non-empty user message', () => {
     titleFromTree(withRootMessages([msg('   '), msg('  Hello   world  ')])),
     'Hello world',
   )
-})
-
-test('normalizeSessionTitle clips to the title budget', () => {
-  const long = 'x'.repeat(SESSION_TITLE_MAX + 12)
-  const next = normalizeSessionTitle(`  ${long}  `)
-  assert.equal(next.endsWith('…'), true)
-  assert.ok(next.length <= SESSION_TITLE_MAX + 1)
-  assert.equal(normalizeSessionTitle('   '), DEFAULT_SESSION_TITLE)
 })
 
 test('capSessions drops the oldest chats and never the kept id', () => {

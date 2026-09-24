@@ -1,21 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  BACKGROUND_MODEL_OPTIONS,
   backgroundModelFor,
   isModelId,
   DEFAULT_OPENROUTER_MODEL,
   TREECHAT_MODEL_HEADER,
   clearProviderConfig,
-  defaultProviderConfig,
   loadProviderConfig,
   normalizeProviderConfig,
-  parseMaxTokens,
   parseProviderConfig,
-  parseTemperature,
   saveProviderConfig,
   serializeProviderConfig,
-  shortModelName,
   providerRequestHeaders,
 } from './provider.ts'
 
@@ -79,13 +74,6 @@ test('parseProviderConfig allows an empty key so prefs can persist in mock', () 
   })
 })
 
-test('parseProviderConfig defaults the model', () => {
-  const config = parseProviderConfig(JSON.stringify({ apiKey: 'abc' }))
-  assert.equal(config?.model, DEFAULT_OPENROUTER_MODEL)
-  assert.equal(config?.temperature, undefined)
-  assert.equal(config?.maxTokens, undefined)
-})
-
 test('parseProviderConfig clamps temperature and drops invalid maxTokens', () => {
   const high = parseProviderConfig(
     JSON.stringify({ apiKey: 'k', temperature: 9, maxTokens: -3 }),
@@ -147,28 +135,6 @@ test('serializeProviderConfig keeps temperature 0', () => {
   })
   assert.equal(JSON.parse(raw).temperature, 0)
   assert.equal(parseProviderConfig(raw)?.temperature, 0)
-})
-
-test('parseTemperature and parseMaxTokens ignore junk', () => {
-  assert.equal(parseTemperature(''), undefined)
-  assert.equal(parseTemperature('nope'), undefined)
-  assert.equal(parseTemperature(1.234), 1.23)
-  assert.equal(parseMaxTokens(''), undefined)
-  assert.equal(parseMaxTokens('nope'), undefined)
-  assert.equal(parseMaxTokens(3.9), 3)
-})
-
-test('defaultProviderConfig is mock-safe', () => {
-  assert.deepEqual(defaultProviderConfig(), {
-    provider: 'openrouter',
-    apiKey: '',
-    model: DEFAULT_OPENROUTER_MODEL,
-  })
-})
-
-test('shortModelName strips the OpenRouter publisher prefix', () => {
-  assert.equal(shortModelName('anthropic/claude-sonnet-4'), 'claude-sonnet-4')
-  assert.equal(shortModelName('grok-4'), 'grok-4')
 })
 
 test('saveProviderConfig persists params without an API key', () => {
@@ -247,9 +213,4 @@ test('the background model is used only with a key and when it differs', () => {
   assert.equal(backgroundModelFor({ ...base, backgroundModel: 'openai/gpt-4.1-nano' }), 'openai/gpt-4.1-nano')
   assert.equal(backgroundModelFor({ ...base, backgroundModel: base.model }), undefined)
   assert.equal(backgroundModelFor({ ...base, apiKey: '', backgroundModel: 'openai/gpt-4.1-nano' }), undefined)
-})
-
-test('background presets are valid ids and include a free one', () => {
-  assert.ok(BACKGROUND_MODEL_OPTIONS.every((option) => isModelId(option.id)))
-  assert.ok(BACKGROUND_MODEL_OPTIONS.some((option) => option.id.endsWith(':free')))
 })

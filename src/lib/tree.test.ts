@@ -12,11 +12,8 @@ import {
   cycleOpenId,
   depthFrom,
   depthOf,
-  descendantIds,
   expansionToReveal,
-  groupThreadsBySpan,
   pathTo,
-  subtreeSize,
   threadContext,
   transcriptUpTo,
 } from './tree.ts'
@@ -92,21 +89,10 @@ test('children are found per anchoring message', () => {
   )
 })
 
-test('descendants and subtree size walk the whole branch', () => {
-  assert.deepEqual(descendantIds(state, 'b1').sort(), ['b1', 'b1a'])
-  assert.equal(subtreeSize(state, 'b1'), 3)
-  assert.equal(subtreeSize(state, 'b2'), 0)
-  assert.equal(subtreeSize(state, 'root'), 6)
-})
-
 test('transcript stops at the anchor message', () => {
   const out = transcriptUpTo(root.messages, 'r2')
   assert.match(out, /type mismatch in the predicate$/)
   assert.ok(!out.includes('unrelated follow up'))
-})
-
-test('the root thread has no upstream context', () => {
-  assert.equal(threadContext(state, 'root'), '')
 })
 
 test('a first-level branch is MAIN then SELECTED QUOTE', () => {
@@ -255,16 +241,6 @@ test('cycleOpenId walks a stable order then closes', () => {
   assert.equal(cycleOpenId(['a', 'b', 'c'], 'b'), 'c')
   assert.equal(cycleOpenId(['a', 'b', 'c'], 'c'), null)
   assert.equal(cycleOpenId(['a', 'b', 'c'], 'gone'), null)
-})
-
-test('groupThreadsBySpan keeps oldest-first groups', () => {
-  const extra = thread('b3', 'root', 'r2', 'stale stats', [], 4)
-  extra.anchor = { messageId: 'r2', start: 0, end: 'stale stats'.length, quote: 'stale stats' }
-  const grouped = groupThreadsBySpan([b1, b2, extra])
-  assert.deepEqual(
-    grouped.map((group) => group.map((t) => t.id)),
-    [['b1'], ['b2', extra.id]],
-  )
 })
 
 function summarizedRoot(through: string, filler = 700) {

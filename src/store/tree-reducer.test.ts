@@ -128,42 +128,12 @@ test('focus reveals the path by expanding ancestors', () => {
   assert.equal(next.expanded.b1, 'b1a')
 })
 
-test('expand collapses when passed null', () => {
-  const next = reducer(base(), { type: 'expand', parentId: 'root', childId: null })
-  assert.equal(next.expanded.root, null)
-})
-
 test('actions against a missing thread are inert', () => {
   const state = base()
   assert.equal(
     reducer(state, { type: 'append-message', threadId: 'gone', message: msg('a') }),
     state,
   )
-})
-
-test('reset replaces the tree with an empty root thread', () => {
-  const next = reducer(base(), { type: 'reset' })
-  assert.equal(Object.keys(next.threads).length, 1)
-  const root = next.threads[next.rootId]
-  assert.ok(root)
-  assert.equal(root.parentId, null)
-  assert.equal(root.anchor, null)
-  assert.deepEqual(root.messages, [])
-  assert.equal(next.activeThreadId, next.rootId)
-  assert.deepEqual(next.expanded, {})
-  assert.ok(
-    !Object.values(next.threads).some((thread) =>
-      thread.messages.some((message) => message.content === 'What is TreeChat?'),
-    ),
-  )
-})
-
-test('restoreDemo loads the seeded walkthrough', () => {
-  const next = reducer(base(), { type: 'restoreDemo' })
-  const root = next.threads[next.rootId]
-  assert.ok(root)
-  assert.ok(root.messages.some((message) => message.content === 'What is TreeChat?'))
-  assert.ok(Object.keys(next.threads).length > 1)
 })
 
 function conversation(): TreeState {

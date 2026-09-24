@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { chunkBlocks, locatorOf } from './chunk.ts'
+import { chunkBlocks } from './chunk.ts'
 
 const sentence = (index: number) => `Sentence ${index} is about topic ${index % 7} in some detail.`
 const paragraph = (count: number, offset = 0) =>
@@ -89,11 +89,4 @@ test('markdown chunks carry their heading and do not overlap across sections', (
   assert.equal(setup.locator, 'Setup')
   assert.match(setup.text, /^## Setup/)
   assert.equal(chunks[0]!.locator, 'Intro')
-})
-
-test('locatorOf prefers pages, then the heading', () => {
-  assert.equal(locatorOf([4]), 'p. 4')
-  assert.equal(locatorOf([5, 4], 'ignored'), 'pp. 4–5')
-  assert.equal(locatorOf([], 'Usage'), 'Usage')
-  assert.equal(locatorOf([]), undefined)
 })

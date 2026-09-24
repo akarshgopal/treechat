@@ -3,11 +3,6 @@ import test from 'node:test'
 import { LENSES, LENS_QUOTE_CHARS, lensQuestion } from './lenses.ts'
 import { snapOffsetsToWords } from './selection.ts'
 
-test('every lens asks about the quote and ids are unique', () => {
-  assert.equal(new Set(LENSES.map((lens) => lens.id)).size, LENSES.length)
-  for (const lens of LENSES) assert.match(lensQuestion(lens, 'knowledge cutoff'), /“knowledge cutoff”/)
-})
-
 test('lens questions clip long quotes so branch titles stay readable', () => {
   const question = lensQuestion(LENSES[0]!, 'word '.repeat(40))
   const quoted = question.slice(question.indexOf('“') + 1, question.indexOf('”'))

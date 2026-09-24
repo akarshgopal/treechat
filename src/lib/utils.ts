@@ -39,10 +39,6 @@ export function branchShortcutLabel(platform = detectPlatform()) {
   return isApplePlatform(platform) ? '⌘⇧B' : 'Ctrl+⇧B'
 }
 
-export function sendShortcutLabel(platform = detectPlatform()) {
-  return isApplePlatform(platform) ? '⌘⏎' : 'Ctrl+Enter'
-}
-
 export function truncate(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }

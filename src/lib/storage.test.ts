@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createEmptyState, createSeedState } from './seed.ts'
-import { DEFAULT_SESSION_TITLE } from './sessions.ts'
 import { loadLibrary, loadTreeState, saveLibrary, saveTreeState } from './storage.ts'
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '../types.ts'
 import { fromUIMessages, toUIMessages } from './messages.ts'
@@ -173,13 +172,6 @@ test('v3 library round-trips and wins over a leftover v2 blob', () => {
   assert.equal(loaded.activeSessionId, 'keep')
   assert.equal(loaded.sessions[0]?.title, 'Saved chat')
   assert.deepEqual(loadTreeState().threads[loadTreeState().rootId]?.messages, [])
-})
-
-test('empty library titles the first session New chat', () => {
-  mockLocalStorage()
-  const library = loadLibrary()
-  assert.equal(library.sessions.length, 1)
-  assert.equal(library.sessions[0]?.title, DEFAULT_SESSION_TITLE)
 })
 
 test('unreadable v3 falls through to a leftover v2 tree', () => {

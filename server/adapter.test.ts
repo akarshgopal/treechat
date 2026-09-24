@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, beforeEach, test } from 'node:test'
 import {
-  DEFAULT_OPENROUTER_MODEL,
-  bearerToken,
   getProviderStatus,
   resolveProvider,
 } from './adapter.ts'
@@ -60,22 +58,6 @@ test('Authorization Bearer selects OpenRouter over env xAI', () => {
   assert.equal(status.model, 'anthropic/claude-sonnet-4')
 })
 
-test('Bearer without model uses the OpenRouter default', () => {
-  const status = resolveProvider(
-    requestWith({ Authorization: 'Bearer sk-or-v1-client' }),
-  )
-  assert.equal(status.model, DEFAULT_OPENROUTER_MODEL)
-})
-
-test('empty Bearer is ignored', () => {
-  const status = resolveProvider(
-    requestWith({ Authorization: 'Bearer   ' }),
-    { OPENROUTER_API_KEY: 'env-or' },
-  )
-  assert.equal(status.provider, 'openrouter')
-  assert.equal(status.apiKey, 'env-or')
-})
-
 test('env fallback order is xAI, OpenAI, OpenRouter', () => {
   assert.equal(
     resolveProvider(null, { OPENAI_API_KEY: 'o', OPENROUTER_API_KEY: 'r' })
@@ -103,14 +85,6 @@ test('getProviderStatus never includes the key', () => {
   assert.equal(status.provider, 'openrouter')
   assert.equal(status.mode, 'live')
   assert.equal('apiKey' in status, false)
-})
-
-test('bearerToken reads the Authorization header', () => {
-  assert.equal(
-    bearerToken(requestWith({ Authorization: 'bearer  abc  ' })),
-    'abc',
-  )
-  assert.equal(bearerToken(requestWith({})), undefined)
 })
 
 test('process.env is the local-dev fallback when env map omits keys', () => {

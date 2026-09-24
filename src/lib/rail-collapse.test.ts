@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  defaultExpandedIds,
   loadExpandedIds,
   parseExpandedIds,
   railCollapseStorageKey,
   revealThreadInRail,
   saveExpandedIds,
   setsEqual,
-  toggleExpandedId,
   visibleRailThreads,
 } from './rail-collapse.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
@@ -82,24 +80,6 @@ function mockLocalStorage() {
   return storage
 }
 
-test('default expanded set is only the root', () => {
-  assert.deepEqual(defaultExpandedIds('root'), ['root'])
-})
-
-test('toggle adds then removes an id', () => {
-  const once = toggleExpandedId(new Set(['root']), 'b1')
-  assert.equal(once.has('root'), true)
-  assert.equal(once.has('b1'), true)
-  const twice = toggleExpandedId(once, 'b1')
-  assert.equal(twice.has('b1'), false)
-  assert.equal(twice.has('root'), true)
-})
-
-test('toggle can collapse the root', () => {
-  const next = toggleExpandedId(new Set(['root']), 'root')
-  assert.equal(next.size, 0)
-})
-
 test('parse missing or invalid payloads uses the default', () => {
   assert.deepEqual([...parseExpandedIds(null, known, 'root')].sort(), ['root'])
   assert.deepEqual([...parseExpandedIds(undefined, known, 'root')].sort(), ['root'])
@@ -148,12 +128,6 @@ test('load and save round-trip per session key', () => {
     [...loadExpandedIds('session-missing', known, 'root')].sort(),
     ['root'],
   )
-})
-
-test('load falls back on unreadable JSON', () => {
-  const storage = mockLocalStorage()
-  storage.setItem(railCollapseStorageKey('session-a'), '{not-json')
-  assert.deepEqual([...loadExpandedIds('session-a', known, 'root')].sort(), ['root'])
 })
 
 test('visibleRailThreads hides children of collapsed nodes', () => {

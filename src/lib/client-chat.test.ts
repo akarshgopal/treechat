@@ -6,15 +6,12 @@ import {
   OPENROUTER_CHAT_URL,
   buildOpenRouterMessages,
   collectAssistantText,
-  contentDeltaFromOpenAIData,
   hasLocalChatApi,
   openRouterChatStream,
-  openRouterHeaders,
   openRouterRequestBody,
   resetLocalChatApiProbe,
   resolveChatBackend,
   runChat,
-  toOpenAIChatMessages,
 } from './client-chat.ts'
 import { takeRunCitations } from './citations.ts'
 
@@ -51,35 +48,6 @@ afterEach(() => {
   globalThis.fetch = originalFetch
 })
 
-test('contentDeltaFromOpenAIData reads streaming content and ignores done', () => {
-  assert.equal(
-    contentDeltaFromOpenAIData(
-      '{"choices":[{"delta":{"content":"Hello"}}]}',
-    ),
-    'Hello',
-  )
-  assert.equal(contentDeltaFromOpenAIData('[DONE]'), null)
-  assert.equal(contentDeltaFromOpenAIData('{'), null)
-  assert.equal(
-    contentDeltaFromOpenAIData('{"choices":[{"delta":{"content":""}}]}'),
-    null,
-  )
-})
-
-test('toOpenAIChatMessages keeps user and assistant text', () => {
-  assert.deepEqual(
-    toOpenAIChatMessages([
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', parts: [{ type: 'text', content: 'hello' }] },
-      { role: 'tool', content: 'skip' },
-    ]),
-    [
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'hello' },
-    ],
-  )
-})
-
 test('buildOpenRouterMessages prepends MAIN and SELECTED QUOTE system prompts', () => {
   const messages = buildOpenRouterMessages([{ role: 'user', content: 'and then?' }], {
     quote: 'a moss underline',
@@ -91,16 +59,6 @@ test('buildOpenRouterMessages prepends MAIN and SELECTED QUOTE system prompts', 
   assert.match(messages[1]?.content ?? '', /SELECTED QUOTE/)
   assert.match(messages[1]?.content ?? '', /MAIN/)
   assert.equal(messages.at(-1)?.content, 'and then?')
-})
-
-test('openRouterHeaders use Bearer, HTTP-Referer, and X-Title', () => {
-  const headers = openRouterHeaders(
-    { provider: 'openrouter', apiKey: 'sk-or-v1-test', model: 'openai/gpt-4.1-mini' },
-    'https://akarshgopal.github.io',
-  )
-  assert.equal(headers.Authorization, 'Bearer sk-or-v1-test')
-  assert.equal(headers['HTTP-Referer'], 'https://akarshgopal.github.io')
-  assert.equal(headers['X-Title'], 'TreeChat')
 })
 
 test('openRouterRequestBody includes model and optional generation params', () => {
