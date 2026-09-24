@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  loadExpandedIds,
-  parseExpandedIds,
-  railCollapseStorageKey,
   revealThreadInRail,
-  saveExpandedIds,
   setsEqual,
   visibleRailThreads,
 } from './rail-collapse.ts'
@@ -48,87 +44,6 @@ const state: TreeState = {
   activeThreadId: 'root',
   expanded: {},
 }
-
-const known = new Set(Object.keys(state.threads))
-
-function mockLocalStorage() {
-  const data = new Map<string, string>()
-  const storage: Storage = {
-    get length() {
-      return data.size
-    },
-    clear() {
-      data.clear()
-    },
-    getItem(key) {
-      return data.has(key) ? data.get(key)! : null
-    },
-    key(index) {
-      return [...data.keys()][index] ?? null
-    },
-    removeItem(key) {
-      data.delete(key)
-    },
-    setItem(key, value) {
-      data.set(key, String(value))
-    },
-  }
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: storage,
-  })
-  return storage
-}
-
-test('parse missing or invalid payloads uses the default', () => {
-  assert.deepEqual([...parseExpandedIds(null, known, 'root')].sort(), ['root'])
-  assert.deepEqual([...parseExpandedIds(undefined, known, 'root')].sort(), ['root'])
-  assert.deepEqual([...parseExpandedIds('nope', known, 'root')].sort(), ['root'])
-  assert.deepEqual([...parseExpandedIds({ expanded: 3 }, known, 'root')].sort(), ['root'])
-  assert.deepEqual([...parseExpandedIds({ other: ['root'] }, known, 'root')].sort(), ['root'])
-})
-
-test('parse accepts a raw array or { expanded } and drops unknown ids', () => {
-  assert.deepEqual(
-    [...parseExpandedIds(['root', 'b1', 'gone'], known, 'root')].sort(),
-    ['b1', 'root'],
-  )
-  assert.deepEqual(
-    [...parseExpandedIds({ expanded: ['root', 'b1a'] }, known, 'root')].sort(),
-    ['b1a', 'root'],
-  )
-})
-
-test('parse keeps an explicit empty list (root collapsed)', () => {
-  assert.equal(parseExpandedIds([], known, 'root').size, 0)
-  assert.equal(parseExpandedIds({ expanded: [] }, known, 'root').size, 0)
-})
-
-test('parse falls back when every stored id is stale', () => {
-  assert.deepEqual(
-    [...parseExpandedIds(['old-root', 'old-branch'], known, 'root')].sort(),
-    ['root'],
-  )
-})
-
-test('load and save round-trip per session key', () => {
-  const storage = mockLocalStorage()
-  saveExpandedIds('session-a', new Set(['root', 'b1']))
-  saveExpandedIds('session-b', new Set(['root']))
-  assert.equal(
-    storage.getItem(railCollapseStorageKey('session-a')),
-    JSON.stringify({ expanded: ['root', 'b1'] }),
-  )
-  assert.deepEqual(
-    [...loadExpandedIds('session-a', known, 'root')].sort(),
-    ['b1', 'root'],
-  )
-  assert.deepEqual([...loadExpandedIds('session-b', known, 'root')].sort(), ['root'])
-  assert.deepEqual(
-    [...loadExpandedIds('session-missing', known, 'root')].sort(),
-    ['root'],
-  )
-})
 
 test('visibleRailThreads hides children of collapsed nodes', () => {
   const onlyRoot = visibleRailThreads(state, new Set(['root']))

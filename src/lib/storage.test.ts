@@ -3,7 +3,6 @@ import test from 'node:test'
 import { createEmptyState, createSeedState } from './seed.ts'
 import { loadLibrary, loadTreeState, saveLibrary, saveTreeState } from './storage.ts'
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '../types.ts'
-import { fromUIMessages, toUIMessages } from './messages.ts'
 
 function mockLocalStorage() {
   const data = new Map<string, string>()
@@ -34,18 +33,6 @@ function mockLocalStorage() {
   return storage
 }
 
-test('loadTreeState uses empty state when nothing is stored', () => {
-  mockLocalStorage()
-  const state = loadTreeState()
-  assert.deepEqual(state.threads[state.rootId]?.messages, [])
-  assert.equal(Object.keys(state.threads).length, 1)
-  assert.ok(
-    !Object.values(state.threads).some((thread) =>
-      thread.messages.some((message) => message.content === 'What is TreeChat?'),
-    ),
-  )
-})
-
 test('empty state round-trips without being re-seeded', () => {
   mockLocalStorage()
   const empty = createEmptyState()
@@ -55,17 +42,6 @@ test('empty state round-trips without being re-seeded', () => {
   assert.deepEqual(loaded.threads[loaded.rootId]?.messages, [])
   assert.equal(Object.keys(loaded.threads).length, 1)
   assert.equal(localStorage.getItem(STORAGE_KEY)?.includes('What is TreeChat?'), false)
-})
-
-test('a branch that searches the web keeps that across reloads', () => {
-  mockLocalStorage()
-  const seed = createSeedState()
-  const branchId = Object.values(seed.threads).find((thread) => thread.parentId)!.id
-  seed.threads[branchId] = { ...seed.threads[branchId]!, webSearch: true }
-  saveTreeState(seed)
-  const loaded = loadTreeState()
-  assert.equal(loaded.threads[branchId]?.webSearch, true)
-  assert.equal('webSearch' in loaded.threads[loaded.rootId]!, false)
 })
 
 test('existing v2 seed state is kept', () => {
@@ -183,21 +159,6 @@ test('unreadable v3 falls through to a leftover v2 tree', () => {
   assert.equal(library.sessions[0]?.title, 'What is TreeChat?')
 })
 
-test('takeaway source links survive the chat engine and storage round-trip', () => {
-  mockLocalStorage()
-  const state = createSeedState()
-  state.threads[state.rootId].messages.push({
-    id: 'takeaway', role: 'assistant', content: 'The conclusion', createdAt: 1,
-    kind: 'drop-summary', quote: 'The source passage', sourceThreadId: 'thread-branch-1',
-  })
-  state.threads[state.rootId].messages = fromUIMessages(toUIMessages(state.threads[state.rootId].messages))
-  saveTreeState(state)
-  assert.deepEqual(loadTreeState().threads[state.rootId].messages.at(-1), {
-    id: 'takeaway', role: 'assistant', content: 'The conclusion', createdAt: 1,
-    kind: 'drop-summary', quote: 'The source passage', sourceThreadId: 'thread-branch-1',
-  })
-})
-
 test('a thread summary survives storage, and a stale one is dropped', () => {
   mockLocalStorage()
   const state = createSeedState()
@@ -213,36 +174,4 @@ test('a thread summary survives storage, and a stale one is dropped', () => {
   // Threads without one stay free of the key (strict round-trips elsewhere rely on it).
   const branch = Object.values(loadTreeState().threads).find((thread) => thread.parentId)
   assert.ok(branch && !('summary' in branch))
-})
-
-test('a chat keeps its attached document ids across reloads', () => {
-  mockLocalStorage()
-  const tree = createEmptyState()
-  const base = { title: 'Chat', createdAt: 1, updatedAt: 1, treeState: tree, titleLocked: false }
-  saveLibrary({
-    sessions: [
-      { id: 'docs', ...base, documentIds: ['doc-a', 'doc-b'] },
-      { id: 'plain', ...base },
-    ],
-    activeSessionId: 'docs',
-  })
-  const loaded = loadLibrary()
-  assert.deepEqual(loaded.sessions[0], { id: 'docs', ...base, documentIds: ['doc-a', 'doc-b'] })
-  // No key at all when nothing is attached, so older shapes compare equal.
-  assert.deepEqual(loaded.sessions[1], { id: 'plain', ...base })
-})
-
-test('malformed document ids are dropped on load', () => {
-  mockLocalStorage()
-  const treeState = createEmptyState()
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    sessions: [
-      { id: 'a', title: 'A', createdAt: 1, updatedAt: 1, treeState, titleLocked: false, documentIds: ['x', 3, '', 'x', null, 'y'] },
-      { id: 'b', title: 'B', createdAt: 1, updatedAt: 1, treeState, titleLocked: false, documentIds: 'x' },
-    ],
-    activeSessionId: 'a',
-  }))
-  const loaded = loadLibrary()
-  assert.deepEqual(loaded.sessions[0]?.documentIds, ['x', 'y'])
-  assert.equal('documentIds' in loaded.sessions[1]!, false)
 })

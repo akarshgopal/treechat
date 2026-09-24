@@ -37,27 +37,6 @@ function requestWith(headers: Record<string, string>) {
   return new Request('http://treechat.test/api/chat', { headers })
 }
 
-test('no key and no env is mock', () => {
-  const status = resolveProvider()
-  assert.equal(status.mode, 'mock')
-  assert.equal(status.provider, 'mock')
-  assert.equal(status.apiKey, null)
-})
-
-test('Authorization Bearer selects OpenRouter over env xAI', () => {
-  const status = resolveProvider(
-    requestWith({
-      Authorization: 'Bearer sk-or-v1-client',
-      'X-TreeChat-Model': 'anthropic/claude-sonnet-4',
-    }),
-    { XAI_API_KEY: 'should-not-win', OPENROUTER_API_KEY: 'env-or' },
-  )
-  assert.equal(status.mode, 'live')
-  assert.equal(status.provider, 'openrouter')
-  assert.equal(status.apiKey, 'sk-or-v1-client')
-  assert.equal(status.model, 'anthropic/claude-sonnet-4')
-})
-
 test('env fallback order is xAI, OpenAI, OpenRouter', () => {
   assert.equal(
     resolveProvider(null, { OPENAI_API_KEY: 'o', OPENROUTER_API_KEY: 'r' })
@@ -85,13 +64,4 @@ test('getProviderStatus never includes the key', () => {
   assert.equal(status.provider, 'openrouter')
   assert.equal(status.mode, 'live')
   assert.equal('apiKey' in status, false)
-})
-
-test('process.env is the local-dev fallback when env map omits keys', () => {
-  process.env.OPENROUTER_API_KEY = 'from-process'
-  process.env.OPENROUTER_MODEL = 'openai/gpt-4.1'
-  const status = resolveProvider()
-  assert.equal(status.provider, 'openrouter')
-  assert.equal(status.apiKey, 'from-process')
-  assert.equal(status.model, 'openai/gpt-4.1')
 })

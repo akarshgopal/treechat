@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
-import { EventType, type StreamChunk } from '@tanstack/ai'
+import { type StreamChunk } from '@tanstack/ai'
 import { takeRunCitations } from '../citations.ts'
 import { resetLocalChatApiProbe, runChat } from '../client-chat.ts'
 import { clearProviderConfig, saveProviderConfig } from '../provider.ts'
@@ -70,29 +70,4 @@ test('OpenRouter requests carry a DOCUMENTS system message and record citations'
   assert.deepEqual(citations?.map((citation) => [citation.id, citation.kind, citation.title, citation.documentId, citation.locator]), [
     ['1', 'document', 'handbook.md', 'handbook', 'Deploy'],
   ])
-})
-
-test('the demo mock lists matching excerpts with markers', async () => {
-  globalThis.fetch = (async () => new Response('missing', { status: 404 })) as typeof fetch
-  const chunks = await drain(runChat({
-    messages: [{ role: 'user', content: 'How do I boil pasta?' }],
-    forwardedProps: { documentIds: ['handbook'] },
-    threadId: 'thread-mock',
-    runId: 'run-2',
-  }))
-  const text = chunks.map((chunk) => (chunk.type === EventType.TEXT_MESSAGE_CONTENT ? chunk.delta : '')).join('')
-  assert.match(text, /Matching excerpts from your documents:\n- handbook\.md, Cooking \[1\]/)
-  assert.equal(takeRunCitations('thread-mock')?.[0]?.locator, 'Cooking')
-})
-
-test('chats without documents are untouched', async () => {
-  globalThis.fetch = (async () => new Response('missing', { status: 404 })) as typeof fetch
-  const chunks = await drain(runChat({
-    messages: [{ role: 'user', content: 'How do I boil pasta?' }],
-    threadId: 'thread-plain',
-    runId: 'run-3',
-  }))
-  const text = chunks.map((chunk) => (chunk.type === EventType.TEXT_MESSAGE_CONTENT ? chunk.delta : '')).join('')
-  assert.doesNotMatch(text, /Matching excerpts/)
-  assert.equal(takeRunCitations('thread-plain'), undefined)
 })

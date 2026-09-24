@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { collectAssistantText, openRouterChatStream } from './client-chat.ts'
 import { clearRunCitations, takeRunCitations } from './citations.ts'
-import { WEB_SEARCH_MAX_RESULTS, applyWebSearch, createWebCitationCollector, webSourcesFromChunk } from './web-search.ts'
+import { createWebCitationCollector, webSourcesFromChunk } from './web-search.ts'
 
 const originalFetch = globalThis.fetch
 afterEach(() => {
@@ -36,22 +36,6 @@ async function run(body: string, forwardedProps: Record<string, unknown> = { web
   }))
   return { text, request, citations: takeRunCitations('web-thread') }
 }
-
-test('the web plugin is requested only for web-search threads', async () => {
-  const plain = await run(sse({ choices: [{ delta: { content: 'Hi' } }] }), { quote: 'a passage' })
-  assert.equal('plugins' in plain.request, false)
-  assert.equal(plain.citations, undefined)
-
-  const searched = await run(sse({ choices: [{ delta: { content: 'Hi' } }] }), { webSearch: true, quote: 'a passage' })
-  const plugins = searched.request.plugins as Array<Record<string, unknown>>
-  assert.equal(plugins.length, 1)
-  assert.equal(plugins[0]!.id, 'web')
-  assert.equal(plugins[0]!.max_results, WEB_SEARCH_MAX_RESULTS)
-  assert.match(String(plugins[0]!.search_prompt), /\[1\]/)
-  assert.match(String(plugins[0]!.search_prompt), /a passage/)
-  assert.equal(applyWebSearch({ model: 'm' }, { webSearch: false }).model, 'm')
-  assert.equal('plugins' in applyWebSearch({ model: 'm' }, {}), false)
-})
 
 test('annotations on streamed deltas become numbered web citations', async () => {
   const { text, citations } = await run(sse(

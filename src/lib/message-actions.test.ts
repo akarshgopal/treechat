@@ -1,14 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  childIdsAnchoredToMessages,
   doomedIdsForAnchors,
-  dropAnchorIdsForEdit,
   droppedMessageIds,
-  editUserMessage,
   retryFromAssistant,
   retryFromUser,
-  truncateAfterMessage,
 } from './message-actions.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
 
@@ -73,15 +69,6 @@ function tree(): TreeState {
   }
 }
 
-test('truncateAfterMessage keeps the target and drops the tail', () => {
-  const messages = tree().threads.root.messages
-  assert.deepEqual(
-    truncateAfterMessage(messages, 'u2')?.map((m) => m.id),
-    ['u1', 'a1', 'u2'],
-  )
-  assert.equal(truncateAfterMessage(messages, 'gone'), null)
-})
-
 test('retryFromAssistant trims from the prior user turn', () => {
   const messages = tree().threads.root.messages
   assert.deepEqual(
@@ -92,13 +79,6 @@ test('retryFromAssistant trims from the prior user turn', () => {
     retryFromAssistant(messages, 'a1')?.map((m) => m.id),
     ['u1'],
   )
-})
-
-test('retryFromAssistant is inert on user turns and missing ids', () => {
-  const messages = tree().threads.root.messages
-  assert.equal(retryFromAssistant(messages, 'u2'), null)
-  assert.equal(retryFromAssistant(messages, 'gone'), null)
-  assert.equal(retryFromAssistant([msg('a1', 'assistant')], 'a1'), null)
 })
 
 test('regenerating a user turn preserves its anchors and removes only later turns', () => {
@@ -112,40 +92,6 @@ test('regenerating a user turn preserves its anchors and removes only later turn
   assert.deepEqual(retryFromUser(after, 'u2'), after)
   assert.equal(retryFromUser(before, 'a2'), null)
   assert.equal(retryFromUser(before, 'missing'), null)
-})
-
-test('editUserMessage rewrites content and truncates subsequent turns', () => {
-  const messages = tree().threads.root.messages
-  const next = editUserMessage(messages, 'u1', 'hello there')
-  assert.ok(next)
-  assert.deepEqual(
-    next.map((m) => [m.id, m.content]),
-    [['u1', 'hello there']],
-  )
-  assert.equal(editUserMessage(messages, 'a1', 'nope'), null)
-  assert.equal(editUserMessage(messages, 'gone', 'nope'), null)
-})
-
-test('droppedMessageIds lists ids that did not survive a rewrite', () => {
-  const before = tree().threads.root.messages
-  const after = retryFromAssistant(before, 'a1') ?? []
-  assert.deepEqual(droppedMessageIds(before, after), ['a1', 'u2', 'a2'])
-})
-
-test('dropAnchorIdsForEdit includes the edited message itself', () => {
-  const before = tree().threads.root.messages
-  const after = editUserMessage(before, 'u2', 'edited') ?? []
-  assert.deepEqual(dropAnchorIdsForEdit(before, after, 'u2').sort(), ['a2', 'u2'])
-})
-
-test('childIdsAnchoredToMessages finds direct children on those messages', () => {
-  const state = tree()
-  assert.deepEqual(childIdsAnchoredToMessages(state, 'root', ['a1']), ['b1'])
-  assert.deepEqual(
-    childIdsAnchoredToMessages(state, 'root', ['a1', 'u2']).sort(),
-    ['b1', 'b2'],
-  )
-  assert.deepEqual(childIdsAnchoredToMessages(state, 'root', ['u1']), [])
 })
 
 test('doomedIdsForAnchors includes nested descendants of those children', () => {

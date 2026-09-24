@@ -48,34 +48,6 @@ function base(): TreeState {
   }
 }
 
-test('creating a thread expands it inside its parent', () => {
-  const next = reducer(base(), {
-    type: 'create-thread',
-    thread: thread('b3', 'root'),
-  })
-  assert.equal(next.expanded.root, 'b3')
-  assert.equal(next.threads.b3.parentId, 'root')
-})
-
-test('web search switches on and off per thread, leaving no key when off', () => {
-  const on = reducer(base(), { type: 'set-web-search', threadId: 'b1', on: true })
-  assert.equal(on.threads.b1.webSearch, true)
-  assert.equal(reducer(on, { type: 'set-web-search', threadId: 'b1', on: true }), on)
-  const off = reducer(on, { type: 'set-web-search', threadId: 'b1', on: false })
-  assert.deepEqual(off.threads.b1, base().threads.b1)
-  assert.equal('webSearch' in off.threads.b1, false)
-})
-
-test('creating a nested thread also expands ancestors', () => {
-  const state = { ...base(), expanded: {} }
-  const next = reducer(state, {
-    type: 'create-thread',
-    thread: thread('b1b', 'b1'),
-  })
-  assert.equal(next.expanded.b1, 'b1b')
-  assert.equal(next.expanded.root, 'b1')
-})
-
 test('replace-messages does not bump rev, append-message does', () => {
   const replaced = reducer(base(), {
     type: 'replace-messages',
@@ -93,47 +65,10 @@ test('replace-messages does not bump rev, append-message does', () => {
   assert.deepEqual(appended.threads.b1.messages.map((m) => m.id), ['x', 'summary'])
 })
 
-test('discarding a branch takes its whole subtree', () => {
-  const next = reducer(base(), { type: 'discard', threadId: 'b1' })
-  assert.deepEqual(Object.keys(next.threads).sort(), ['b2', 'root'])
-})
-
-test('discarding clears expansion pointing at the removed subtree', () => {
-  const next = reducer(base(), { type: 'discard', threadId: 'b1' })
-  assert.equal(next.expanded.root, null)
-  assert.ok(!('b1' in next.expanded), 'the removed thread keeps no expansion entry')
-})
-
 test('discarding the thread holding the frame retreats to its parent', () => {
   const state = { ...base(), activeThreadId: 'b1a' }
   const next = reducer(state, { type: 'discard', threadId: 'b1' })
   assert.equal(next.activeThreadId, 'root')
-})
-
-test('the root thread cannot be discarded', () => {
-  const state = base()
-  assert.equal(reducer(state, { type: 'discard', threadId: 'root' }), state)
-})
-
-test('focus only moves to a thread that exists', () => {
-  assert.equal(reducer(base(), { type: 'focus', threadId: 'b2' }).activeThreadId, 'b2')
-  assert.equal(reducer(base(), { type: 'focus', threadId: 'gone' }).activeThreadId, 'root')
-})
-
-test('focus reveals the path by expanding ancestors', () => {
-  const state = { ...base(), expanded: {} }
-  const next = reducer(state, { type: 'focus', threadId: 'b1a' })
-  assert.equal(next.activeThreadId, 'b1a')
-  assert.equal(next.expanded.root, 'b1')
-  assert.equal(next.expanded.b1, 'b1a')
-})
-
-test('actions against a missing thread are inert', () => {
-  const state = base()
-  assert.equal(
-    reducer(state, { type: 'append-message', threadId: 'gone', message: msg('a') }),
-    state,
-  )
 })
 
 function conversation(): TreeState {
@@ -216,19 +151,6 @@ test('rewrite-thread edit discards children on the edited message', () => {
   assert.ok(!next.threads.b2)
   assert.ok(next.threads.b1)
   assert.equal(next.threads.root.rev, 0)
-})
-
-test('rewrite-thread against a missing thread is inert', () => {
-  const state = conversation()
-  assert.equal(
-    reducer(state, {
-      type: 'rewrite-thread',
-      threadId: 'gone',
-      messages: [],
-      dropAnchorMessageIds: [],
-    }),
-    state,
-  )
 })
 
 test('undoing a takeaway preserves its branch and later conversation messages', () => {

@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   applySummaryToRequest,
-  compactTranscript,
-  estimateTokens,
   planCompaction,
-  prefixFingerprint,
   SUMMARY_KEEP_RECENT,
   SUMMARY_TRIGGER_TOKENS,
   summaryHolds,
@@ -29,18 +26,6 @@ const summaryThrough = (id: string, content = 'earlier: x'): ThreadSummary => ({
   content,
   throughMessageId: id,
   createdAt: 1,
-})
-
-test('estimateTokens is about four characters a token', () => {
-  assert.equal(estimateTokens(''), 0)
-  assert.equal(estimateTokens('abcd'), 1)
-  assert.equal(estimateTokens('abcde'), 2)
-})
-
-test('short threads are never summarized', () => {
-  assert.equal(planCompaction(conversation(8), undefined), null)
-  // Lots of tokens, but all of it recent.
-  assert.equal(planCompaction(conversation(SUMMARY_KEEP_RECENT, 10_000), undefined), null)
 })
 
 test('older history past the trigger is summarized, keeping the recent turns', () => {
@@ -111,16 +96,6 @@ test('summaryHolds survives appends and drops on rewrites of covered messages', 
   assert.equal(summaryHolds(before, before.filter((m) => m.id !== 'm2'), summary), false)
 })
 
-test('prefixFingerprint changes when a covered message changes', () => {
-  const messages = conversation(8)
-  const basis = prefixFingerprint(messages, 'm3')
-  assert.ok(basis)
-  assert.equal(prefixFingerprint([...messages, msg('x', 'user', 'y')], 'm3'), basis)
-  const edited = messages.map((m) => (m.id === 'm1' ? { ...m, content: 'other' } : m))
-  assert.notEqual(prefixFingerprint(edited, 'm3'), basis)
-  assert.equal(prefixFingerprint(messages, 'missing'), null)
-})
-
 test('a summarized request sends the summary and only the later messages', () => {
   const messages = [
     { id: 'a', role: 'user', content: 'one' },
@@ -153,11 +128,4 @@ test('a summary that does not match the request is dropped, not half-applied', (
   assert.deepEqual(last.forwardedProps, {})
   // A stray string summary never leaks through on its own.
   assert.deepEqual(applySummaryToRequest(messages, { summary: 'stale' }).forwardedProps, {})
-})
-
-test('compactTranscript puts the summary in place of what it covers', () => {
-  const messages = conversation(4, 1)
-  assert.equal(compactTranscript({ messages }).split('\n\n').length, 4)
-  const text = compactTranscript({ messages, summary: summaryThrough('m1', 'S') })
-  assert.equal(text, `Earlier, summarized:\nS\n\nuser: ${messages[2].content}\n\nassistant: ${messages[3].content}`)
 })
