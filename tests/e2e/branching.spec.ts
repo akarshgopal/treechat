@@ -65,11 +65,14 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
   await page.screenshot({ path: testInfo.outputPath('ask-about-passage.png') })
   await page.getByLabel('Your branch question').press('Enter')
   await expect.poll(async () => Object.keys((await tree(page)).threads).length).toBe(4)
+  const answered = (state: TreeState) => Boolean(Object.values(state.threads).find((entry) => entry.messages.some((message) => message.content === question))
+    ?.messages.some((message) => message.role === 'assistant' && message.content.length > 0))
+  // The branch is saved before its question and reply are, and before the stop button shows.
+  await expect.poll(async () => answered(await tree(page))).toBe(true)
   await expect(page.getByTestId('composer-stop')).toHaveCount(0)
   const branched = await tree(page)
   const branch = Object.values(branched.threads).find((entry) => entry.messages.some((message) => message.content === question))!
   expect(branch.messages.filter((message) => message.role === 'user')).toHaveLength(1)
-  expect(branch.messages.some((message) => message.role === 'assistant' && message.content.length > 0)).toBe(true)
   expect(branched.threads[branched.rootId].messages).toEqual(before.threads[before.rootId].messages)
 
   await expect(page.getByTestId('back-to-spine')).toBeVisible()

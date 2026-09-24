@@ -45,6 +45,8 @@ test('chats export to JSON and import into another browser', async ({ page, brow
   await other.getByTestId('settings-import-input').setInputFiles({ name: 'chats.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) })
   await expect(other.getByTestId('toast')).toContainText('already here')
   expect(await sessionIds(other)).toHaveLength(1)
+  // Reopening mid close-animation can be swallowed; wait for it to finish.
+  await expect(other.getByTestId('settings-dialog')).toBeHidden()
   await other.getByTestId('settings-button').click()
   await other.getByTestId('settings-import-input').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') })
   await expect(other.getByTestId('toast')).toContainText('not a TreeChat export')

@@ -9,6 +9,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
+  forbidOnly: Boolean(process.env.CI),
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? [['github'], ['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: 'retain-on-failure',
@@ -23,6 +26,7 @@ export default defineConfig({
   webServer: [{
     command: `pnpm build && pnpm preview --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: `http://127.0.0.1:${PORT}`,
+    timeout: 180_000,
   }, {
     command: `pnpm dev --host 127.0.0.1 --port ${DEV_PORT} --strictPort`,
     url: `http://127.0.0.1:${DEV_PORT}`,

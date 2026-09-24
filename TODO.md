@@ -16,7 +16,7 @@ What to do before sharing TreeChat publicly (2026-09-24). Tick items off as they
 - [ ] 7. Check the preset model ids still exist on OpenRouter and are sensible defaults.
 - [x] 8. **Smaller deploy.** Drop the unused 27 MB ONNX runtime from `dist`; split the ~1 MB main bundle (pdf.js, markdown, highlighting) so phones load faster.
   - Done: the deploy went from 29 MB to 4.1 MB, and highlight.js (~170 KB) now loads with the first code block. The main script is still ~890 KB (React, TanStack AI, markdown); splitting further is a follow-up.
-- [ ] 9. Run the Playwright suite in the Pages workflow so a broken build never deploys.
+- [x] 9. **Playwright in CI.** The Pages workflow runs the e2e suite (Chromium, one retry) before building; a failure blocks the deploy and uploads the report and traces.
 - [x] 10. **Export and import chats** as JSON.
 - [ ] 11. Browser check: Safari and Firefox (selection, CSS Custom Highlight API, the iOS bottom sheet).
 
