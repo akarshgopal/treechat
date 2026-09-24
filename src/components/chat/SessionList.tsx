@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { sortSessions } from '@/lib/sessions'
 import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/types'
 
 const fieldClass =
-  'h-7 w-full rounded-md border border-input bg-transparent px-2 text-[12px] text-foreground shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring'
+  'h-7 w-full rounded-md border border-input bg-transparent px-2 text-xs text-foreground shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
 type SessionListProps = {
   sessions: ChatSession[]
@@ -15,6 +15,8 @@ type SessionListProps = {
   onDelete: (sessionId: string) => void
   /** Show rename/delete without hover — used in the mobile dialog. */
   alwaysShowActions?: boolean
+  /** Shown under the open chat: its branches. */
+  activeTree?: ReactNode
 }
 
 export function SessionList({
@@ -24,6 +26,7 @@ export function SessionList({
   onRename,
   onDelete,
   alwaysShowActions = false,
+  activeTree,
 }: SessionListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -65,21 +68,20 @@ export function SessionList({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2" data-testid="session-list">
-      <span className="eyebrow shrink-0 px-0.5 text-muted-foreground">chats</span>
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="session-list">
+      <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto pb-2">
         {ordered.map((session) => {
           const active = session.id === activeSessionId
           const editing = session.id === editingId
           return (
+            <div key={session.id} className="flex min-w-0 flex-col">
             <div
-              key={session.id}
               data-testid="session-row"
               data-session-id={session.id}
               data-active={active ? 'true' : 'false'}
               className={cn(
-                'group relative flex min-w-0 items-center gap-0.5 rounded-[7px]',
-                active ? 'bg-branch/[0.16]' : 'hover:bg-foreground/[0.06]',
+                'group relative flex min-w-0 items-center gap-0.5 rounded-md',
+                active ? 'bg-foreground/[0.07]' : 'hover:bg-foreground/[0.05]',
               )}
             >
               {editing ? (
@@ -106,19 +108,13 @@ export function SessionList({
                   title={session.title}
                   aria-current={active ? 'true' : undefined}
                   className={cn(
-                    'flex min-w-0 flex-1 items-center gap-2 rounded-[7px] px-2 py-[6px] text-left',
+                    'flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left',
                     active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {active ? (
-                    <span
-                      aria-hidden
-                      className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-branch accent-glow"
-                    />
-                  ) : null}
                   <span
                     className={cn(
-                      'min-w-0 truncate text-[12px] leading-tight',
+                      'min-w-0 truncate text-[13px] leading-tight',
                       active ? 'font-medium text-foreground' : '',
                     )}
                   >
@@ -157,6 +153,8 @@ export function SessionList({
                   </button>
                 </div>
               )}
+            </div>
+            {active && activeTree ? activeTree : null}
             </div>
           )
         })}

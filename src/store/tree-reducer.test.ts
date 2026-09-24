@@ -346,3 +346,15 @@ test('a summary lands only on the messages it was written from', () => {
   })
   assert.equal(reducer(edited, { type: 'set-summary', threadId: 'root', summary, basis }), edited)
 })
+
+test('restoring discarded threads puts the subtree back and refocuses it', () => {
+  const state = { ...base(), activeThreadId: 'b1a' }
+  const removed = [state.threads.b1!, state.threads.b1a!]
+  const discarded = reducer(state, { type: 'discard', threadId: 'b1' })
+  // Children listed before parents still come back.
+  const restored = reducer(discarded, { type: 'restore-threads', threads: [...removed].reverse(), focusId: 'b1a' })
+  assert.deepEqual(Object.keys(restored.threads).sort(), ['b1', 'b1a', 'b2', 'root'])
+  assert.equal(restored.activeThreadId, 'b1a')
+  assert.equal(restored.expanded.root, 'b1')
+  assert.equal(reducer(restored, { type: 'restore-threads', threads: removed }), restored)
+})

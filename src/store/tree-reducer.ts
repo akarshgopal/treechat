@@ -21,6 +21,8 @@ export type Action =
   | { type: 'focus'; threadId: string }
   | { type: 'set-web-search'; threadId: string; on: boolean }
   | { type: 'discard'; threadId: string }
+  /** Undo a discard: put removed threads back, when their parents are still here. */
+  | { type: 'restore-threads'; threads: Thread[]; focusId?: string }
   | { type: 'reset' }
   | { type: 'restoreDemo' }
 
@@ -156,6 +158,22 @@ export function reducer(state: TreeState, action: Action): TreeState {
         new Set(descendantIds(state, action.threadId)),
         thread.parentId ?? state.rootId,
       )
+    }
+    case 'restore-threads': {
+      const threads = { ...state.threads }
+      // Parents first, so a restored thread's parent is always in place.
+      const pending = action.threads.filter((thread) => !threads[thread.id])
+      for (let added = true; added;) {
+        added = false
+        for (const thread of pending) {
+          if (threads[thread.id] || !thread.parentId || !threads[thread.parentId]) continue
+          threads[thread.id] = thread
+          added = true
+        }
+      }
+      if (Object.keys(threads).length === Object.keys(state.threads).length) return state
+      const focusId = action.focusId && threads[action.focusId] ? action.focusId : state.activeThreadId
+      return { ...state, threads, activeThreadId: focusId, expanded: { ...state.expanded, ...expansionToReveal({ ...state, threads }, focusId) } }
     }
     case 'reset':
       return createEmptyState()

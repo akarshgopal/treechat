@@ -8,7 +8,7 @@ import {
   toggleExpandedId,
   visibleRailThreads,
 } from '@/lib/rail-collapse'
-import { childThreads, depthOf, subtreeSize, threadTitle } from '@/lib/tree'
+import { childThreads, depthOf, threadTitle } from '@/lib/tree'
 import { cn } from '@/lib/utils'
 import type { Thread, TreeState } from '@/types'
 
@@ -21,6 +21,7 @@ function Row({
   rootTitle,
   last,
   expandedIds,
+  busyIds,
   onFocus,
   onPointerFocus,
   onToggle,
@@ -32,6 +33,7 @@ function Row({
   rootTitle: string
   last: boolean
   expandedIds: ReadonlySet<string>
+  busyIds: ReadonlySet<string>
   onFocus: (threadId: string) => void
   onPointerFocus: (threadId: string) => void
   onToggle: (threadId: string) => void
@@ -41,7 +43,6 @@ function Row({
   const isRoot = thread.parentId === null
   const depth = depthOf(state, thread.id)
   const label = isRoot ? rootTitle : threadTitle(thread)
-  const count = subtreeSize(state, thread.id)
   const hasChildren = children.length > 0
   const open = hasChildren && expandedIds.has(thread.id)
   const summarized = !isRoot && Object.values(state.threads).some((entry) =>
@@ -84,18 +85,12 @@ function Row({
           onFocus={() => onPointerFocus(thread.id)}
           title={isRoot ? label : `Depth ${depth} · ${label}`}
           className={cn(
-            'relative flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[7px] py-[5px] pr-2 pl-1 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-branch/70',
+            'relative flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md pr-2 pl-1 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring',
             active
-              ? 'bg-branch/[0.16] text-foreground'
-              : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground',
+              ? 'bg-foreground/[0.07] text-foreground'
+              : 'text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground',
           )}
         >
-          {active ? (
-            <span
-              aria-hidden
-              className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-branch accent-glow"
-            />
-          ) : null}
           {hasChildren ? (
             <button
               type="button"
@@ -123,7 +118,7 @@ function Row({
           )}
           <span
             className={cn(
-              'min-w-0 truncate text-[12px] leading-tight',
+              'min-w-0 truncate text-xs leading-tight',
               active && 'font-medium text-foreground',
             )}
           >
@@ -132,14 +127,14 @@ function Row({
           {summarized ? (
             <Check className="ml-auto size-3 shrink-0 text-branch" aria-label="Takeaway brought back" />
           ) : null}
-          {count > 0 ? (
+          {busyIds.has(thread.id) ? (
             <span
-              className={cn('eyebrow shrink-0 text-muted-foreground', !summarized && 'ml-auto')}
-              title={`${count} ${count === 1 ? 'message' : 'messages'}, including branches below`}
-              aria-label={`${count} ${count === 1 ? 'message' : 'messages'}`}
-            >
-              {count}
-            </span>
+              className={cn('size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/70', !summarized && 'ml-auto')}
+              role="status"
+              aria-label="Replying"
+              title="Replying…"
+              data-testid="thread-busy"
+            />
           ) : null}
         </div>
       </div>
@@ -155,6 +150,7 @@ function Row({
               rootTitle={rootTitle}
               last={index === children.length - 1}
               expandedIds={expandedIds}
+              busyIds={busyIds}
               onFocus={onFocus}
               onPointerFocus={onPointerFocus}
               onToggle={onToggle}
@@ -166,16 +162,25 @@ function Row({
   )
 }
 
+const NO_BUSY: ReadonlySet<string> = new Set()
+
+/**
+ * The open chat's branches, nested under its row in the chat list. The chat
+ * row stands for the main thread, so the tree starts at its branches.
+ */
 export function TreeRail({
   state,
   sessionId,
   rootTitle,
   onFocus,
+  busyIds = NO_BUSY,
 }: {
   state: TreeState
   sessionId: string
   rootTitle: string
   onFocus: (threadId: string) => void
+  /** Threads with a reply streaming in. */
+  busyIds?: ReadonlySet<string>
 }) {
   const root = state.threads[state.rootId]
   const [expandedIds, setExpandedIds] = useState(() => {
@@ -200,7 +205,8 @@ export function TreeRail({
   }
 
   const nodes = useMemo(
-    () => (root ? visibleRailThreads(state, expandedIds) : []),
+    // The root's branches are always listed: the chat row stands for the root.
+    () => (root ? visibleRailThreads(state, new Set([...expandedIds, state.rootId])).filter((thread) => thread.id !== state.rootId) : []),
     [root, state, expandedIds],
   )
   const rowFocusId = nodes.some((thread) => thread.id === focusedId)
@@ -277,27 +283,33 @@ export function TreeRail({
     focusRow(id)
   }
 
+  const branches = childThreads(state, root.id)
+  if (branches.length === 0) return null
+
   return (
     <nav
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3.5 py-3"
-      aria-label="Conversation tree"
+      className="flex min-w-0 flex-col py-0.5 pl-1"
+      aria-label="Branches"
       data-testid="tree-rail"
       onKeyDown={onKeyDown}
     >
-      <span className="eyebrow shrink-0 px-0.5 text-muted-foreground">tree</span>
-      <div className="min-w-0" role="tree" aria-label="Threads">
-        <Row
-          thread={root}
-          state={state}
-          activeId={state.activeThreadId}
-          focusedId={rowFocusId}
-          rootTitle={rootTitle}
-          last
-          expandedIds={expandedIds}
-          onFocus={onFocus}
-          onPointerFocus={setFocusedId}
-          onToggle={onToggle}
-        />
+      <div className="min-w-0" role="tree" aria-label="Branches">
+        {branches.map((branch, index) => (
+          <Row
+            key={branch.id}
+            thread={branch}
+            state={state}
+            activeId={state.activeThreadId}
+            focusedId={rowFocusId}
+            rootTitle={rootTitle}
+            last={index === branches.length - 1}
+            expandedIds={expandedIds}
+            busyIds={busyIds}
+            onFocus={onFocus}
+            onPointerFocus={setFocusedId}
+            onToggle={onToggle}
+          />
+        ))}
       </div>
     </nav>
   )

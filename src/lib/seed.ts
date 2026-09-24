@@ -6,9 +6,9 @@ function at(offsetMinutes: number) {
   return t0 + offsetMinutes * 60_000
 }
 
-const assistantIntro = `TreeChat is a branching conversation. Every thread is a full conversation — the root one is just the thread without a parent. When a reply goes wide, select any passage and grow a side-thread from it, anchored to that exact character range plus the quote.`
+const assistantIntro = `TreeChat is a branching conversation. Every thread is a full conversation — the root one is just the thread without a parent. When a reply goes wide, select any passage and grow a branch from it, anchored to that exact character range plus the quote.`
 
-const rootQuote = 'select any passage and grow a side-thread from it'
+const rootQuote = 'select any passage and grow a branch from it'
 const rootQuoteStart = assistantIntro.indexOf(rootQuote)
 
 const branchAnswer =
@@ -53,7 +53,7 @@ const rootMessages: ChatMessage[] = [
     id: 'msg-root-6',
     role: 'assistant',
     content:
-      'Every lane has its own composer, so a question always lands in the thread you type it in. When a branch turns up something useful, choose “Bring back”, edit the takeaway, and add it to the parent conversation — the exploration stays available through a link on the takeaway. The back arrow closes a branch and highlights its source; Source? branches search the web and cite what they find.',
+      'Every lane has its own composer, so a question always lands in the thread you type it in. When a branch turns up something useful, choose “Bring back”, edit the takeaway, and add it to the parent conversation — the branch stays available through a link on the takeaway. The back arrow closes a branch and highlights its source; Source? branches search the web and cite what they find.',
     createdAt: at(5),
   },
 ]
@@ -63,7 +63,7 @@ const branchMessages: ChatMessage[] = [
     id: 'msg-branch-1',
     role: 'user',
     content:
-      'If I keep talking on the main thread, does this side-thread lose its place in the original sentence?',
+      'If I keep talking on the main thread, does this branch lose its place in the original sentence?',
     createdAt: at(6),
   },
   {

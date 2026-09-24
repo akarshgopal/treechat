@@ -26,7 +26,7 @@ export const MOCK_WEB_CITATIONS = [
     kind: 'web' as const,
     title: 'Branching conversations keep tangents in place',
     url: 'https://example.com/branching-conversations',
-    snippet: 'A side thread stays attached to the passage that prompted it',
+    snippet: 'A branch stays attached to the passage that prompted it',
   },
   {
     id: '2',
@@ -38,7 +38,7 @@ export const MOCK_WEB_CITATIONS = [
   },
 ]
 
-const MOCK_SEARCH_REPLY = `Here is what two sources say (demo search results — add an OpenRouter key for real ones). A side thread stays attached to the passage that prompted it, so the tangent never scrolls the main thread away [1]. When the exploration is done, a short takeaway returns to the main conversation while the branch itself is kept [2]. Open a numbered source to read it beside this lane.`
+const MOCK_SEARCH_REPLY = `Here is what two sources say (demo search results — add an OpenRouter key for real ones). A branch stays attached to the passage that prompted it, so it never scrolls the main thread away [1]. When the branch is done, a short takeaway returns to the main conversation while the branch itself is kept [2]. Open a numbered source to read it beside this lane.`
 
 function inNodeTest() {
   const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -122,12 +122,12 @@ function branch(quote: string) {
 }
 \`\`\`
 
-Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-thread. Links like [TreeChat](https://example.com) open in a new tab.`
+Select \`quote.trim()\` in that block, or this **bold** phrase, to grow a branch. Links like [TreeChat](https://example.com) open in a new tab.`
   }
 
   if (text.includes('summarize') || text.includes('merge') || text.includes('drop')) {
     const q = quote ? `“${quote}”` : 'the selected passage'
-    return `The exploration on ${q} stays connected to its source passage. A takeaway carries the useful conclusion back to the parent, with a link to revisit the full exploration.`
+    return `The exploration on ${q} stays connected to its source passage. A takeaway carries the useful conclusion back to the parent, with a link to revisit the full branch.`
   }
 
   if (quote) {
@@ -137,7 +137,7 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
     if (text.includes('composer') || text.includes('post')) {
       return `This composer posts only into this thread. Every thread has its own — the one at the bottom belongs to whichever thread holds the frame. The quote “${quote}” is this thread's anchor, and Esc walks back up one level.`
     }
-    return `Staying on the branch from “${quote}”. This exploration includes context from the conversation above and has its own lane and composer; the back arrow returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
+    return `Staying on the branch from “${quote}”. This branch includes context from the conversation above and has its own lane and composer; the back arrow returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
   }
 
   if (text.includes('select') || text.includes('shortcut') || text.includes('chip')) {
@@ -153,11 +153,11 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to fork a side-t
   }
 
   if (text.includes('discard') || text.includes('chat') || text.includes('conversation')) {
-    return 'Choose Bring back to review and edit a takeaway for the parent conversation. The takeaway links to the exploration, and Undo removes just the takeaway. The trash button in a branch header asks before removing the branch and its descendants.'
+    return 'Choose Bring back to review and edit a takeaway for the parent conversation. The takeaway links to the branch, and Undo removes just the takeaway. Discard branch, in the branch’s ⋯ menu, removes it and the branches below it — with Undo, in case.'
   }
 
   if (text.includes('what is') || text.includes('treechat') || text.includes('how do')) {
-    return 'TreeChat treats a chat as an actual tree. Every thread is a full conversation; the root one is just the thread with no parent. Highlight a passage to grow a side-thread, branch that branch if you want, and each level carries the chain above it as context. The whole tree persists in localStorage.'
+    return 'TreeChat treats a chat as an actual tree. Every thread is a full conversation; the root one is just the thread with no parent. Highlight a passage to grow a branch, branch that branch if you want, and each level carries the chain above it as context. The whole tree persists in localStorage.'
   }
 
   return `This is a demo reply — TreeChat has no model connected yet, so it can't answer that. Add an OpenRouter key in Settings for real answers. You can still try branching: select a phrase here and press ⌘⇧B / Ctrl+Shift+B.`

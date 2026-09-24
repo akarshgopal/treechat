@@ -58,7 +58,7 @@ Some preamble that pushes the passage down the page.
 
 ${'Filler paragraph about reading long pages. '.repeat(40)}
 
-In practice, a side thread
+In practice, a branch
 stays attached to the passage that prompted it, which is the whole point.
 
 ${'More filler after the passage. '.repeat(20)}`
@@ -123,7 +123,7 @@ test('Source? searches the web, cites the reply, and opens a source beside it', 
   expect(readerRequests).toEqual(['https://r.jina.ai/https://example.com/branching-conversations'])
   const highlighted = await page.evaluate(() => [...(CSS.highlights.get('source-snippet') ?? [])].map((range) => range.toString().replace(/\s+/g, ' ')))
   // Matched across a line break and a case difference.
-  expect(highlighted).toEqual(['a side thread stays attached to the passage that prompted it'])
+  expect(highlighted).toEqual(['a branch stays attached to the passage that prompted it'])
   await expect(lane.getByTestId('source-content').getByText(/stays attached to the passage/)).toBeInViewport()
 
   if (testInfo.project.use.isMobile) {
@@ -209,7 +209,7 @@ test('a cited paragraph still branches from exactly the selected words', async (
   await page.route('https://r.jina.ai/**', (route) => route.abort('failed'))
   const branch = await askForSource(page)
   const reply = (await citedBranch(page)).messages.at(-1)!
-  const passage = 'the main thread away [1]. When the exploration'
+  const passage = 'the main thread away [1]. When the branch'
   await selectText(page, `[data-testid="branch-lane"] [data-message-id="${reply.id}"]`, passage)
   await page.locator('[data-lens="explain"]').click()
 

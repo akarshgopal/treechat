@@ -191,3 +191,20 @@ test('tree edits keep the attached documents', () => {
   assert.notEqual(next, state)
   assert.deepEqual(next.sessions[0]!.documentIds, ['d1'])
 })
+
+test('restore-session brings a deleted chat back and opens it', () => {
+  const kept = session('kept', createEmptyState(), { title: 'Kept', titleLocked: true })
+  const gone = session('gone', createSeedState(), { title: 'Gone', titleLocked: true })
+  const deleted = sessionReducer(library([kept, gone], 'gone'), { type: 'delete-session', sessionId: 'gone' })
+  const restored = sessionReducer(deleted, { type: 'restore-session', session: gone })
+  assert.deepEqual(restored.sessions.map((item) => item.id).sort(), ['gone', 'kept'])
+  assert.equal(restored.activeSessionId, 'gone')
+  assert.equal(sessionReducer(restored, { type: 'restore-session', session: gone }), restored)
+})
+
+test('restoring the only chat replaces the blank one its delete left behind', () => {
+  const only = session('only', createSeedState(), { title: 'Only', titleLocked: true })
+  const deleted = sessionReducer(library([only]), { type: 'delete-session', sessionId: 'only' })
+  const restored = sessionReducer(deleted, { type: 'restore-session', session: only })
+  assert.deepEqual(restored.sessions.map((item) => item.id), ['only'])
+})

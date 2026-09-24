@@ -7,12 +7,15 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type TouchEvent,
 } from 'react'
 import { useChat } from '@tanstack/ai-react'
 import { ChevronDown, Settings, SquarePen } from 'lucide-react'
-import { BranchHeader } from '@/components/chat/BranchHeader'
 import { BranchPopover } from '@/components/chat/BranchPopover'
-import { DocumentDropZone, DocumentsChip, DocumentsDialog, DocumentsLibraryEntry, DocumentsSidebarSection } from '@/components/chat/Documents'
+import { CommandPalette } from '@/components/chat/CommandPalette'
+import { DocumentDropZone, DocumentsDialog, DocumentsLibraryEntry, DocumentsSidebarSection } from '@/components/chat/Documents'
+import { BranchHeader, MainHeader } from '@/components/chat/LaneHeader'
+import { Toast, type ToastState } from '@/components/chat/Toast'
 import { Lanes, type LaneFrame, type TrailingLane } from '@/components/chat/Lanes'
 import { SourceLane } from '@/components/chat/SourceLane'
 import { TakeawayDialog } from '@/components/chat/TakeawayDialog'
@@ -71,7 +74,7 @@ import {
   plainTextSkippingIgnore,
   snapRangeToWords,
 } from '@/lib/selection'
-import { branchForwardedProps, pathTo } from '@/lib/tree'
+import { branchForwardedProps, descendantIds, pathTo } from '@/lib/tree'
 import { refreshSummary } from '@/lib/summarize'
 import { isBranchShortcut } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
@@ -136,6 +139,10 @@ type ShellValue = {
   onShowDemo: () => void
   openSource: OpenSource | null
   onOpenSource: (threadId: string, messageId: string, citationId: string) => void
+  /** Phones: one lane at a time, and the app bar names the chat. */
+  narrow: boolean
+  onRenameChat: (title: string) => void
+  onDeleteChat: () => void
 }
 
 const ShellContext = createContext<ShellValue | null>(null)
@@ -388,6 +395,7 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
       error={chat.error?.message}
       onRetryError={() => { void chat.reload() }}
       onShowDemo={shell.onShowDemo}
+      blankNote={shell.narrow && shell.status.mode === 'mock' ? 'Replies are demo text until you add an OpenRouter key in Settings.' : undefined}
       onAskMessage={shell.onAskMessage}
       leadOffset={frame.leadOffset}
       openCitation={shell.openSource?.threadId === threadId ? shell.openSource : null}
@@ -398,17 +406,17 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
           onMerge={() => shell.onMerge(threadId)}
           onDiscard={() => shell.onDiscard(threadId)}
           onReturn={() => shell.onReturn(threadId)}
+          onCollapse={frame.onCollapse}
           summarized={Object.values(state.threads).some((entry) => entry.messages.some((message) => message.sourceThreadId === threadId))}
-          controls={frame.controls}
-          webSearch={Boolean(thread.webSearch)}
-          onToggleWebSearch={() => setWebSearch(threadId, !thread.webSearch)}
         />
-      ) : frame.controls ? (
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate py-2 text-sm text-muted-foreground">Main conversation</span>
-          {frame.controls}
-        </div>
-      ) : undefined}
+      ) : shell.narrow ? undefined : (
+        <MainHeader
+          title={activeSession.title}
+          onRename={shell.onRenameChat}
+          onDelete={shell.onDeleteChat}
+          onCollapse={frame.onCollapse}
+        />
+      )}
       draft={shell.draftFor(threadId)}
       onDraftChange={(value) => shell.setDraft(threadId, value)}
       composerAttach={{
@@ -423,6 +431,7 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
           {visionNotice}
         </span>
       ) : undefined}
+      composerWebSearch={{ on: Boolean(thread.webSearch), onToggle: () => setWebSearch(threadId, !thread.webSearch) }}
       onSend={send}
       onStop={() => chat.stop()}
       isLoading={chat.isLoading}
@@ -438,8 +447,8 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
         thread.anchor
           ? 'Ask in this branch…'
           : thread.messages.length === 0
-            ? 'Message…'
-            : 'Reply on the main thread…'
+            ? 'Ask anything…'
+            : 'Reply…'
       }
       emptyLabel={
         thread.anchor
@@ -499,6 +508,8 @@ function TreeChatShell({
   onAttachmentsChange,
   onSwitchModel,
   scrollPositions,
+  toast,
+  onToast,
 }: {
   epoch: number
   status: ProviderStatus
@@ -511,6 +522,9 @@ function TreeChatShell({
   onAttachmentsChange: (threadId: string, update: (current: Attachment[]) => Attachment[]) => void
   onSwitchModel: (model: string) => void
   scrollPositions: Map<string, number>
+  /** Lives above the shell, which remounts when the chat changes. */
+  toast: ToastState | null
+  onToast: (toast: ToastState | null) => void
 }) {
   const {
     state,
@@ -522,11 +536,14 @@ function TreeChatShell({
     expand,
     focus,
     discard,
+    restoreThreads,
     appendMessage,
     undoTakeaway,
     switchSession,
     renameSession,
     deleteSession,
+    restoreSession,
+    setWebSearch,
   } = useTree()
   const [source, setSource] = useState<OpenSource | null>(null)
 
@@ -535,12 +552,13 @@ function TreeChatShell({
   const [asking, setAsking] = useState<{ passage: ChipState; initial: string; returnFocus?: HTMLElement | null } | null>(null)
   const [previewThreadId, setPreviewThreadId] = useState<string | null>(null)
   const [returnTarget, setReturnTarget] = useState<{ threadId: string; messageId: string; branchId: string; takeawayId?: string } | null>(null)
-  const [lastTakeaway, setLastTakeaway] = useState<{ threadId: string; messageId: string } | null>(null)
-  const dismissTakeaway = useCallback(() => setLastTakeaway(null), [])
+  const dismissToast = useCallback(() => onToast(null), [onToast])
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [documentsOpen, setDocumentsOpen] = useState(false)
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  /** Threads with a reply streaming in, for the sidebar and connectors. */
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set())
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const enginesRef = useRef<Record<string, EngineHandle>>({})
   const lastRangeRef = useRef<ChipState | null>(null)
@@ -579,11 +597,16 @@ function TreeChatShell({
 
   const registerEngine = useCallback(
     (threadId: string, handle: EngineHandle | null) => {
-      if (!handle) {
-        delete enginesRef.current[threadId]
-        return
-      }
-      enginesRef.current[threadId] = handle
+      if (!handle) delete enginesRef.current[threadId]
+      else enginesRef.current[threadId] = handle
+      const busy = Boolean(handle?.isLoading)
+      setBusyIds((current) => {
+        if (current.has(threadId) === busy) return current
+        const next = new Set(current)
+        if (busy) next.add(threadId)
+        else next.delete(threadId)
+        return next
+      })
     },
     [],
   )
@@ -669,15 +692,19 @@ function TreeChatShell({
   }, [])
 
   /** Grow the branch and give it the frame to the right of its source. */
-  const startBranch = useCallback((passage: ChipState, question: string, options?: { webSearch?: boolean }) => {
+  /**
+   * `focusComposer`: a typed question moves on to the branch's composer; a
+   * lens leaves focus where it was, so reading can carry on while it answers.
+   */
+  const startBranch = useCallback((passage: ChipState, question: string, options?: { webSearch?: boolean; focusComposer?: boolean }) => {
     const id = createThread(passage.threadId, {
       messageId: passage.messageId,
       start: passage.start,
       end: passage.end,
       quote: passage.quote,
-    }, options)
+    }, { webSearch: options?.webSearch })
     initialQuestionsRef.current[id] = question
-    focusNextRef.current = id
+    if (options?.focusComposer !== false) focusNextRef.current = id
     setAsking(null)
     clearSelection()
     focus(id)
@@ -685,7 +712,7 @@ function TreeChatShell({
 
   const onLens = useCallback((passage: ChipState, lens: Lens) => {
     // "Source?" wants evidence, so that branch searches the web from the start.
-    startBranch(passage, lensQuestion(lens, passage.quote), { webSearch: lens.id === 'source' })
+    startBranch(passage, lensQuestion(lens, passage.quote), { webSearch: lens.id === 'source', focusComposer: false })
   }, [startBranch])
 
   const onAskMessage = useCallback((threadId: string, messageId: string) => {
@@ -788,6 +815,54 @@ function TreeChatShell({
     [state],
   )
 
+  const discardWithUndo = useCallback((threadId: string) => {
+    const removed = descendantIds(state, threadId).flatMap((id) => state.threads[id] ? [state.threads[id]] : [])
+    if (removed.length === 0) return
+    const focusedBefore = state.activeThreadId
+    for (const thread of removed) enginesRef.current[thread.id]?.stop()
+    discard(threadId)
+    onToast({
+      id: createId('toast'),
+      text: 'Branch discarded',
+      actions: [{ label: 'Undo', onClick: () => restoreThreads(removed, focusedBefore) }],
+    })
+  }, [discard, onToast, restoreThreads, state])
+
+  const deleteWithUndo = useCallback((sessionId: string) => {
+    const session = sessions.find((entry) => entry.id === sessionId)
+    if (!session) return
+    deleteSession(sessionId)
+    onToast({
+      id: createId('toast'),
+      text: `Deleted “${session.title}”`,
+      actions: [{ label: 'Undo', onClick: () => restoreSession(session) }],
+    })
+  }, [deleteSession, onToast, restoreSession, sessions])
+
+  const narrow = useNarrow()
+
+  // Phones: swipe right from anywhere in a branch to go back to its passage.
+  // Starts inside something that scrolls sideways (code, tables) don't count.
+  const swipe = useRef<{ x: number; y: number } | null>(null)
+  const onSwipeStart = (event: TouchEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement
+    swipe.current = narrow && event.touches.length === 1 && !target.closest('pre, .tc-md-table-wrap, textarea, [data-branch-sheet]')
+      ? { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY }
+      : null
+  }
+  const onSwipeEnd = (event: TouchEvent<HTMLDivElement>) => {
+    const start = swipe.current
+    swipe.current = null
+    const touch = event.changedTouches[0]
+    if (!start || !touch || !activeThread.parentId || window.getSelection()?.isCollapsed === false) return
+    const dx = touch.clientX - start.x
+    const dy = Math.abs(touch.clientY - start.y)
+    if (dx > 80 && dy < 50) returnToPassage(activeThread.id)
+  }
+
+  const onRenameChat = useCallback((title: string) => renameSession(activeSessionId, title), [activeSessionId, renameSession])
+  const onDeleteChat = useCallback(() => deleteWithUndo(activeSessionId), [activeSessionId, deleteWithUndo])
+
   const shell = useMemo<ShellValue>(
     () => ({
       draftFor,
@@ -802,7 +877,7 @@ function TreeChatShell({
       onOpenChild,
       onFocus: focus,
       onMerge,
-      onDiscard: discard,
+      onDiscard: discardWithUndo,
       takeInitialQuestion,
       onAskMessage,
       onReturn: returnToPassage,
@@ -811,6 +886,9 @@ function TreeChatShell({
       onShowDemo: onRestoreDemo,
       openSource: source,
       onOpenSource,
+      narrow,
+      onRenameChat,
+      onDeleteChat,
     }),
     [
       draftFor,
@@ -825,7 +903,7 @@ function TreeChatShell({
       onOpenChild,
       focus,
       onMerge,
-      discard,
+      discardWithUndo,
       takeInitialQuestion,
       onAskMessage,
       returnToPassage,
@@ -834,11 +912,19 @@ function TreeChatShell({
       onRestoreDemo,
       source,
       onOpenSource,
+      narrow,
+      onRenameChat,
+      onDeleteChat,
     ],
   )
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+        event.preventDefault()
+        setPaletteOpen((open) => !open)
+        return
+      }
       if (event.defaultPrevented || document.querySelector('[role="dialog"], [role="alertdialog"]')) return
       if (isBranchShortcut(event)) {
         event.preventDefault()
@@ -907,7 +993,6 @@ function TreeChatShell({
     }
   }, [syncChipFromSelection])
 
-  const pendingDelete = sessions.find((session) => session.id === pendingDeleteId)
   const onSelectSession = useCallback(
     (sessionId: string) => {
       switchSession(sessionId)
@@ -915,9 +1000,7 @@ function TreeChatShell({
     },
     [switchSession],
   )
-  const hasBranches = Object.keys(state.threads).length > 1
   const lanePath = useMemo(() => pathTo(state, activeThread.id), [state, activeThread.id])
-  const narrow = useNarrow()
   const sourceCitation = source ? citationFor(state.threads[source.threadId]?.messages, source) : undefined
   const trailing = useMemo<TrailingLane | null>(() => {
     if (!source || !sourceCitation || source.threadId !== activeThread.id) return null
@@ -943,114 +1026,95 @@ function TreeChatShell({
       ),
     }
   }, [activeThread.id, closeSource, narrow, source, sourceCitation])
+  const sessionList = (inDialog: boolean) => (
+    <SessionList
+      sessions={sessions}
+      activeSessionId={activeSessionId}
+      onSelect={(sessionId) => {
+        // The open chat's row goes back to its main thread.
+        if (sessionId === activeSessionId) focus(state.rootId)
+        onSelectSession(sessionId)
+      }}
+      onRename={renameSession}
+      onDelete={(sessionId) => {
+        if (inDialog) setLibraryOpen(false)
+        deleteWithUndo(sessionId)
+      }}
+      alwaysShowActions={inDialog}
+      activeTree={
+        <TreeRail
+          state={state}
+          sessionId={activeSessionId}
+          rootTitle={activeSession.title}
+          busyIds={busyIds}
+          onFocus={(threadId) => {
+            focus(threadId)
+            if (inDialog) setLibraryOpen(false)
+          }}
+        />
+      }
+    />
+  )
+
+  const demoStatus = status.mode === 'mock' ? (
+    <button
+      type="button"
+      data-testid="provider-mode"
+      onClick={() => setSettingsOpen(true)}
+      title="Replies are demo text. Add an OpenRouter key for real answers."
+      className="btn h-7 shrink-0 px-2 text-xs"
+    >
+      Demo · Add key
+    </button>
+  ) : null
+
   return (
     <div
       className="flex h-svh flex-col bg-background"
       data-view={activeThread.parentId ? 'conversation' : 'spine'}
     >
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-3 sm:gap-3 sm:px-8">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
-          <span className="accent-glow size-[7px] shrink-0 rounded-sm bg-branch" />
-          <button
-            type="button"
-            onClick={() => focus(state.rootId)}
-            className="shrink-0 text-[12.5px] font-medium text-foreground"
-          >
-            TreeChat
-          </button>
-          <span className="hidden shrink-0 text-[12px] text-muted-foreground md:inline">/</span>
-          <span
-            className="hidden min-w-0 truncate text-[12px] text-muted-foreground md:inline"
-            title={activeSession.title}
-            data-testid="session-title"
-          >
-            {activeSession.title}
-          </span>
+      {/* Phones only: there is no sidebar, so the chat and its actions live here. */}
+      {narrow ? (
+        <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-2">
+          <span className="accent-glow mx-2 size-[7px] shrink-0 rounded-sm bg-branch" aria-hidden />
           <button
             type="button"
             onClick={() => setLibraryOpen(true)}
             aria-label="Branches and chats"
             title={activeSession.title}
             data-testid="session-switcher"
-            className="flex min-w-0 max-w-[52vw] items-center gap-1 truncate rounded-md px-1.5 py-[3px] text-[12px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:hidden"
+            className="flex h-9 min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 text-[13px] font-medium text-foreground hover:bg-foreground/[0.06]"
           >
-            <span className="truncate">{activeSession.title}</span>
-            <ChevronDown className="size-3.5 shrink-0" />
+            <span className="truncate" data-testid="session-title">{activeSession.title}</span>
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
           </button>
-
-        </div>
-        <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
-          <DocumentsChip onOpen={() => setDocumentsOpen(true)} />
-          {status.mode === 'mock' ? (
-            <button
-              type="button"
-              data-testid="provider-mode"
-              onClick={() => setSettingsOpen(true)}
-              title="Replies are demo text. Add an OpenRouter key for real answers."
-              className="rounded-md border border-dashed border-border px-2 py-[3px] text-[11px] text-muted-foreground transition-colors hover:border-branch/50 hover:text-foreground"
-            >
-              Demo replies<span className="hidden sm:inline"> · Add key</span>
-            </button>
-          ) : null}
-          {/* Phones have no sidebar, so its two actions live up here. */}
-          {narrow ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                aria-label="Settings"
-                title="Settings"
-                data-testid="settings-button"
-                className="flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <Settings className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={onNewChat}
-                aria-label="New chat"
-                title="New chat"
-                data-testid="new-chat"
-                className="flex size-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <SquarePen className="size-4" />
-              </button>
-            </>
-          ) : null}
-        </div>
-      </header>
+          <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings" data-testid="settings-button" className="icon-button">
+            <Settings className="size-4" />
+          </button>
+          <button type="button" onClick={onNewChat} aria-label="New chat" title="New chat" data-testid="new-chat" className="icon-button">
+            <SquarePen className="size-4" />
+          </button>
+        </header>
+      ) : null}
 
       <ShellContext.Provider value={shell}>
         <div className="flex min-h-0 flex-1">
           {narrow ? null : (
             <Sidebar
+              onHome={() => focus(state.rootId)}
               onNewChat={onNewChat}
               onOpenSettings={() => setSettingsOpen(true)}
-              tree={
-                <TreeRail
-                  state={state}
-                  sessionId={activeSessionId}
-                  rootTitle={activeSession.title}
-                  onFocus={focus}
-                />
-              }
-              sessions={
-                <SessionList
-                  sessions={sessions}
-                  activeSessionId={activeSessionId}
-                  onSelect={onSelectSession}
-                  onRename={renameSession}
-                  onDelete={setPendingDeleteId}
-                />
-              }
+              chats={sessionList(false)}
               documents={<DocumentsSidebarSection onOpen={() => setDocumentsOpen(true)} />}
+              status={demoStatus}
             />
           )}
-          <div className="relative flex min-w-0 flex-1 flex-col">
+          <div className="relative flex min-w-0 flex-1 flex-col" onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd}>
             {asking ? (
               <BranchPopover
                 key={`${asking.passage.messageId}:${asking.passage.start}:${asking.passage.end}`}
                 mode="ask"
+                sheet={narrow}
                 anchor={asking.passage}
                 range={asking.passage.range}
                 quote={asking.passage.quote}
@@ -1066,6 +1130,7 @@ function TreeChatShell({
             ) : chip ? (
               <BranchPopover
                 mode="lenses"
+                sheet={narrow}
                 anchor={chip}
                 quote={chip.quote}
                 onLens={(lens) => onLens(chip, lens)}
@@ -1077,26 +1142,14 @@ function TreeChatShell({
                 }}
               />
             ) : null}
-            {lastTakeaway ? (
-              <TakeawayNotice
-                onView={() => {
-                  focus(lastTakeaway.threadId)
-                  requestAnimationFrame(() => document.querySelector(`[data-takeaway-id="${CSS.escape(lastTakeaway.messageId)}"]`)?.scrollIntoView({ block: 'center' }))
-                }}
-                onUndo={() => {
-                  enginesRef.current[lastTakeaway.threadId]?.stop()
-                  undoTakeaway(lastTakeaway.threadId, lastTakeaway.messageId)
-                  setLastTakeaway(null)
-                }}
-                onDismiss={dismissTakeaway}
-              />
-            ) : null}
+            {toast ? <Toast toast={toast} onDismiss={dismissToast} /> : null}
             <div className="min-h-0 flex-1">
               <Lanes
                 path={lanePath}
                 single={narrow}
                 rootTitle={activeSession.title}
                 trailing={trailing}
+                busyIds={busyIds}
                 renderLane={(thread, frame) => {
                   const index = lanePath.findIndex((entry) => entry.id === thread.id)
                   return (
@@ -1124,122 +1177,70 @@ function TreeChatShell({
         onRestoreDemo={onRestoreDemo}
       />
 
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        state={state}
+        activeThreadId={activeThread.id}
+        onSwitchChat={onSelectSession}
+        onFocusThread={focus}
+        onNewChat={onNewChat}
+        onToggleWebSearch={() => setWebSearch(activeThread.id, !activeThread.webSearch)}
+        webSearch={Boolean(activeThread.webSearch)}
+        onOpenDocuments={() => setDocumentsOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onShowDemo={onRestoreDemo}
+      />
+
       {previewThreadId && state.threads[previewThreadId] ? (
         <TakeawayDialog key={previewThreadId} thread={state.threads[previewThreadId]} state={state} onClose={() => setPreviewThreadId(null)} onConfirm={(content) => {
           const thread = state.threads[previewThreadId]
           if (!thread?.parentId || !thread.anchor || !state.threads[thread.parentId]) return
-          enginesRef.current[thread.parentId]?.stop()
+          const parentId = thread.parentId
+          enginesRef.current[parentId]?.stop()
           const id = createId('takeaway')
-          appendMessage(thread.parentId, { id, role: 'assistant', content, createdAt: Date.now(), kind: 'drop-summary', quote: thread.anchor.quote, sourceThreadId: thread.id })
+          appendMessage(parentId, { id, role: 'assistant', content, createdAt: Date.now(), kind: 'drop-summary', quote: thread.anchor.quote, sourceThreadId: thread.id })
           setPreviewThreadId(null)
-          setLastTakeaway({ threadId: thread.parentId, messageId: id })
+          onToast({
+            id: createId('toast'),
+            text: 'Takeaway added',
+            actions: [
+              {
+                label: 'View takeaway',
+                keepOpen: true,
+                onClick: () => {
+                  focus(parentId)
+                  requestAnimationFrame(() => document.querySelector(`[data-takeaway-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' }))
+                },
+              },
+              {
+                label: 'Undo',
+                onClick: () => {
+                  enginesRef.current[parentId]?.stop()
+                  undoTakeaway(parentId, id)
+                },
+              },
+            ],
+          })
           returnToPassage(thread.id, id)
         }} />
       ) : null}
 
       <Dialog open={libraryOpen} onOpenChange={setLibraryOpen}>
-        <DialogContent className="flex max-h-[85svh] max-w-sm flex-col gap-4 sm:rounded-lg" data-testid="session-library">
+        <DialogContent className="flex max-h-[85svh] max-w-sm flex-col gap-4" data-testid="session-library">
           <DialogHeader>
-            <DialogTitle>{hasBranches ? 'Branches & chats' : 'Chats'}</DialogTitle>
-            <DialogDescription>
-              {hasBranches ? 'Jump to a branch, or switch chats.' : 'Switch or rename chats.'}
-            </DialogDescription>
+            <DialogTitle>Chats</DialogTitle>
+            <DialogDescription className="sr-only">Switch chats, or jump to a branch of this one.</DialogDescription>
           </DialogHeader>
-          {hasBranches ? (
-            <div className="-mx-3.5 flex max-h-[40svh] min-h-0 flex-col border-b border-border pb-2">
-              <TreeRail
-                state={state}
-                sessionId={activeSessionId}
-                rootTitle={activeSession.title}
-                onFocus={(threadId) => {
-                  focus(threadId)
-                  setLibraryOpen(false)
-                }}
-              />
-            </div>
-          ) : null}
-          <SessionList
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            onSelect={onSelectSession}
-            onRename={renameSession}
-            onDelete={(sessionId) => {
-              setLibraryOpen(false)
-              setPendingDeleteId(sessionId)
-            }}
-            alwaysShowActions
-          />
+          <div className="-mx-2 flex min-h-0 flex-col">{sessionList(true)}</div>
           <DocumentsLibraryEntry onOpen={() => {
             setLibraryOpen(false)
             setDocumentsOpen(true)
           }} />
         </DialogContent>
       </Dialog>
-
-      <AlertDialog
-        open={Boolean(pendingDelete)}
-        onOpenChange={(open) => {
-          if (!open) setPendingDeleteId(null)
-        }}
-      >
-        <AlertDialogContent data-testid="session-delete-confirm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
-            <AlertDialogDescription>
-              “{pendingDelete?.title}” and its branches will be removed. This cannot
-              be undone. Other chats stay as they are.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep chat</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-testid="session-delete-confirm-action"
-              onClick={() => {
-                if (pendingDelete) deleteSession(pendingDelete.id)
-                setPendingDeleteId(null)
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  )
-}
-
-/**
- * Confirms a takeaway without pushing the conversation down, and leaves on
- * its own. Hovering or focusing it holds it open so Undo stays reachable.
- */
-function TakeawayNotice({ onView, onUndo, onDismiss }: {
-  onView: () => void
-  onUndo: () => void
-  onDismiss: () => void
-}) {
-  const [held, setHeld] = useState(false)
-  useEffect(() => {
-    if (held) return
-    const timer = window.setTimeout(onDismiss, 10_000)
-    return () => window.clearTimeout(timer)
-  }, [held, onDismiss])
-  return (
-    <div
-      className="rise absolute inset-x-0 top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-branch/20 bg-paper/95 px-5 py-2 text-sm shadow-lg backdrop-blur"
-      role="status"
-      data-testid="takeaway-notice"
-      onMouseEnter={() => setHeld(true)}
-      onMouseLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
-      onBlur={() => setHeld(false)}
-    >
-      <span>Takeaway added</span>
-      <div className="flex items-center gap-2">
-        <button type="button" className="branch-secondary" onClick={onView}>View takeaway</button>
-        <button type="button" className="branch-secondary" onClick={onUndo}>Undo</button>
-        <button type="button" className="branch-icon-button" aria-label="Dismiss takeaway notice" onClick={onDismiss}>×</button>
-      </div>
     </div>
   )
 }
@@ -1307,6 +1308,7 @@ export function TreeChatApp() {
     }
   }, [])
   const [epoch, setEpoch] = useState(0)
+  const [toast, setToast] = useState<ToastState | null>(null)
   const [draftsBySession, setDraftsBySession] = useState<Record<string, Record<string, string>>>({})
   const [attachmentsBySession, setAttachmentsBySession] = useState<Record<string, Record<string, Attachment[]>>>({})
   const onAttachmentsChange = useCallback((threadId: string, update: (current: Attachment[]) => Attachment[]) => {
@@ -1397,6 +1399,8 @@ export function TreeChatApp() {
       onProviderConfigChange={onProviderConfigChange}
       onNewChat={onNewChat}
       onRestoreDemo={onRestoreDemo}
+      toast={toast}
+      onToast={setToast}
     />
   )
 }

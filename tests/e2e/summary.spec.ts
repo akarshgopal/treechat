@@ -85,7 +85,7 @@ test('edit & resend inside the summarized part drops the summary', async ({ page
 
   const summarized = page.locator('[data-message-id="long-10"]')
   await summarized.scrollIntoViewIfNeeded()
-  await summarized.hover()
+  await summarized.click()
   await summarized.locator('xpath=ancestor::article[1]').getByTestId('message-edit').click()
   await page.getByTestId('message-edit-input').fill('A different question')
   await page.getByTestId('message-edit-save').click()

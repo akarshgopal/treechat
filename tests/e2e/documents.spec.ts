@@ -24,6 +24,25 @@ async function lastAssistantCitations(page: Page): Promise<Citation[] | undefine
   return root.messages.filter((message) => message.role === 'assistant').at(-1)?.citations
 }
 
+/** Desktop: the sidebar section. Phones have no sidebar: the chats sheet links to documents. */
+async function openDocuments(page: Page, mobile: boolean) {
+  if (mobile) {
+    await page.getByTestId('session-switcher').click()
+    await page.getByTestId('session-library').getByTestId('documents-entry').click()
+  } else {
+    await page.getByTestId('documents-open').click()
+  }
+}
+
+/** How many documents this chat searches, as its entry point shows it. */
+async function expectDocumentCount(page: Page, mobile: boolean, count: number) {
+  if (!mobile) return expect(page.getByTestId('documents-section')).toHaveAttribute('data-count', String(count))
+  await page.getByTestId('session-switcher').click()
+  await expect(page.getByTestId('documents-entry')).toHaveAttribute('data-count', String(count))
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('session-library')).toHaveCount(0)
+}
+
 test.beforeEach(async ({ page }) => {
   // Deterministic bag-of-words embedder: never download the model in tests.
   await page.addInitScript(() => localStorage.setItem('treechat:fake-embedder', '1'))
@@ -38,14 +57,8 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('a document added to a chat is retrieved and cited, then removed', async ({ page }, testInfo) => {
-  if (testInfo.project.use.isMobile) {
-    // Phones have no sidebar: the chats dialog links to documents.
-    await page.getByTestId('session-switcher').click()
-    await page.getByTestId('session-library').getByTestId('documents-entry').click()
-  } else {
-    await expect(page.getByTestId('documents-section')).toBeVisible()
-    await page.getByTestId('documents-chip').click()
-  }
+  const mobile = Boolean(testInfo.project.use.isMobile)
+  await openDocuments(page, mobile)
 
   const dialog = page.getByTestId('documents-dialog')
   await expect(dialog).toBeVisible()
@@ -63,7 +76,7 @@ test('a document added to a chat is retrieved and cited, then removed', async ({
   await expect(row.getByTestId('document-attach')).toBeChecked()
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByTestId('documents-chip')).toHaveAttribute('data-count', '1')
+  await expectDocumentCount(page, mobile, 1)
 
   const documentId = (await activeSession(page)).documentIds?.[0]
   expect(documentId).toMatch(/^doc-/)
@@ -87,16 +100,16 @@ test('a document added to a chat is retrieved and cited, then removed', async ({
 
   // Documents survive a reload (IndexedDB) and stay attached (session storage).
   await page.reload()
-  await expect(page.getByTestId('documents-chip')).toHaveAttribute('data-count', '1')
+  await expectDocumentCount(page, mobile, 1)
 
-  await page.getByTestId('documents-chip').click()
+  await openDocuments(page, mobile)
   await expect(dialog.getByTestId('document-row')).toHaveAttribute('data-status', 'ready')
   await dialog.getByTestId('document-remove').click()
   await dialog.getByTestId('document-remove-confirm').click()
   await expect(dialog.getByTestId('document-row')).toHaveCount(0)
   await expect(dialog).toContainText('No documents yet')
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('documents-chip')).toHaveAttribute('data-count', '0')
+  await expectDocumentCount(page, mobile, 0)
   expect((await activeSession(page)).documentIds).toBeUndefined()
   // The citation already on the reply is history and stays.
   expect((await lastAssistantCitations(page))?.[0]?.documentId).toBe(documentId)
@@ -104,13 +117,14 @@ test('a document added to a chat is retrieved and cited, then removed', async ({
 
 test('unchecking a document stops the chat from searching it', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'Attach toggles are the same component on phones')
-  await page.getByTestId('documents-chip').click()
+  const mobile = false
+  await openDocuments(page, mobile)
   const dialog = page.getByTestId('documents-dialog')
   await dialog.getByTestId('documents-file-input').setInputFiles({ name: 'kitchen.txt', mimeType: 'text/plain', buffer: Buffer.from('Sourdough starter needs feeding daily.') })
   await expect(dialog.getByTestId('document-row')).toHaveAttribute('data-status', 'ready')
   await dialog.getByTestId('document-attach').uncheck()
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('documents-chip')).toHaveAttribute('data-count', '0')
+  await expectDocumentCount(page, mobile, 0)
 
   const composer = page.getByTestId('thread-composer')
   await composer.fill('How often do I feed the sourdough starter?')
@@ -120,7 +134,7 @@ test('unchecking a document stops the chat from searching it', async ({ page }, 
   expect(await lastAssistantCitations(page)).toBeUndefined()
 
   // Clean up the shared library for the next test.
-  await page.getByTestId('documents-chip').click()
+  await openDocuments(page, mobile)
   await dialog.getByTestId('document-remove').click()
   await dialog.getByTestId('document-remove-confirm').click()
   await expect(dialog.getByTestId('document-row')).toHaveCount(0)

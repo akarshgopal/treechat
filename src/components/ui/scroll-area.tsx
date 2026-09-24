@@ -5,9 +5,12 @@ import { cn } from '@/lib/utils'
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, type = 'scroll', scrollHideDelay = 700, ...props }, ref) => (
+  // Scroll bars show only while scrolling: the content is the interface.
   <ScrollAreaPrimitive.Root
     ref={ref}
+    type={type}
+    scrollHideDelay={scrollHideDelay}
     className={cn('relative overflow-hidden', className)}
     {...props}
   >
@@ -30,14 +33,14 @@ const ScrollBar = React.forwardRef<
     className={cn(
       'flex touch-none select-none transition-colors',
       orientation === 'vertical' &&
-        'h-full w-2.5 border-l border-l-transparent p-px',
+        'h-full w-2 p-0.5',
       orientation === 'horizontal' &&
-        'h-2.5 flex-col border-t border-t-transparent p-px',
+        'h-2 flex-col p-0.5',
       className,
     )}
     {...props}
   >
-    <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-border" />
+    <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-foreground/20 hover:bg-foreground/35" />
   </ScrollAreaPrimitive.ScrollAreaScrollbar>
 ))
 ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName

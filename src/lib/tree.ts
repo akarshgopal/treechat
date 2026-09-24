@@ -15,12 +15,12 @@ export const CONTEXT_QUOTE = 'SELECTED QUOTE'
 /** Heads an ancestor level told through its running summary. */
 export const CONTEXT_EARLIER = 'Earlier, summarized:'
 
-/** A question gives an exploration a recognizable name, even on the same quote. */
+/** A question gives a branch a recognizable name, even on the same quote. */
 export function threadTitle(thread: Thread): string {
   if (!thread.parentId) return 'Main conversation'
   return clipText(
     thread.messages.find((message) => message.role === 'user' && message.content.trim())?.content
-      ?? thread.anchor?.quote ?? 'New exploration',
+      ?? thread.anchor?.quote ?? 'New branch',
     64,
   )
 }

@@ -34,18 +34,20 @@ function saveLayout(layout: Layout) {
 const toggleLabel = () =>
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘\\' : 'Ctrl+\\'
 
-const iconButton =
-  'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground'
+const iconButton = 'icon-button'
 
 /**
- * The desktop sidebar: new chat on top, the tree and chat list in the middle,
- * documents and settings at the bottom. It folds to an icon strip (Ctrl/⌘+\)
- * and its right edge resizes it.
+ * The desktop sidebar: the app and new chat on top, the chats (with the open
+ * chat's branches under it) in the middle, settings at the bottom. It folds
+ * to an icon strip (Ctrl/⌘+\) and its right edge resizes it.
  */
-export function Sidebar({ tree, sessions, documents, onNewChat, onOpenSettings }: {
-  tree: ReactNode
-  sessions: ReactNode
+export function Sidebar({ chats, documents, status, onHome, onNewChat, onOpenSettings }: {
+  chats: ReactNode
+  /** The document library, above settings. */
   documents?: ReactNode
+  /** A note beside Settings, e.g. that replies are demo text. */
+  status?: ReactNode
+  onHome: () => void
   onNewChat: () => void
   onOpenSettings: () => void
 }) {
@@ -80,7 +82,7 @@ export function Sidebar({ tree, sessions, documents, onNewChat, onOpenSettings }
       title="Settings"
       data-testid="settings-button"
       className={expanded
-        ? 'flex w-full items-center gap-2 rounded-md px-2 py-[7px] text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground'
+        ? 'flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground'
         : iconButton}
     >
       <Settings className="size-4 shrink-0" />
@@ -135,28 +137,34 @@ export function Sidebar({ tree, sessions, documents, onNewChat, onOpenSettings }
       data-testid="chat-sidebar"
       data-collapsed="false"
     >
-      <div className="flex shrink-0 items-center gap-1 px-2.5 pt-2.5">
+      <div className="flex h-12 shrink-0 items-center gap-1 px-2">
+        <button type="button" onClick={onHome} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-[13px] font-medium text-foreground" title="Back to the main conversation">
+          <span className="accent-glow size-[7px] shrink-0 rounded-sm bg-branch" aria-hidden />
+          TreeChat
+        </button>
+        <button type="button" className={iconButton} onClick={toggle} aria-label="Collapse sidebar" aria-expanded title={`Collapse sidebar · ${toggleLabel()}`} data-testid="sidebar-toggle">
+          <PanelLeftClose className="size-4" />
+        </button>
+      </div>
+      <div className="shrink-0 px-2 pb-2">
         <button
           type="button"
           onClick={onNewChat}
           aria-label="New chat"
           title="New chat"
           data-testid="new-chat"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border px-2.5 py-[7px] text-[12.5px] font-medium text-foreground transition-colors hover:border-branch/50 hover:bg-branch/5"
+          className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-[13px] text-foreground transition-colors hover:bg-foreground/[0.06]"
         >
           <SquarePen className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate">New chat</span>
         </button>
-        <button type="button" className={iconButton} onClick={toggle} aria-label="Collapse sidebar" aria-expanded title={`Collapse sidebar · ${toggleLabel()}`} data-testid="sidebar-toggle">
-          <PanelLeftClose className="size-4" />
-        </button>
       </div>
-      {tree}
-      <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-3">
-        {sessions}
+      <div className="flex min-h-0 flex-1 flex-col px-2">{chats}</div>
+      {documents ? <div className="flex max-h-[34%] min-h-0 shrink-0 flex-col border-t border-border p-2">{documents}</div> : null}
+      <div className="flex shrink-0 items-center gap-1 border-t border-border p-2">
+        {settingsButton(true)}
+        {status}
       </div>
-      {documents ? <div className="flex max-h-[30%] min-h-0 shrink-0 flex-col border-t border-border px-3.5 py-2.5">{documents}</div> : null}
-      <div className="shrink-0 border-t border-border p-2">{settingsButton(true)}</div>
       <div
         role="separator"
         aria-orientation="vertical"

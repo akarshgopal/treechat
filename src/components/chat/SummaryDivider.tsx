@@ -12,7 +12,7 @@ export function SummaryDivider({ summary }: { summary: ThreadSummary }) {
   const panelId = useId()
   return (
     <div className="my-1 flex flex-col gap-2" data-testid="summary-divider">
-      <div className="flex items-center gap-3 text-[11.5px] text-muted-foreground">
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span aria-hidden className="h-px flex-1 bg-border" />
         <button
           type="button"

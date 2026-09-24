@@ -12,6 +12,8 @@ export type SessionAction =
   | { type: 'switch-session'; sessionId: string }
   | { type: 'rename-session'; sessionId: string; title: string }
   | { type: 'delete-session'; sessionId: string }
+  /** Undo a delete: put the chat back and open it. */
+  | { type: 'restore-session'; session: ChatSession }
   /** Which stored documents a chat searches. */
   | { type: 'set-session-documents'; sessionId: string; documentIds: string[] }
   /** A document was removed from the library: detach it everywhere. */
@@ -31,6 +33,11 @@ function mapSession(
     return next
   })
   return changed ? { ...library, sessions } : library
+}
+
+function isBlankSession(session: ChatSession) {
+  const threads = Object.values(session.treeState.threads)
+  return !session.titleLocked && threads.length === 1 && threads[0]!.messages.length === 0
 }
 
 function sameIds(a: string[] | undefined, b: string[]) {
@@ -85,6 +92,12 @@ export function sessionReducer(
             ).id
           : state.activeSessionId
       return { sessions: remaining, activeSessionId }
+    }
+    case 'restore-session': {
+      if (state.sessions.some((session) => session.id === action.session.id)) return state
+      // Deleting the last chat left a blank one in its place; drop that.
+      const sessions = state.sessions.filter((session) => !isBlankSession(session))
+      return { sessions: capSessions([action.session, ...sessions], action.session.id), activeSessionId: action.session.id }
     }
     case 'set-session-documents': {
       const ids = [...new Set(action.documentIds)]
