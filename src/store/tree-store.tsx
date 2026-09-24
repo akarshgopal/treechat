@@ -5,11 +5,12 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react'
 import { createId } from '@/lib/ids'
 import { activeSessionOf } from '@/lib/sessions'
-import { loadLibrary, saveLibrary } from '@/lib/storage'
+import { lastSaveResult, loadLibrary, saveLibrary, subscribeSaveResult } from '@/lib/storage'
 import { sessionReducer } from '@/store/session-reducer'
 import type { Anchor, ChatMessage, ChatSession, Thread, ThreadSummary, TreeState } from '@/types'
 
@@ -42,6 +43,9 @@ type TreeContextValue = {
   renameSession: (sessionId: string, title: string) => void
   deleteSession: (sessionId: string) => void
   restoreSession: (session: ChatSession) => void
+  importSessions: (sessions: ChatSession[]) => void
+  /** The last save was refused (storage full): recent changes live only in memory. */
+  storageFull: boolean
   setSessionDocuments: (sessionId: string, documentIds: string[]) => void
   forgetDocument: (documentId: string) => void
 }
@@ -54,6 +58,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     saveLibrary(library)
   }, [library])
+  const storageFull = useSyncExternalStore(subscribeSaveResult, () => lastSaveResult() === 'full')
 
   const activeSession = activeSessionOf(library)
   const state = activeSession.treeState
@@ -122,11 +127,13 @@ export function TreeProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'rename-session', sessionId, title }),
       deleteSession: (sessionId) => dispatch({ type: 'delete-session', sessionId }),
       restoreSession: (session) => dispatch({ type: 'restore-session', session }),
+      importSessions: (sessions) => dispatch({ type: 'import-sessions', sessions }),
+      storageFull,
       setSessionDocuments: (sessionId, documentIds) =>
         dispatch({ type: 'set-session-documents', sessionId, documentIds }),
       forgetDocument: (documentId) => dispatch({ type: 'forget-document', documentId }),
     }),
-    [library, state, activeSession, activeThread, rootThread, createThread],
+    [library, state, activeSession, activeThread, rootThread, createThread, storageFull],
   )
 
   return <TreeContext.Provider value={value}>{children}</TreeContext.Provider>

@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
+import { newIssueUrl } from '@/lib/links'
 import { ModelPicker, ModelPresetChips } from '@/components/chat/ModelPicker'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -28,6 +29,10 @@ type SettingsDialogProps = {
   onOpenChange: (open: boolean) => void
   onConfigChange: (config: ClientProviderConfig | null) => void
   onRestoreDemo: () => void
+  /** Download every chat as a JSON file. */
+  onExport: () => void
+  /** Add the chats in an exported file. */
+  onImport: (file: File) => void
 }
 
 export function SettingsDialog({
@@ -35,6 +40,8 @@ export function SettingsDialog({
   onOpenChange,
   onConfigChange,
   onRestoreDemo,
+  onExport,
+  onImport,
 }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -47,6 +54,11 @@ export function SettingsDialog({
             onRestoreDemo()
             onOpenChange(false)
           }}
+          onExport={onExport}
+          onImport={(file) => {
+            onImport(file)
+            onOpenChange(false)
+          }}
         />
       </DialogContent>
     </Dialog>
@@ -56,7 +68,10 @@ export function SettingsDialog({
 function SettingsBody({
   onConfigChange,
   onRestoreDemo,
-}: Pick<SettingsDialogProps, 'onConfigChange' | 'onRestoreDemo'>) {
+  onExport,
+  onImport,
+}: Pick<SettingsDialogProps, 'onConfigChange' | 'onRestoreDemo' | 'onExport' | 'onImport'>) {
+  const importInput = useRef<HTMLInputElement>(null)
   const [initial] = useState(() => loadProviderConfig())
   const [apiKey, setApiKey] = useState(initial?.apiKey ?? '')
   const [model, setModel] = useState(initial?.model || DEFAULT_OPENROUTER_MODEL)
@@ -134,7 +149,8 @@ function SettingsBody({
               className={fieldClass}
             />
             <span className="text-[11px] text-muted-foreground">
-              Kept only in this browser and sent straight to OpenRouter. Treat it like a password.
+              Kept only in this browser and sent only to OpenRouter. Use a key with a credit limit: anything running
+              on this site’s address could read it.
             </span>
           </label>
           <div className="grid gap-1.5">
@@ -288,19 +304,63 @@ function SettingsBody({
             </div>
           </DialogFooter>
         </form>
-        {/* Not part of the form above: it acts at once, and Save does not cover it. */}
+        {/* Not part of the form above: these act at once, and Save does not cover them. */}
+        <section className="grid gap-2" aria-labelledby="settings-chats">
+          <h3 id="settings-chats" className="text-xs font-medium text-foreground">Your chats</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Chats are saved only in this browser. Export them to keep a copy or move them to another browser; documents
+            are not included.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onExport} data-testid="settings-export">Export chats</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => importInput.current?.click()} data-testid="settings-import">
+              Import chats…
+            </Button>
+            <input
+              ref={importInput}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              data-testid="settings-import-input"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) onImport(file)
+              }}
+            />
+          </div>
+        </section>
+        <details className="group text-[11px] text-muted-foreground" data-testid="settings-privacy">
+          <summary className="cursor-pointer list-none text-xs font-medium text-foreground">
+            Where your data goes <span className="text-muted-foreground transition-transform group-open:inline-block group-open:rotate-90">›</span>
+          </summary>
+          <ul className="mt-2 grid list-disc gap-1 pl-4">
+            <li>There is no TreeChat server. Chats, settings and documents stay in this browser.</li>
+            <li>With a key, messages go to OpenRouter and the model you pick. Free models (<span className="font-mono">:free</span>) may log prompts.</li>
+            <li>Opening a cited web page sends its address to the r.jina.ai reader, which fetches it for you.</li>
+            <li>Searching documents downloads a small model from Hugging Face and its runtime from jsDelivr, once.</li>
+            <li>Without a key, replies are demo text generated in this page; nothing leaves the browser.</li>
+          </ul>
+        </details>
         <div className="-mx-6 -mb-6 flex items-center justify-between gap-3 rounded-b-lg border-t border-border bg-foreground/[0.02] px-6 py-3">
-          <span className="text-xs text-muted-foreground">
-            Replace this chat with the “What is TreeChat?” walkthrough.
-          </span>
+          <a
+            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            href={newIssueUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="report-problem"
+          >
+            Report a problem
+          </a>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={onRestoreDemo}
             data-testid="settings-restore-demo"
+            title="Replace this chat with the “What is TreeChat?” walkthrough"
           >
-            Show walkthrough
+            Show walkthrough here
           </Button>
         </div>
     </>

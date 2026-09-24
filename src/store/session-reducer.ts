@@ -1,5 +1,5 @@
+import { createId } from '../lib/ids.ts'
 import {
-  capSessions,
   makeSession,
   normalizeSessionTitle,
   titleFromTree,
@@ -14,6 +14,8 @@ export type SessionAction =
   | { type: 'delete-session'; sessionId: string }
   /** Undo a delete: put the chat back and open it. */
   | { type: 'restore-session'; session: ChatSession }
+  /** Chats from an export file, added alongside the ones already here. */
+  | { type: 'import-sessions'; sessions: ChatSession[] }
   /** Which stored documents a chat searches. */
   | { type: 'set-session-documents'; sessionId: string; documentIds: string[] }
   /** A document was removed from the library: detach it everywhere. */
@@ -59,7 +61,7 @@ export function sessionReducer(
   switch (action.type) {
     case 'create-session': {
       const session = makeSession()
-      const sessions = capSessions([session, ...state.sessions], session.id)
+      const sessions = [session, ...state.sessions]
       return { sessions, activeSessionId: session.id }
     }
     case 'switch-session': {
@@ -97,7 +99,21 @@ export function sessionReducer(
       if (state.sessions.some((session) => session.id === action.session.id)) return state
       // Deleting the last chat left a blank one in its place; drop that.
       const sessions = state.sessions.filter((session) => !isBlankSession(session))
-      return { sessions: capSessions([action.session, ...sessions], action.session.id), activeSessionId: action.session.id }
+      return { sessions: [action.session, ...sessions], activeSessionId: action.session.id }
+    }
+    case 'import-sessions': {
+      const existing = new Map(state.sessions.map((session) => [session.id, session]))
+      const added: ChatSession[] = []
+      for (const session of action.sessions) {
+        const same = existing.get(session.id)
+        // Importing the same export twice changes nothing.
+        if (same && same.updatedAt === session.updatedAt) continue
+        // Same id, different content: keep both rather than overwrite either.
+        added.push(same ? { ...session, id: createId('session') } : session)
+      }
+      if (added.length === 0) return state
+      const sessions = [...state.sessions.filter((session) => !isBlankSession(session)), ...added]
+      return { sessions, activeSessionId: added[0]!.id }
     }
     case 'set-session-documents': {
       const ids = [...new Set(action.documentIds)]

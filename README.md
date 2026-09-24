@@ -1,6 +1,12 @@
 # TreeChat
 
-A branching LLM chat. The main thread is the **spine**. Select a passage in any message to grow a **branch** anchored to that character range and quote — then bring a takeaway back to the parent, or discard the branch.
+A branching AI chat. Select any passage in a reply to explore it in a side **branch** that opens in its own lane beside the passage, then bring the takeaway back to the conversation it came from.
+
+**Try it:** [akarshgopal.github.io/treechat](https://akarshgopal.github.io/treechat/). It works straight away with demo replies; add your own [OpenRouter](https://openrouter.ai/) key in Settings for real answers. There is no TreeChat server and no account: everything runs and stays in your browser.
+
+![TreeChat: a reply on the left, with a branch about one of its passages open in a lane on the right](docs/screenshot.png)
+
+Found a bug or have an idea? [Open an issue](https://github.com/akarshgopal/treechat/issues/new) (also under **Report a problem** in Settings and the command palette).
 
 Built with Vite, React, TypeScript, Tailwind CSS, shadcn/ui, and TanStack AI (`useChat`). Production is a **static GitHub Pages** app: paste an **OpenRouter API key** in Settings (gear). The key stays in `localStorage` and the browser calls OpenRouter directly (BYOK). With no key, a polished mock stream keeps the whole UX clickable — including on Pages, with no API server.
 
@@ -26,7 +32,7 @@ pnpm preview    # serve the build (Vite plugin still handles /api/chat for mock 
 4. **Remove key** forgets the key in this browser; the model and generation params stay saved.
 5. Optionally set a **Background model** for summaries and takeaway drafts — e.g. a free `:free` model. Free models may log prompts and have low rate limits; on an error TreeChat retries once with the main model.
 
-Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**: anyone with access to this browser profile can read it, and every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`). TreeChat's GitHub Pages host never sees it.
+Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**, and prefer a key with a [credit limit](https://openrouter.ai/settings/keys): anyone with access to this browser profile can read it, and so could any script running on this site's address (on `*.github.io`, that address is shared by every Pages site of the same account). Every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`); TreeChat's host never sees it.
 
 When a key is set, chat streams from `https://openrouter.ai/api/v1/chat/completions` in the browser (`stream: true`, plus `HTTP-Referer` and `X-Title`). It does **not** call `/api/chat`.
 
@@ -111,7 +117,7 @@ pnpm test:e2e
 
 Playwright builds the production app and serves it on `127.0.0.1:5180`. A second Vite server on `127.0.0.1:5190` verifies branch requests under development StrictMode. Tests cover desktop and mobile Chromium, settings-key branch and nested-branch context, user-message regeneration, delayed responses and stream errors, branch cancellation and creation, reply destinations, takeaway review and undo, failed generation, source-link persistence, drafts across chats, and documents (add, attach, cited retrieval, remove). Provider requests are intercepted; no real API keys or model calls are used, and documents use a deterministic fake embedder (`localStorage["treechat:fake-embedder"] = "1"`) instead of downloading the model.
 
-Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. Screenshots are written to `test-results/`; failed runs also retain Playwright traces. `node verify-treechat.mjs` runs the same suite.
+Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. Screenshots are written to `test-results/`; failed runs also retain Playwright traces.
 
 ## Stop, retry, and edit
 
@@ -122,6 +128,32 @@ These act on the **active session’s active thread** (spine or branch), not acr
 - **Regenerate response** — available on user messages, including unanswered ones. Resends that turn and replaces later replies while preserving branches anchored to the unchanged user message.
 - **Edit** — hover a user message, edit in place, confirm. Later messages on that thread are truncated and the turn is resent.
 - **Branches** — child threads pinned to the edited message, or to any truncated message, are **discarded** (anchors would be stale). Nested descendants go with them. Other threads and sessions are untouched.
+
+## Your data
+
+Chats, settings, documents and attachments live only in this browser (`localStorage` and IndexedDB).
+
+- **Export chats** (Settings, or the command palette) downloads every chat as JSON, including pasted images and attached files; **Import chats…** adds the chats in such a file next to the ones already here. Importing the same file twice changes nothing; a chat that changed in both places is kept as a copy. Documents are not included — add them again.
+- If the browser's storage fills up (about 5 MB for chats), TreeChat keeps every chat, stops saving new changes, and says so with an **Export chats** button. It never deletes chats to make room.
+- If the app ever crashes, the error screen offers **Reload**, **Export my chats** and a prefilled bug report.
+
+## Privacy
+
+There is no TreeChat server. What leaves the browser, and when:
+
+- **OpenRouter** and the model you pick receive your messages once you add a key. Free models (`:free`) may log prompts.
+- **r.jina.ai** receives the address of a cited web page when you open it in a source lane; it fetches the page and returns it as text.
+- **Hugging Face** (the embedding model, ~23 MB) and **jsDelivr** (its ONNX runtime) are downloaded once, the first time you add a document.
+- Fonts ship with the app; there are no analytics or trackers.
+
+Without a key, replies are demo text generated in the page and nothing is sent anywhere.
+
+## Known limits
+
+- Scanned PDFs have no text layer, and there is no OCR, so they are not searchable.
+- Documents are embedded with the model named above. If a later version switches models, documents added before are searched by keyword only until you add them again.
+- Chats stay in the browser they were made in. Use Export and Import to move them.
+- Web search (the **Source?** lens, or the globe beside a composer) adds a small per-search fee on your OpenRouter key.
 
 ## Stack
 

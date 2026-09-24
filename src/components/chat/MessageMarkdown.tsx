@@ -7,12 +7,12 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentProps,
   type ReactNode,
 } from 'react'
 import Markdown, { type ExtraProps } from 'react-markdown'
 import type { PluggableList } from 'unified'
-import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
 import { Check, Copy } from 'lucide-react'
 import { CitationContext } from '@/components/chat/citation-context'
@@ -26,10 +26,35 @@ import { cn } from '@/lib/utils'
 import type { Citation } from '@/types'
 
 const remarkPlugins: PluggableList = [remarkGfm]
-const highlightPlugin: PluggableList[number] = [
-  rehypeHighlight,
-  { detect: false, ignoreMissing: true },
-]
+/**
+ * Syntax highlighting loads the first time a reply contains a code fence, so
+ * highlight.js stays out of the first page load. Until then fences render
+ * plain; highlighting only adds spans, so branch offsets are unaffected.
+ */
+let highlightPlugin: PluggableList[number] | null = null
+let highlightLoading: Promise<void> | null = null
+const highlightListeners = new Set<() => void>()
+const subscribeHighlight = (listener: () => void) => {
+  highlightListeners.add(listener)
+  return () => highlightListeners.delete(listener)
+}
+function loadHighlight() {
+  highlightLoading ??= import('rehype-highlight').then(({ default: rehypeHighlight }) => {
+    highlightPlugin = [rehypeHighlight, { detect: false, ignoreMissing: true }]
+    for (const listener of highlightListeners) listener()
+  }, () => {
+    highlightLoading = null
+  })
+}
+const FENCE = /(^|\n)\s*(```|~~~)/
+function useHighlight(content: string) {
+  const plugin = useSyncExternalStore(subscribeHighlight, () => highlightPlugin)
+  const needed = FENCE.test(content)
+  useEffect(() => {
+    if (needed && !plugin) loadHighlight()
+  }, [needed, plugin])
+  return plugin
+}
 const EMPTY_MARKS: Mark[] = []
 
 function marksKey(marks: Mark[]): string {
@@ -64,11 +89,16 @@ export const MessageMarkdown = memo(function MessageMarkdown({
     onOpenCitationRef.current = onOpenCitation
   }, [onOpenBranch, onOpenCitation])
 
+  const highlight = useHighlight(content)
   const citationIds = useMemo(() => (citations ?? []).map((citation) => citation.id).join('\u0000'), [citations])
   // Chips go in before branch marks: marks count over the chip's text too.
   const rehypePlugins = useMemo<PluggableList>(
-    () => [highlightPlugin, rehypeCitationMarkers(new Set(citationIds ? citationIds.split('\u0000') : [])), rehypeBranchMarks(marks)],
-    [citationIds, marks],
+    () => [
+      ...(highlight ? [highlight] : []),
+      rehypeCitationMarkers(new Set(citationIds ? citationIds.split('\u0000') : [])),
+      rehypeBranchMarks(marks),
+    ],
+    [citationIds, highlight, marks],
   )
   const citationContext = useMemo(() => ({
     byId: new Map((citations ?? []).map((citation) => [citation.id, citation])),

@@ -28,7 +28,8 @@ export type ComposerAttach = {
   onRemove: (id: string) => void
 }
 
-export type ComposerWebSearch = { on: boolean; onToggle: () => void }
+/** `paid`: searches cost extra (a key is set), so the switch says so. */
+export type ComposerWebSearch = { on: boolean; onToggle: () => void; paid?: boolean }
 
 type ComposerProps = {
   value: string
@@ -185,7 +186,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                   onClick={webSearch.onToggle}
                   aria-pressed={webSearch.on}
                   aria-label="Search the web"
-                  title={webSearch.on ? 'Replies search the web and cite sources · click to stop' : 'Search the web for replies here'}
+                  title={`${webSearch.on ? 'Replies search the web and cite sources · click to stop' : 'Search the web for replies here'}${webSearch.paid ? ' · each search adds a small OpenRouter fee' : ''}`}
                   data-testid="web-search-toggle"
                   className={cn('icon-button m-1.5 mx-0', !attach && 'ml-1.5')}
                 >

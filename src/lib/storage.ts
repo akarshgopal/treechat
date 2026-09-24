@@ -1,6 +1,5 @@
 import { createEmptyState } from '@/lib/seed'
 import {
-  capSessions,
   createEmptyLibrary,
   libraryFromTree,
   replaceActiveTree,
@@ -197,7 +196,8 @@ export function parseTreeState(value: unknown): TreeState | null {
   return parseV2(value as Record<string, unknown>)
 }
 
-function parseSession(value: unknown): ChatSession | null {
+/** A stored or exported chat, validated; null when unusable. */
+export function parseSession(value: unknown): ChatSession | null {
   if (!value || typeof value !== 'object') return null
   const record = value as Record<string, unknown>
   if (typeof record.id !== 'string' || !record.id) return null
@@ -300,30 +300,42 @@ export function loadLibrary(): SessionLibrary {
   }
 }
 
-export function saveLibrary(library: SessionLibrary) {
-  if (typeof localStorage === 'undefined') return
-  const activeId = library.activeSessionId
-  let sessions = capSessions(library.sessions, activeId)
-  if (sessions.length === 0) {
-    const empty = createEmptyLibrary()
-    sessions = empty.sessions
-  }
-  const activeStill =
-    sessions.some((session) => session.id === activeId) ? activeId : sessions[0]!.id
-  const payload: SessionLibrary = { sessions, activeSessionId: activeStill }
+/** `full`: the browser refused the write (quota); nothing was dropped. */
+export type SaveResult = 'saved' | 'full' | 'unavailable'
 
-  while (payload.sessions.length > 0) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-      return
-    } catch {
-      if (payload.sessions.length <= 1) return
-      const drop = payload.sessions
-        .filter((session) => session.id !== payload.activeSessionId)
-        .sort((a, b) => a.updatedAt - b.updatedAt)[0]
-      if (!drop) return
-      payload.sessions = payload.sessions.filter((session) => session.id !== drop.id)
-    }
+/**
+ * Write the whole library. Never deletes chats to make room: when storage is
+ * full the write fails, the caller warns, and the person decides what to do.
+ */
+let lastSave: SaveResult = 'saved'
+const saveListeners = new Set<() => void>()
+
+/** For `useSyncExternalStore`: whether the most recent save went through. */
+export function subscribeSaveResult(listener: () => void) {
+  saveListeners.add(listener)
+  return () => saveListeners.delete(listener)
+}
+export const lastSaveResult = () => lastSave
+
+function reportSave(result: SaveResult): SaveResult {
+  if (result !== lastSave) {
+    lastSave = result
+    for (const listener of saveListeners) listener()
+  }
+  return result
+}
+
+export function saveLibrary(library: SessionLibrary): SaveResult {
+  if (typeof localStorage === 'undefined') return 'unavailable'
+  const sessions = library.sessions.length > 0 ? library.sessions : createEmptyLibrary().sessions
+  const activeSessionId = sessions.some((session) => session.id === library.activeSessionId)
+    ? library.activeSessionId
+    : sessions[0]!.id
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions, activeSessionId }))
+    return reportSave('saved')
+  } catch {
+    return reportSave('full')
   }
 }
 
