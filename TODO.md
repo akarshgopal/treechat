@@ -20,7 +20,8 @@ What to do before sharing TreeChat publicly (2026-09-24). Tick items off as they
   - Follow-up done: Settings, Documents, Takeaway, the command palette and the source lane load in their own chunks (fetched when the app is idle). First-load JS went from 890.6 KB (271.4 KB gzip) to 863.5 KB (265.3 KB gzip). What is left is needed for the first render: React (~190 KB), TanStack AI's chat client (~110 KB, used by every lane) and the markdown pipeline (~100 KB, every reply).
 - [x] 9. **Playwright in CI.** The Pages workflow runs the e2e suite (Chromium, one retry) before building; a failure blocks the deploy and uploads the report and traces.
 - [x] 10. **Export and import chats** as JSON.
-- [ ] 11. Browser check: Safari and Firefox (selection, CSS Custom Highlight API, the iOS bottom sheet).
+- [x] 11. **Browser check.** The e2e suite passes in Firefox, WebKit (desktop Safari) and an iPhone 15 WebKit profile (opt-in: `E2E_CROSS_BROWSER=1`), including selection → branch popover, the phone bottom sheet, and with the CSS Custom Highlight API removed (passages just go unpainted). Fixed: a reload right after a change could lose it (Firefox aborts in-flight IndexedDB writes). Firefox ignores `clipboardData` in a synthetic paste, so the test sets it itself.
+  - Still by hand on real devices: long-press selection and the on-screen keyboard over the sheet in iOS Safari.
 
 ## Presentation
 - [x] 12. **Page metadata:** current description, Open Graph and Twitter tags, a social preview image, theme colour.

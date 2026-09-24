@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useState,
@@ -76,7 +77,9 @@ export function TreeProvider({ children }: { children: ReactNode }) {
 function LoadedTreeProvider({ initial, children }: { initial: SessionLibrary; children: ReactNode }) {
   const [library, dispatch] = useReducer(sessionReducer, initial)
 
-  useEffect(() => {
+  // A layout effect, so a change is queued for saving before the event that
+  // made it returns: leaving the page right after still keeps it.
+  useLayoutEffect(() => {
     void saveLibrary(library)
   }, [library])
   const storageFull = useSyncExternalStore(subscribeSaveResult, () => lastSaveResult() === 'full')

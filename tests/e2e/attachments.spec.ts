@@ -13,7 +13,10 @@ async function pasteScreenshot(page: Page) {
     const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'))
     const data = new DataTransfer()
     data.items.add(new File([blob], 'image.png', { type: 'image/png' }))
-    target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+    // Firefox ignores `clipboardData` in the constructor (a real paste fills it).
+    if (event.clipboardData !== data) Object.defineProperty(event, 'clipboardData', { value: data })
+    target.dispatchEvent(event)
   })
 }
 

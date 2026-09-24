@@ -461,14 +461,39 @@ async function write(library: SessionLibrary): Promise<SaveResult> {
 
 let pending: SessionLibrary | null = null
 let writing: Promise<void> | null = null
+/** The latest library asked to be saved, until a write of it goes through. */
+let unsaved: SessionLibrary | null = null
 
 async function flush() {
   while (pending) {
     const next = pending
     pending = null
-    reportSave(await write(next))
+    const result = reportSave(await write(next))
+    if (result === 'saved' && unsaved === next) unsaved = null
   }
   writing = null
+}
+
+/**
+ * Leaving the page can abort a write still in flight (Firefox does, on
+ * reload). Keep that last change in localStorage, which is synchronous; the
+ * next load prefers it as the newer copy and moves it to IndexedDB.
+ */
+function keepUnsaved() {
+  if (!unsaved || typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...unsaved, savedAt: Date.now() } satisfies StoredLibrary))
+    localCopy = true
+  } catch {
+    // Too big for localStorage: the IndexedDB write may still land.
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', keepUnsaved)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') keepUnsaved()
+  })
 }
 
 /**
@@ -477,6 +502,7 @@ async function flush() {
  */
 export function saveLibrary(library: SessionLibrary): Promise<SaveResult> {
   pending = library
+  unsaved = library
   writing ??= flush()
   return writing.then(lastSaveResult)
 }
@@ -488,6 +514,7 @@ export async function closeLibraryStore() {
   db?.close()
   opening = null
   localCopy = false
+  unsaved = null
   reportSave('saved')
 }
 

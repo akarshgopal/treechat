@@ -117,7 +117,7 @@ pnpm test:e2e
 
 Playwright builds the production app and serves it on `127.0.0.1:5180`. A second Vite server on `127.0.0.1:5190` verifies branch requests under development StrictMode. Tests cover desktop and mobile Chromium, settings-key branch and nested-branch context, user-message regeneration, delayed responses and stream errors, branch cancellation and creation, reply destinations, takeaway review and undo, failed generation, source-link persistence, drafts across chats, and documents (add, attach, cited retrieval, remove). Provider requests are intercepted; no real API keys or model calls are used, and documents use a deterministic fake embedder (`localStorage["treechat:fake-embedder"] = "1"`) instead of downloading the model.
 
-Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. Screenshots are written to `test-results/`; failed runs also retain Playwright traces.
+Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. `E2E_CROSS_BROWSER=1 pnpm test:e2e --project=firefox --project=webkit --project=iphone` also runs the suite in Firefox, desktop Safari's engine and an iPhone 15 profile (`pnpm exec playwright install firefox webkit` first); CI runs Chromium only. Screenshots are written to `test-results/`; failed runs also retain Playwright traces.
 
 ## Stop, retry, and edit
 
