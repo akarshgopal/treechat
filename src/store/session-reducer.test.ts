@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createEmptyState, createSeedState } from '../lib/seed.ts'
-import { DEFAULT_SESSION_TITLE, MAX_SESSIONS } from '../lib/sessions.ts'
+import { DEFAULT_SESSION_TITLE } from '../lib/sessions.ts'
 import { sessionReducer } from './session-reducer.ts'
 import type { ChatMessage, ChatSession, SessionLibrary, TreeState } from '../types.ts'
 
@@ -92,18 +92,6 @@ test('restoreDemo replaces only the active session tree', () => {
   assert.equal(kept?.title, 'Keep me')
 })
 
-test('create-session past the cap drops the oldest non-active chat', () => {
-  const sessions = Array.from({ length: MAX_SESSIONS }, (_, i) =>
-    session(`s${i}`, createEmptyState(), { updatedAt: i, createdAt: i }),
-  )
-  const next = sessionReducer(library(sessions, 's0'), { type: 'create-session' })
-  assert.equal(next.sessions.length, MAX_SESSIONS)
-  assert.ok(next.sessions.some((item) => item.id === next.activeSessionId))
-  assert.notEqual(next.activeSessionId, 's0')
-  assert.ok(!next.sessions.some((item) => item.id === 's0'))
-  assert.ok(next.sessions.some((item) => item.id === 's1'))
-})
-
 test('set-session-documents attaches documents without reordering chats', () => {
   const state = library([session('a', createEmptyState(), { updatedAt: 5 }), session('b')])
   const next = sessionReducer(state, { type: 'set-session-documents', sessionId: 'a', documentIds: ['d1', 'd2', 'd1'] })
@@ -132,4 +120,18 @@ test('restoring the only chat replaces the blank one its delete left behind', ()
   const deleted = sessionReducer(library([only]), { type: 'delete-session', sessionId: 'only' })
   const restored = sessionReducer(deleted, { type: 'restore-session', session: only })
   assert.deepEqual(restored.sessions.map((item) => item.id), ['only'])
+})
+
+test('importing chats adds new ones, skips exact repeats and keeps clashing ids as copies', () => {
+  const here = session('a', createSeedState(), { title: 'Here', titleLocked: true, updatedAt: 5 })
+  const repeat = { ...here }
+  const clash = { ...here, title: 'Edited elsewhere', updatedAt: 9 }
+  const fresh = session('b', createSeedState(), { title: 'Fresh', titleLocked: true })
+  const next = sessionReducer(library([here]), { type: 'import-sessions', sessions: [repeat, clash, fresh] })
+  assert.equal(next.sessions.length, 3)
+  assert.equal(next.sessions.find((item) => item.id === 'a')?.title, 'Here')
+  const copy = next.sessions.find((item) => item.title === 'Edited elsewhere')
+  assert.ok(copy && copy.id !== 'a')
+  assert.equal(next.activeSessionId, copy!.id)
+  assert.equal(sessionReducer(next, { type: 'import-sessions', sessions: [repeat] }), next)
 })

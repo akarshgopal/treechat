@@ -9,9 +9,11 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test": "tsx --test src/lib/selection.test.ts src/lib/lenses.test.ts src/lib/attachments/attachments.test.ts src/lib/compaction.test.ts src/lib/summarize.test.ts src/lib/citation-markers.test.ts src/lib/source-content.test.ts src/lib/web-search.test.ts src/lib/markdown.test.ts src/lib/tree.test.ts src/lib/provider.test.ts src/lib/client-chat.test.ts src/lib/request-assistant.test.ts src/lib/storage.test.ts src/lib/sessions.test.ts src/lib/rail-collapse.test.ts src/lib/message-actions.test.ts src/store/tree-reducer.test.ts src/store/session-reducer.test.ts shared/system-prompts.test.ts server/adapter.test.ts src/lib/documents/chunk.test.ts src/lib/documents/keyword.test.ts src/lib/documents/store.test.ts src/lib/documents/retrieve.test.ts src/lib/documents/run-chat.test.ts"
+    "test": "tsx --test src/lib/selection.test.ts src/lib/lenses.test.ts src/lib/attachments/attachments.test.ts src/lib/compaction.test.ts src/lib/summarize.test.ts src/lib/citation-markers.test.ts src/lib/source-content.test.ts src/lib/web-search.test.ts src/lib/markdown.test.ts src/lib/tree.test.ts src/lib/provider.test.ts src/lib/client-chat.test.ts src/lib/request-assistant.test.ts src/lib/storage.test.ts src/lib/transfer.test.ts src/lib/rail-collapse.test.ts src/lib/message-actions.test.ts src/store/tree-reducer.test.ts src/store/session-reducer.test.ts shared/system-prompts.test.ts server/adapter.test.ts src/lib/documents/chunk.test.ts src/lib/documents/keyword.test.ts src/lib/documents/store.test.ts src/lib/documents/retrieve.test.ts src/lib/documents/run-chat.test.ts"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/libre-franklin": "^5.3.0",
     "@huggingface/transformers": "^4.3.0",
     "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-dialog": "^1.1.23",

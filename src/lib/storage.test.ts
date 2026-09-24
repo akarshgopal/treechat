@@ -175,3 +175,17 @@ test('a thread summary survives storage, and a stale one is dropped', () => {
   const branch = Object.values(loadTreeState().threads).find((thread) => thread.parentId)
   assert.ok(branch && !('summary' in branch))
 })
+
+test('a full storage refuses the save and reports it, without dropping any chat', () => {
+  const storage = mockLocalStorage()
+  const first = loadLibrary()
+  assert.equal(saveLibrary(first), 'saved')
+  const before = storage.getItem(STORAGE_KEY)
+  storage.setItem = () => {
+    throw new DOMException('quota', 'QuotaExceededError')
+  }
+  const bigger = { ...first, sessions: [...first.sessions, { ...first.sessions[0]!, id: 'second', updatedAt: 0 }] }
+  assert.equal(saveLibrary(bigger), 'full')
+  // What was saved before stays intact; nothing was deleted to make room.
+  assert.equal(storage.getItem(STORAGE_KEY), before)
+})

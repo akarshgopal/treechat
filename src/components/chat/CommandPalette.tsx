@@ -1,6 +1,7 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { FileText, GitBranch, Globe, MessageSquare, Search, Settings, Sparkles, SquarePen } from 'lucide-react'
+import { Download, FileText, GitBranch, Globe, MessageSquare, Search, Settings, Sparkles, SquarePen, TriangleAlert, Upload } from 'lucide-react'
+import { newIssueUrl } from '@/lib/links'
 import { sortSessions } from '@/lib/sessions'
 import { depthOf, threadTitle } from '@/lib/tree'
 import { cn } from '@/lib/utils'
@@ -30,6 +31,8 @@ type CommandPaletteProps = {
   onOpenDocuments: () => void
   onOpenSettings: () => void
   onShowDemo: () => void
+  onExport: () => void
+  onImport: () => void
 }
 
 /** Everything in one place, from the keyboard: Ctrl/⌘+K. */
@@ -66,6 +69,8 @@ function PaletteBody({
   onOpenDocuments,
   onOpenSettings,
   onShowDemo,
+  onExport,
+  onImport,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
@@ -76,7 +81,10 @@ function PaletteBody({
       { id: 'web-search', label: webSearch ? 'Stop searching the web here' : 'Search the web in this thread', group: 'Actions', icon: <Globe size={15} />, run: onToggleWebSearch },
       { id: 'documents', label: 'Documents', group: 'Actions', icon: <FileText size={15} />, run: onOpenDocuments },
       { id: 'settings', label: 'Settings', group: 'Actions', icon: <Settings size={15} />, run: onOpenSettings },
+      { id: 'export', label: 'Export chats', group: 'Actions', icon: <Download size={15} />, run: onExport },
+      { id: 'import', label: 'Import chats…', group: 'Actions', icon: <Upload size={15} />, run: onImport },
       { id: 'demo', label: 'Show the walkthrough in this chat', group: 'Actions', icon: <Sparkles size={15} />, run: onShowDemo },
+      { id: 'report', label: 'Report a problem', group: 'Actions', icon: <TriangleAlert size={15} />, run: () => window.open(newIssueUrl(), '_blank', 'noopener') },
     ]
     const branches: Command[] = Object.values(state.threads)
       .filter((thread) => thread.parentId && thread.id !== activeThreadId)
@@ -99,7 +107,7 @@ function PaletteBody({
         run: () => onSwitchChat(session.id),
       }))
     return [...actions, ...branches, ...chats]
-  }, [activeSessionId, activeThreadId, onFocusThread, onNewChat, onOpenDocuments, onOpenSettings, onShowDemo, onSwitchChat, onToggleWebSearch, sessions, state, webSearch])
+  }, [activeSessionId, activeThreadId, onExport, onFocusThread, onImport, onNewChat, onOpenDocuments, onOpenSettings, onShowDemo, onSwitchChat, onToggleWebSearch, sessions, state, webSearch])
 
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   const matches = commands.filter((command) => words.every((word) => command.label.toLowerCase().includes(word)))

@@ -67,6 +67,7 @@ import {
   type ClientProviderConfig,
 } from '@/lib/provider'
 import { lensQuestion, type Lens } from '@/lib/lenses'
+import { exportChats, parseImport, storeImportedAttachments } from '@/lib/transfer'
 import {
   offsetsInRoot,
   selectableMessageFromRange,
@@ -115,6 +116,8 @@ type EngineHandle = {
 type OpenSource = { threadId: string; messageId: string; citationId: string }
 
 const SOURCE_LANE_ID = 'source-lane'
+/** Set once the web search cost has been mentioned in this browser. */
+const WEB_SEARCH_COST_KEY = 'treechat:web-search-cost-seen'
 
 type ShellValue = {
   draftFor: (threadId: string) => string
@@ -143,6 +146,8 @@ type ShellValue = {
   narrow: boolean
   onRenameChat: (title: string) => void
   onDeleteChat: () => void
+  /** Web search was just switched on somewhere: mention its cost once. */
+  onWebSearchOn: () => void
 }
 
 const ShellContext = createContext<ShellValue | null>(null)
@@ -431,7 +436,14 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
           {visionNotice}
         </span>
       ) : undefined}
-      composerWebSearch={{ on: Boolean(thread.webSearch), onToggle: () => setWebSearch(threadId, !thread.webSearch) }}
+      composerWebSearch={{
+        on: Boolean(thread.webSearch),
+        paid: shell.status.mode === 'live',
+        onToggle: () => {
+          if (!thread.webSearch) shell.onWebSearchOn()
+          setWebSearch(threadId, !thread.webSearch)
+        },
+      }}
       onSend={send}
       onStop={() => chat.stop()}
       isLoading={chat.isLoading}
@@ -544,6 +556,8 @@ function TreeChatShell({
     deleteSession,
     restoreSession,
     setWebSearch,
+    importSessions,
+    storageFull,
   } = useTree()
   const [source, setSource] = useState<OpenSource | null>(null)
 
@@ -710,10 +724,53 @@ function TreeChatShell({
     focus(id)
   }, [clearSelection, createThread, focus])
 
+  /**
+   * With a key, web search costs extra per search. Say so the first time it
+   * is switched on in this browser; the switch's tooltip says it after that.
+   */
+  const onWebSearchOn = useCallback(() => {
+    if (status.mode !== 'live') return
+    try {
+      if (localStorage.getItem(WEB_SEARCH_COST_KEY)) return
+      localStorage.setItem(WEB_SEARCH_COST_KEY, '1')
+    } catch {
+      // Without storage the note may repeat; that is fine.
+    }
+    onToast({
+      id: createId('toast'),
+      text: 'Web search is on: each search adds a small fee on your OpenRouter key.',
+      actions: [{ label: 'Got it', onClick: () => undefined }],
+    })
+  }, [onToast, status.mode])
+
+  const onExport = useCallback(() => {
+    void exportChats(sessions).catch(() => onToast({ id: createId('toast'), text: 'Could not export your chats.', actions: [] }))
+  }, [onToast, sessions])
+
+  const importInput = useRef<HTMLInputElement>(null)
+  const onImport = useCallback(async (file: File) => {
+    try {
+      const imported = parseImport(await file.text())
+      await storeImportedAttachments(imported.attachments)
+      // Mirrors the reducer: an identical chat already here is skipped.
+      const count = imported.sessions.filter((session) =>
+        !sessions.some((existing) => existing.id === session.id && existing.updatedAt === session.updatedAt)).length
+      importSessions(imported.sessions)
+      onToast({
+        id: createId('toast'),
+        text: count === 0 ? 'Those chats are already here.' : `Imported ${count} ${count === 1 ? 'chat' : 'chats'}`,
+        actions: [],
+      })
+    } catch (error) {
+      onToast({ id: createId('toast'), text: error instanceof Error ? error.message : 'Could not import that file.', actions: [] })
+    }
+  }, [importSessions, onToast, sessions])
+
   const onLens = useCallback((passage: ChipState, lens: Lens) => {
     // "Source?" wants evidence, so that branch searches the web from the start.
+    if (lens.id === 'source') onWebSearchOn()
     startBranch(passage, lensQuestion(lens, passage.quote), { webSearch: lens.id === 'source', focusComposer: false })
-  }, [startBranch])
+  }, [onWebSearchOn, startBranch])
 
   const onAskMessage = useCallback((threadId: string, messageId: string) => {
     const element = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"][data-thread-id="${CSS.escape(threadId)}"]`)
@@ -889,6 +946,7 @@ function TreeChatShell({
       narrow,
       onRenameChat,
       onDeleteChat,
+      onWebSearchOn,
     }),
     [
       draftFor,
@@ -915,6 +973,7 @@ function TreeChatShell({
       narrow,
       onRenameChat,
       onDeleteChat,
+      onWebSearchOn,
     ],
   )
 
@@ -1143,6 +1202,15 @@ function TreeChatShell({
               />
             ) : null}
             {toast ? <Toast toast={toast} onDismiss={dismissToast} /> : null}
+            {storageFull ? (
+              <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-[13px] text-foreground" role="alert" data-testid="storage-full">
+                <span className="min-w-0 flex-1">
+                  This browser’s storage is full, so recent changes are not being saved. Export your chats, then delete
+                  some you no longer need.
+                </span>
+                <button type="button" className="btn btn-outline" onClick={onExport}>Export chats</button>
+              </div>
+            ) : null}
             <div className="min-h-0 flex-1">
               <Lanes
                 path={lanePath}
@@ -1175,6 +1243,21 @@ function TreeChatShell({
         onOpenChange={setSettingsOpen}
         onConfigChange={onProviderConfigChange}
         onRestoreDemo={onRestoreDemo}
+        onExport={onExport}
+        onImport={(file) => void onImport(file)}
+      />
+      <input
+        ref={importInput}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void onImport(file)
+        }}
       />
 
       <CommandPalette
@@ -1187,7 +1270,12 @@ function TreeChatShell({
         onSwitchChat={onSelectSession}
         onFocusThread={focus}
         onNewChat={onNewChat}
-        onToggleWebSearch={() => setWebSearch(activeThread.id, !activeThread.webSearch)}
+        onToggleWebSearch={() => {
+          if (!activeThread.webSearch) onWebSearchOn()
+          setWebSearch(activeThread.id, !activeThread.webSearch)
+        }}
+        onExport={onExport}
+        onImport={() => importInput.current?.click()}
         webSearch={Boolean(activeThread.webSearch)}
         onOpenDocuments={() => setDocumentsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}

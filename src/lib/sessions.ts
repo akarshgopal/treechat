@@ -5,7 +5,6 @@ import type { ChatSession, SessionLibrary, TreeState } from '@/types'
 
 export const DEFAULT_SESSION_TITLE = 'New chat'
 export const SESSION_TITLE_MAX = 42
-export const MAX_SESSIONS = 40
 
 /** Collapse whitespace and clip to the title budget. */
 export function normalizeSessionTitle(value: string): string {
@@ -60,27 +59,6 @@ export function activeSessionOf(library: SessionLibrary): ChatSession {
 /** Newest activity first — the switcher order. */
 export function sortSessions(sessions: ChatSession[]): ChatSession[] {
   return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)
-}
-
-/**
- * Drop oldest chats until we're at the cap. Never drops `keepId`
- * (the active / newly created session).
- */
-export function capSessions(sessions: ChatSession[], keepId: string): ChatSession[] {
-  if (sessions.length <= MAX_SESSIONS) return sessions
-  const oldestFirst = [...sessions].sort(
-    (a, b) => a.updatedAt - b.updatedAt || a.createdAt - b.createdAt,
-  )
-  const doomed = new Set<string>()
-  let extra = sessions.length - MAX_SESSIONS
-  for (const session of oldestFirst) {
-    if (extra <= 0) break
-    if (session.id === keepId) continue
-    doomed.add(session.id)
-    extra -= 1
-  }
-  if (doomed.size === 0) return sessions
-  return sessions.filter((session) => !doomed.has(session.id))
 }
 
 export function replaceActiveTree(

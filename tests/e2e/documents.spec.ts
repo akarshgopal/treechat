@@ -30,7 +30,11 @@ async function openDocuments(page: Page, mobile: boolean) {
     await page.getByTestId('session-switcher').click()
     await page.getByTestId('session-library').getByTestId('documents-entry').click()
   } else {
-    await page.getByTestId('documents-open').click()
+    // Retried: a click that lands while the reply re-renders the sidebar can be lost.
+    await expect(async () => {
+      await page.getByTestId('documents-open').click()
+      await expect(page.getByTestId('documents-dialog')).toBeVisible({ timeout: 1_000 })
+    }).toPass()
   }
 }
 
