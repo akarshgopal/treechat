@@ -22,7 +22,7 @@ What to do before sharing TreeChat publicly (2026-09-24). Tick items off as they
 
 ## Presentation
 - [x] 12. **Page metadata:** current description, Open Graph and Twitter tags, a social preview image, theme colour.
-- [ ] 13. Add a LICENSE if the repo is public.
+- [x] 13. Add a LICENSE if the repo is public. (MIT, © 2026 Akarsh Gopal.)
 - [x] 14. **Tidy the repo:** remove the leftover `verify-treechat.mjs`.
 - [x] 15. **README:** screenshot, live link, known limits (scanned PDFs have no OCR, documents fall back to keyword search after an embedder change, data stays in the browser).
 - [x] 16. **Report a problem** link to GitHub issues.

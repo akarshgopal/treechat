@@ -1,6 +1,8 @@
 {
   "name": "treechat",
   "private": true,
+  "license": "MIT",
+  "author": "Akarsh Gopal",
   "version": "0.0.0",
   "type": "module",
   "scripts": {

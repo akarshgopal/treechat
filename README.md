@@ -161,3 +161,7 @@ Without a key, replies are demo text generated in the page and nothing is sent a
 - Tailwind CSS + shadcn/ui (Button, Textarea, Badge, Tooltip, Separator, AlertDialog, Dialog, ScrollArea)
 - TanStack AI: `@tanstack/ai`, `@tanstack/ai-react` (`useChat`), `@tanstack/ai-openai` (OpenAI-compatible local-dev fallbacks)
 - GitHub Pages (static) + in-browser OpenRouter BYOK
+
+## License
+
+Created by Akarsh Gopal. Released under the [MIT License](LICENSE) — © 2026 Akarsh Gopal.
