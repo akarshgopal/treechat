@@ -68,11 +68,11 @@ export function SourcesList({ messageId, citations, openId, onOpen }: {
                 data-citation-id={citation.id}
                 title={citation.title}
                 className={cn(
-                  'flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-branch/5',
-                  open ? 'bg-branch/10 text-branch-bright' : 'text-muted-foreground',
+                  'flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-foreground/[0.05]',
+                  open ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground',
                 )}
               >
-                <span className="w-4 shrink-0 text-right font-mono text-[10.5px] text-branch-bright">{citation.id}</span>
+                <span className="w-4 shrink-0 text-right font-mono text-[11px] text-muted-foreground">{citation.id}</span>
                 <Icon size={13} className="shrink-0" aria-label={citation.kind === 'document' ? 'Document' : 'Web page'} />
                 <span className="min-w-0 truncate text-foreground">{citation.title}</span>
                 {where ? <span className="min-w-0 shrink-[2] truncate">{where}</span> : null}

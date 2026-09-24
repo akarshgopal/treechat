@@ -4,11 +4,6 @@ import { SourcesList } from '@/components/chat/Citations'
 import { MessageAttachments } from '@/components/chat/Attachments'
 import { MessageMarkdown } from '@/components/chat/MessageMarkdown'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { threadTitle } from '@/lib/tree'
 import type { ChatMessage, Thread } from '@/types'
@@ -32,13 +27,14 @@ type MessageBubbleProps = {
   onViewSource?: (threadId: string) => void
   hideActions?: boolean
   unanswered?: boolean
+  /** Among the last messages of the thread: touch screens show its actions. */
+  latest?: boolean
   /** The citation of this message whose source lane is open. */
   openCitationId?: string | null
   onOpenCitation?: (messageId: string, citationId: string) => void
 }
 
-const actionBtn =
-  'flex size-7 items-center justify-center rounded-md [@media(hover:none)]:size-9 text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40'
+const actionBtn = 'icon-button icon-button-sm'
 
 export function MessageBubble({
   message,
@@ -57,6 +53,7 @@ export function MessageBubble({
   onViewSource,
   hideActions = false,
   unanswered = false,
+  latest = false,
   openCitationId = null,
   onOpenCitation,
 }: MessageBubbleProps) {
@@ -95,12 +92,12 @@ export function MessageBubble({
     return (
       <article className="rise flex flex-col gap-2 rounded-xl border border-branch/25 bg-branch/[0.05] p-4" data-takeaway-id={message.id}>
         {sourceThread && onViewSource ? (
-          <button type="button" className="flex min-w-0 items-center gap-2 self-start text-left text-xs text-branch-bright hover:underline" onClick={() => onViewSource(sourceThread.id)} aria-label="View exploration" title={threadTitle(sourceThread)}>
+          <button type="button" className="flex min-w-0 items-center gap-2 self-start text-left text-xs text-branch-bright hover:underline" onClick={() => onViewSource(sourceThread.id)} aria-label="View branch" title={threadTitle(sourceThread)}>
             <ArrowUpRight size={14} className="shrink-0" />
             <span className="truncate">{threadTitle(sourceThread)}</span>
           </button>
         ) : <p className="truncate text-xs text-muted-foreground">{message.quote ?? 'Takeaway'}</p>}
-        <MessageMarkdown content={message.content} className="text-[14.5px] leading-[1.62]" />
+        <MessageMarkdown content={message.content} className="text-[15px] leading-[1.62]" />
       </article>
     )
   }
@@ -145,12 +142,12 @@ export function MessageBubble({
         onKeyDown={onEditKeyDown}
         data-testid="message-edit-input"
         rows={Math.min(8, Math.max(2, draft.split('\n').length))}
-        className="min-h-[42px] resize-none bg-paper px-3 py-2 text-[13.5px] leading-[1.5]"
+        className="min-h-[42px] resize-none bg-paper px-3 py-2 text-sm leading-[1.5]"
       />
       <div className="flex justify-end gap-1">
         <button
           type="button"
-          className="branch-secondary text-xs text-muted-foreground"
+          className="btn"
           onClick={cancelEdit}
           data-testid="message-edit-cancel"
         >
@@ -158,7 +155,7 @@ export function MessageBubble({
         </button>
         <button
           type="button"
-          className="branch-secondary text-xs text-branch-bright"
+          className="btn btn-primary"
           onClick={() => void confirmEdit()}
           disabled={!draft.trim()}
           data-testid="message-edit-save"
@@ -196,8 +193,8 @@ export function MessageBubble({
   ) : null
 
   const size = compact
-    ? 'text-[13.5px] leading-[1.55]'
-    : 'text-[14.5px] leading-[1.62]'
+    ? 'text-sm leading-[1.55]'
+    : 'text-[15px] leading-[1.62]'
 
   const actions = !editing && !hideActions ? (
     <MessageActions
@@ -207,6 +204,7 @@ export function MessageBubble({
       onAsk={onAsk}
       messageId={message.id}
       unanswered={unanswered}
+      latest={latest}
     />
   ) : null
 
@@ -214,13 +212,13 @@ export function MessageBubble({
     // An image-only message has no text bubble, just its attachments.
     const bubble = editing || message.content.trim() || !message.attachments
     return (
-      <article className="group flex flex-col items-end gap-1.5">
+      <article className="group relative flex flex-col items-end gap-1.5 outline-none" tabIndex={-1}>
         {labels ? <span className="eyebrow text-muted-foreground">you</span> : null}
         {message.attachments ? <MessageAttachments attachments={message.attachments} alignEnd /> : null}
         {bubble ? (
           <div
             className={cn(
-              'max-w-[78%] min-w-0 rounded-[9px] bg-branch/10 px-3.5 py-2.5 text-foreground',
+              'max-w-[78%] min-w-0 rounded-lg bg-secondary px-3.5 py-2.5 text-foreground',
               editing && 'w-full max-w-[78%]',
               size,
             )}
@@ -234,7 +232,7 @@ export function MessageBubble({
   }
 
   return (
-    <article className="group flex flex-col gap-1.5">
+    <article className="group relative flex flex-col gap-1.5 outline-none" tabIndex={-1}>
       {labels ? <span className="eyebrow text-muted-foreground">treechat</span> : null}
       <div className={cn('text-foreground', size)}>{body}</div>
       {sources}
@@ -250,6 +248,7 @@ function MessageActions({
   onAsk,
   messageId,
   unanswered,
+  latest,
 }: {
   isUser: boolean
   onRetry?: () => void
@@ -257,48 +256,41 @@ function MessageActions({
   onAsk?: () => void
   messageId: string
   unanswered: boolean
+  latest: boolean
 }) {
   if (!onRetry && !onEdit && !onAsk) return null
   return (
+    // Hangs in the gap below the message, so it never takes space of its own.
+    // Invisible until hover or focus, but reachable: moving onto a button
+    // hovers its message. On touch, invisible buttons must not catch taps, so
+    // only the latest messages (or one tapped to focus it) show them, in flow.
     <div
       className={cn(
-        'message-actions flex gap-0.5 text-xs opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100',
+        'message-actions absolute top-full z-10 flex gap-0.5 pt-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
+        unanswered || latest
+          ? '[@media(hover:none)]:static [@media(hover:none)]:opacity-100'
+          : '[@media(hover:none)]:pointer-events-none [@media(hover:none)]:group-focus-within:pointer-events-auto',
         unanswered && 'opacity-100',
-        isUser ? 'justify-end' : 'justify-start',
+        isUser ? 'right-0 justify-end' : '-left-1.5 justify-start',
       )}
     >
-      {onAsk ? <button type="button" className={actionBtn} onClick={onAsk} data-ask-message={messageId} aria-label="Branch from this message" title="Branch"><GitBranch size={15} /></button> : null}
+      {onAsk ? <button type="button" className={actionBtn} onClick={onAsk} data-ask-message={messageId} aria-label="Branch from this message" title="Branch from this message"><GitBranch size={14} /></button> : null}
       {onEdit ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className={actionBtn}
-              onClick={onEdit}
-              data-testid="message-edit"
-              aria-label="Edit message"
-            >
-              <Pencil className="size-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Edit & resend</TooltipContent>
-        </Tooltip>
+        <button type="button" className={actionBtn} onClick={onEdit} data-testid="message-edit" aria-label="Edit message" title="Edit & resend">
+          <Pencil size={14} />
+        </button>
       ) : null}
       {onRetry ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className={actionBtn}
-              onClick={onRetry}
-              data-testid={isUser ? 'message-regenerate' : 'message-retry'}
-              aria-label={isUser ? 'Regenerate response' : 'Retry'}
-            >
-              <RotateCw className="size-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{isUser ? 'Regenerate response' : 'Retry'}</TooltipContent>
-        </Tooltip>
+        <button
+          type="button"
+          className={actionBtn}
+          onClick={onRetry}
+          data-testid={isUser ? 'message-regenerate' : 'message-retry'}
+          aria-label={isUser ? 'Regenerate response' : 'Retry'}
+          title={isUser ? 'Regenerate response' : 'Retry'}
+        >
+          <RotateCw size={14} />
+        </button>
       ) : null}
     </div>
   )

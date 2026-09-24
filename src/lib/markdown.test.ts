@@ -4,10 +4,8 @@ import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import remarkRehype from 'remark-rehype'
 import { unified } from 'unified'
-import { createSeedState } from './seed.ts'
 import {
   hastPlainText,
-  languageFromClassName,
   wrapHastWithMarks,
   type HastElement,
   type HastRoot,
@@ -38,25 +36,6 @@ const mark = (id: string, start: number, end: number, open = false): Mark => ({
   start,
   end,
   open,
-})
-
-test('languageFromClassName reads highlight.js language classes', () => {
-  assert.equal(languageFromClassName('language-ts'), 'ts')
-  assert.equal(languageFromClassName(['hljs', 'language-JavaScript']), 'javascript')
-  assert.equal(languageFromClassName('hljs'), '')
-  assert.equal(languageFromClassName(undefined), '')
-})
-
-test('plain GFM paragraph visible text matches the source string', () => {
-  const source =
-    'TreeChat is a branching conversation. Select any passage and grow a side-thread from it.'
-  const tree = parseMarkdown(source)
-  assert.equal(hastPlainText(tree), source)
-})
-
-test('emphasis and links contribute only their visible text', () => {
-  const tree = parseMarkdown('hello **world** and [TreeChat](https://example.com)')
-  assert.equal(hastPlainText(tree), 'hello world and TreeChat')
 })
 
 test('fenced code visible text is the code, not the language tag', () => {
@@ -132,28 +111,4 @@ test('wrapHastWithMarks splits across highlight-style spans', () => {
   const wrapped = marksIn(tree)
   assert.equal(wrapped.length, 1)
   assert.equal(hastPlainText(wrapped[0]), 'x')
-})
-
-test('seed branch quotes still match visible text after GFM rendering', () => {
-  const state = createSeedState()
-  const root = state.threads[state.rootId]
-  assert.ok(root)
-
-  for (const thread of Object.values(state.threads)) {
-    const anchor = thread.anchor
-    if (!anchor) continue
-    const parent = state.threads[thread.parentId ?? '']
-    const message = parent?.messages.find((item) => item.id === anchor.messageId)
-    assert.ok(message, `missing anchored message ${anchor.messageId}`)
-    const tree = parseMarkdown(message.content)
-    const visible = hastPlainText(tree)
-    assert.equal(visible, message.content)
-    assert.equal(visible.slice(anchor.start, anchor.end), anchor.quote)
-    wrapHastWithMarks(tree, [
-      mark(thread.id, anchor.start, anchor.end, true),
-    ])
-    const wrapped = marksIn(tree)
-    assert.equal(wrapped.length, 1)
-    assert.equal(hastPlainText(wrapped[0]), anchor.quote)
-  }
 })

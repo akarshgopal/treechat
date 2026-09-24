@@ -15,12 +15,12 @@ export const CONTEXT_QUOTE = 'SELECTED QUOTE'
 /** Heads an ancestor level told through its running summary. */
 export const CONTEXT_EARLIER = 'Earlier, summarized:'
 
-/** A question gives an exploration a recognizable name, even on the same quote. */
+/** A question gives a branch a recognizable name, even on the same quote. */
 export function threadTitle(thread: Thread): string {
   if (!thread.parentId) return 'Main conversation'
   return clipText(
     thread.messages.find((message) => message.role === 'user' && message.content.trim())?.content
-      ?? thread.anchor?.quote ?? 'New exploration',
+      ?? thread.anchor?.quote ?? 'New branch',
     64,
   )
 }
@@ -53,28 +53,6 @@ export function childThreadsForMessage(
   return childThreads(state, threadId).filter(
     (thread) => thread.anchor?.messageId === messageId,
   )
-}
-
-/**
- * Group siblings that hang off the same span. Groups stay in first-seen
- * (oldest-first) order, and members inside a group keep that order.
- */
-export function groupThreadsBySpan(threads: Thread[]): Thread[][] {
-  const groups: Thread[][] = []
-  const indexByKey = new Map<string, number>()
-  for (const thread of threads) {
-    const key = thread.anchor
-      ? `${thread.anchor.start}:${thread.anchor.end}`
-      : thread.id
-    const existing = indexByKey.get(key)
-    if (existing == null) {
-      indexByKey.set(key, groups.length)
-      groups.push([thread])
-    } else {
-      groups[existing].push(thread)
-    }
-  }
-  return groups
 }
 
 /** Root first, including the thread itself. Empty if the id is unknown. */
@@ -118,14 +96,6 @@ export function descendantIds(state: TreeState, threadId: string): string[] {
   }
   walk(threadId)
   return out
-}
-
-/** Total replies in a thread and everything beneath it. */
-export function subtreeSize(state: TreeState, threadId: string): number {
-  return descendantIds(state, threadId).reduce(
-    (total, id) => total + (state.threads[id]?.messages.length ?? 0),
-    0,
-  )
 }
 
 /**

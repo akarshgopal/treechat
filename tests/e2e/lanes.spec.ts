@@ -61,8 +61,10 @@ test('a lens grows a branch from whole words and opens it beside its source', as
   }
   await expect(page.getByTestId('main-lane')).toBeVisible()
   await expect(page.locator(`[data-connector-for="${created!.id}"]`)).toBeAttached()
-  // The branch has its own composer; the main one still posts to the main thread.
-  await expect(branch.getByRole('textbox', { name: /^Message to Explain/ })).toBeFocused()
+  // A lens leaves focus where it was, so reading carries on while it answers;
+  // the branch has its own composer and the main one still posts to the main thread.
+  await expect(branch.getByRole('textbox', { name: /^Message to Explain/ })).toBeVisible()
+  await expect(branch.getByRole('textbox', { name: /^Message to Explain/ })).not.toBeFocused()
   await expect(page.getByTestId('main-lane').getByRole('textbox', { name: 'Message to Main conversation' })).toBeVisible()
 
   // Clicking the open branch's link closes its lane again.
@@ -142,6 +144,8 @@ test('panes collapse to strips, expand again, and resize from the gutter', async
   await resizer.dblclick()
   await expect.poll(async () => Math.round((await branch.boundingBox())!.width)).toBe(460)
 
+  // Collapsing lives in each lane's ⋯ menu.
+  await page.getByTestId('chat-menu').click()
   await page.getByTestId('collapse-lane').click()
   await expect(page.getByTestId('main-lane')).toHaveCount(0)
   await expect(page.getByTestId('lane-strip')).toHaveCount(1)
@@ -174,4 +178,24 @@ test('the sidebar holds New chat and Settings, collapses, resizes, and remembers
   await page.getByTestId('sidebar-toggle').click()
   await expect(page.getByTestId('chat-sidebar')).toHaveAttribute('data-collapsed', 'false')
   await expect.poll(async () => Math.round((await page.getByTestId('chat-sidebar').boundingBox())!.width)).toBe(Math.round(before + 80))
+})
+
+test('a branch whose passage scrolled away points back to it instead of drawing across the screen', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'phones show one lane at a time')
+  await page.setViewportSize({ width: 1280, height: 520 })
+  await select(page, 'msg-root-2', 0, 20)
+  await page.locator('[data-lens="explain"]').click()
+  await expect(page.getByTestId('branch-lane')).toBeVisible()
+  await expect(page.getByTestId('lane-jump')).toHaveCount(0)
+
+  // Scroll the main lane until the passage is gone below the fold.
+  await page.getByTestId('main-lane').locator('[data-radix-scroll-area-viewport]').evaluate((viewport) => {
+    viewport.scrollTop = viewport.scrollHeight
+  })
+  const jump = page.getByTestId('lane-jump')
+  await expect(jump).toBeVisible()
+  await expect(jump).toContainText('Passage')
+  await jump.click()
+  await expect(jump).toHaveCount(0)
+  await expect(page.locator('[data-message-id="msg-root-2"] mark[data-open="true"]').first()).toBeInViewport()
 })

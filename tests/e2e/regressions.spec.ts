@@ -53,7 +53,7 @@ test('the reading column never overflows its viewport', async ({ page }) => {
 test('editing an early message asks before removing later turns and branches', async ({ page }) => {
   await restoreDemo(page)
   const before = await tree(page)
-  await page.locator('article').first().hover()
+  await page.locator('article').first().click()
   await page.getByTestId('message-edit').first().click()
   await page.getByTestId('message-edit-input').fill('What is TreeChat, briefly?')
   await page.getByTestId('message-edit-save').click()
@@ -88,17 +88,17 @@ test('the branch shortcut ignores a passage that was deselected', async ({ page 
   await expect(page.getByTestId('branch-question')).toHaveCount(0)
 })
 
-test('discarding a branch confirms and Escape only closes the dialog', async ({ page }) => {
+test('discarding a branch happens at once and Undo brings it back', async ({ page }) => {
   await restoreDemo(page)
   await page.locator('button[aria-label^="Open branch"]').first().click()
+  const before = Object.keys((await tree(page)).threads).sort()
+  await page.getByTestId('branch-menu').click()
   await page.getByTestId('discard-branch').click()
-  await expect(page.getByRole('alertdialog')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('alertdialog')).toHaveCount(0)
-  await expect(page.getByTestId('back-to-spine')).toBeVisible()
-  await page.getByTestId('discard-branch').click()
-  await page.getByRole('button', { name: 'Discard', exact: true }).click()
   await expect.poll(async () => Object.keys((await tree(page)).threads)).toEqual(['thread-root'])
+  await expect(page.getByTestId('branch-lane')).toHaveCount(0)
+  await page.getByTestId('toast').getByRole('button', { name: 'Undo' }).click()
+  await expect.poll(async () => Object.keys((await tree(page)).threads).sort()).toEqual(before)
+  await expect(page.getByTestId('branch-lane')).toBeVisible()
 })
 
 test('Settings refuses a half-typed model id', async ({ page }) => {

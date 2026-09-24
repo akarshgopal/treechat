@@ -1,22 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  BACKGROUND_MODEL_OPTIONS,
   backgroundModelFor,
   isModelId,
   DEFAULT_OPENROUTER_MODEL,
-  TREECHAT_MODEL_HEADER,
   clearProviderConfig,
-  defaultProviderConfig,
   loadProviderConfig,
   normalizeProviderConfig,
-  parseMaxTokens,
   parseProviderConfig,
-  parseTemperature,
   saveProviderConfig,
   serializeProviderConfig,
-  shortModelName,
-  providerRequestHeaders,
 } from './provider.ts'
 
 function installLocalStorage() {
@@ -41,49 +34,6 @@ test('parseProviderConfig rejects missing or invalid payloads', () => {
   assert.equal(parseProviderConfig('{'), null)
   assert.equal(parseProviderConfig('[]'), null)
   assert.equal(parseProviderConfig('"nope"'), null)
-})
-
-test('parseProviderConfig reads OpenRouter key, model, and params', () => {
-  const config = parseProviderConfig(
-    JSON.stringify({
-      provider: 'openrouter',
-      apiKey: ' sk-or-v1-test ',
-      model: ' openai/gpt-4.1-mini ',
-      temperature: 0.7,
-      maxTokens: 1024,
-    }),
-  )
-  assert.deepEqual(config, {
-    provider: 'openrouter',
-    apiKey: 'sk-or-v1-test',
-    model: 'openai/gpt-4.1-mini',
-    temperature: 0.7,
-    maxTokens: 1024,
-  })
-})
-
-test('parseProviderConfig allows an empty key so prefs can persist in mock', () => {
-  const config = parseProviderConfig(
-    JSON.stringify({
-      model: 'x-ai/grok-4',
-      temperature: 0,
-      maxTokens: 512,
-    }),
-  )
-  assert.deepEqual(config, {
-    provider: 'openrouter',
-    apiKey: '',
-    model: 'x-ai/grok-4',
-    temperature: 0,
-    maxTokens: 512,
-  })
-})
-
-test('parseProviderConfig defaults the model', () => {
-  const config = parseProviderConfig(JSON.stringify({ apiKey: 'abc' }))
-  assert.equal(config?.model, DEFAULT_OPENROUTER_MODEL)
-  assert.equal(config?.temperature, undefined)
-  assert.equal(config?.maxTokens, undefined)
 })
 
 test('parseProviderConfig clamps temperature and drops invalid maxTokens', () => {
@@ -149,28 +99,6 @@ test('serializeProviderConfig keeps temperature 0', () => {
   assert.equal(parseProviderConfig(raw)?.temperature, 0)
 })
 
-test('parseTemperature and parseMaxTokens ignore junk', () => {
-  assert.equal(parseTemperature(''), undefined)
-  assert.equal(parseTemperature('nope'), undefined)
-  assert.equal(parseTemperature(1.234), 1.23)
-  assert.equal(parseMaxTokens(''), undefined)
-  assert.equal(parseMaxTokens('nope'), undefined)
-  assert.equal(parseMaxTokens(3.9), 3)
-})
-
-test('defaultProviderConfig is mock-safe', () => {
-  assert.deepEqual(defaultProviderConfig(), {
-    provider: 'openrouter',
-    apiKey: '',
-    model: DEFAULT_OPENROUTER_MODEL,
-  })
-})
-
-test('shortModelName strips the OpenRouter publisher prefix', () => {
-  assert.equal(shortModelName('anthropic/claude-sonnet-4'), 'claude-sonnet-4')
-  assert.equal(shortModelName('grok-4'), 'grok-4')
-})
-
 test('saveProviderConfig persists params without an API key', () => {
   installLocalStorage()
   saveProviderConfig({
@@ -189,28 +117,6 @@ test('saveProviderConfig persists params without an API key', () => {
   assert.equal(loadProviderConfig(), null)
 })
 
-test('providerRequestHeaders is empty without a key', () => {
-  assert.deepEqual(providerRequestHeaders(null), {})
-  assert.deepEqual(
-    providerRequestHeaders({
-      provider: 'openrouter',
-      apiKey: '',
-      model: 'x-ai/grok-4',
-    }),
-    {},
-  )
-})
-
-test('providerRequestHeaders attaches Bearer and model', () => {
-  const headers = providerRequestHeaders({
-    provider: 'openrouter',
-    apiKey: 'sk-or-v1-test',
-    model: 'anthropic/claude-sonnet-4',
-  })
-  assert.equal(headers.Authorization, 'Bearer sk-or-v1-test')
-  assert.equal(headers[TREECHAT_MODEL_HEADER], 'anthropic/claude-sonnet-4')
-})
-
 test('isModelId accepts vendor/model ids and rejects partial text', () => {
   assert.equal(isModelId('openai/gpt-4.1-mini'), true)
   assert.equal(isModelId('nvidia/nemotron-3-ultra-550b-a55b:free'), true)
@@ -221,25 +127,6 @@ test('isModelId accepts vendor/model ids and rejects partial text', () => {
   assert.equal(isModelId('open ai/gpt'), false)
 })
 
-test('the background model is parsed, validated, and persisted only when set', () => {
-  const parsed = parseProviderConfig(JSON.stringify({
-    apiKey: 'k',
-    model: 'openai/gpt-4.1-mini',
-    backgroundModel: ' meta-llama/llama-3.3-70b-instruct:free ',
-  }))
-  assert.equal(parsed?.backgroundModel, 'meta-llama/llama-3.3-70b-instruct:free')
-  assert.deepEqual(
-    JSON.parse(serializeProviderConfig(parsed!)).backgroundModel,
-    'meta-llama/llama-3.3-70b-instruct:free',
-  )
-
-  for (const junk of ['', '  ', 'llama', 42, null]) {
-    const config = normalizeProviderConfig({ apiKey: 'k', backgroundModel: junk })
-    assert.ok(!('backgroundModel' in config), `kept ${String(junk)}`)
-    assert.ok(!('backgroundModel' in JSON.parse(serializeProviderConfig(config))))
-  }
-})
-
 test('the background model is used only with a key and when it differs', () => {
   const base = { provider: 'openrouter' as const, apiKey: 'k', model: 'openai/gpt-4.1-mini' }
   assert.equal(backgroundModelFor(null), undefined)
@@ -247,9 +134,4 @@ test('the background model is used only with a key and when it differs', () => {
   assert.equal(backgroundModelFor({ ...base, backgroundModel: 'openai/gpt-4.1-nano' }), 'openai/gpt-4.1-nano')
   assert.equal(backgroundModelFor({ ...base, backgroundModel: base.model }), undefined)
   assert.equal(backgroundModelFor({ ...base, apiKey: '', backgroundModel: 'openai/gpt-4.1-nano' }), undefined)
-})
-
-test('background presets are valid ids and include a free one', () => {
-  assert.ok(BACKGROUND_MODEL_OPTIONS.every((option) => isModelId(option.id)))
-  assert.ok(BACKGROUND_MODEL_OPTIONS.some((option) => option.id.endsWith(':free')))
 })

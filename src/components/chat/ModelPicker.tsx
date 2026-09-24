@@ -33,7 +33,7 @@ export function ModelPicker({
 
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-[12px] font-medium text-foreground">
+      <label htmlFor={id} className="text-xs font-medium text-foreground">
         Model
       </label>
       <input
@@ -86,9 +86,9 @@ export function ModelPresetChips({
             onClick={() => onSelect(option.id)}
             data-testid={`model-preset-${option.id}`}
             className={cn(
-              'rounded-full border px-2 py-[3px] font-mono text-[10px] transition-colors',
+              'rounded-full border px-2.5 py-1 text-xs transition-colors',
               active
-                ? 'border-branch/50 bg-branch/10 text-branch-bright'
+                ? 'border-foreground/40 bg-foreground/[0.08] text-foreground'
                 : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
             )}
           >

@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Composer, type ComposerAttach } from '@/components/chat/Composer'
+import { Composer, type ComposerAttach, type ComposerWebSearch } from '@/components/chat/Composer'
+import { MarginBranches } from '@/components/chat/MarginBranches'
 import { MessageBubble } from '@/components/chat/MessageBubble'
 import { ReplyProgress } from '@/components/chat/ReplyProgress'
 import { SummaryDivider } from '@/components/chat/SummaryDivider'
@@ -30,6 +31,8 @@ type ThreadViewProps = {
   /** Files for the next message in this thread. */
   composerAttach?: ComposerAttach
   composerNotice?: ReactNode
+  /** Whether replies in this thread search the web. */
+  composerWebSearch?: ComposerWebSearch
   emptyLabel?: string
   onRetryAssistant?: (messageId: string) => void
   onRegenerateUser?: (messageId: string) => void
@@ -43,6 +46,8 @@ type ThreadViewProps = {
   onRetryError?: () => void
   /** Offered in an empty chat: load the walkthrough. */
   onShowDemo?: () => void
+  /** A line under the empty chat's prompt, e.g. that replies are demo text. */
+  blankNote?: ReactNode
   /** Space above a branch so its anchor sits level with the source passage. */
   leadOffset?: number
   /** The citation in this thread whose source lane is open beside it. */
@@ -50,14 +55,18 @@ type ThreadViewProps = {
   onOpenCitation?: (threadId: string, messageId: string, citationId: string) => void
 }
 
-/** Each branch off a message is a small, named link beneath its source. */
-function BranchRule({ thread, open, onOpen }: { thread: Thread; open: boolean; onOpen: () => void }) {
+/** A message and, in its left margin, the branches growing from it. */
+function MessageRow({ branches, openChildId, onOpenChild, children }: {
+  branches: Thread[]
+  openChildId: string | null
+  onOpenChild: (childId: string | null) => void
+  children: ReactNode
+}) {
   return (
-    <button type="button" onClick={onOpen} aria-label={`${open ? 'Close' : 'Open'} branch: ${threadTitle(thread)}`} aria-pressed={open}
-      className={cn('my-0.5 flex min-h-8 max-w-full items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-branch/5 hover:text-branch-bright', open ? 'bg-branch/10 text-branch-bright' : 'text-muted-foreground')}>
-      <span className="text-branch" aria-hidden>↳</span>
-      <span className="truncate">{threadTitle(thread)}</span>
-    </button>
+    <div className="relative flex flex-col gap-0.5">
+      {children}
+      {branches.length > 0 ? <MarginBranches branches={branches} openId={openChildId} onOpen={onOpenChild} /> : null}
+    </div>
   )
 }
 
@@ -80,6 +89,7 @@ export function ThreadView({
   composerTrailing,
   composerAttach,
   composerNotice,
+  composerWebSearch,
   emptyLabel,
   onRetryAssistant,
   onRegenerateUser,
@@ -91,6 +101,7 @@ export function ThreadView({
   error,
   onRetryError,
   onShowDemo,
+  blankNote,
   leadOffset = 0,
   openCitation = null,
   onOpenCitation,
@@ -135,23 +146,27 @@ export function ThreadView({
     if (viewport) viewport.scrollTop = viewport.scrollHeight
   }, [thread.messages, isLoading])
 
-  const transcript = (
-    <div className="flex flex-col gap-4">
-      {thread.messages.length === 0 && !thread.parentId ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center" data-testid="empty-chat-guide">
-          <p className="text-[15px] text-foreground">Ask anything to start.</p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Then select any passage in a reply to branch off into a side conversation, without losing your place.
-          </p>
-          {onShowDemo ? (
-            <button type="button" className="branch-starter mt-1 text-sm" onClick={onShowDemo} data-testid="show-demo">
-              See how it works
-            </button>
-          ) : null}
-        </div>
+  // A new chat: the prompt and the composer sit together in the middle.
+  const blank = thread.messages.length === 0 && !thread.parentId
+  const guide = blank ? (
+    <div className="mb-6 flex flex-col items-center gap-2 text-center" data-testid="empty-chat-guide">
+      <p className="text-[15px] font-medium text-foreground">Ask anything to start.</p>
+      <p className="max-w-sm text-[13px] text-muted-foreground">
+        Then select any passage in a reply to branch off, without losing your place.
+      </p>
+      {blankNote ? <p className="max-w-sm text-xs text-muted-foreground">{blankNote}</p> : null}
+      {onShowDemo ? (
+        <button type="button" className="btn mt-1" onClick={onShowDemo} data-testid="show-demo">
+          See how it works
+        </button>
       ) : null}
+    </div>
+  ) : null
+
+  const transcript = (
+    <div className="flex flex-col gap-8">
       {thread.messages.length === 0 && emptyLabel ? (
-        <p className="text-[13.5px] leading-[1.55] text-muted-foreground">
+        <p className="text-sm leading-[1.55] text-muted-foreground">
           {emptyLabel}
         </p>
       ) : null}
@@ -159,7 +174,7 @@ export function ThreadView({
       {thread.messages.map((message, index) => {
         const children = childThreadsForMessage(state, thread.id, message.id)
         return (
-          <div key={message.id} className="flex flex-col gap-0.5">
+          <MessageRow key={message.id} branches={children} openChildId={openChildId} onOpenChild={(childId) => onOpenChild(thread.id, childId)}>
             {thread.summary && thread.messages[index - 1]?.id === thread.summary.throughMessageId ? <SummaryDivider summary={thread.summary} /> : null}
             <MessageBubble
               message={message}
@@ -176,6 +191,7 @@ export function ThreadView({
               sourceThread={message.sourceThreadId ? state.threads[message.sourceThreadId] : undefined}
               onViewSource={onFocusChild}
               unanswered={message.role === 'user' && index === thread.messages.length - 1 && !isLoading}
+              latest={index >= thread.messages.length - 2}
               onRetry={
                 message.role === 'assistant' && message.kind !== 'drop-summary'
                   ? onRetryAssistant
@@ -185,15 +201,7 @@ export function ThreadView({
               openCitationId={openCitation?.messageId === message.id ? openCitation.citationId : null}
               onOpenCitation={onOpenCitation ? (messageId, citationId) => onOpenCitation(thread.id, messageId, citationId) : undefined}
             />
-            {children.length > 0 ? (
-              <div className="flex flex-col items-start" aria-label="Branches from this message">
-                {children.map((child) => {
-                  const open = child.id === openChildId
-                  return <BranchRule key={child.id} thread={child} open={open} onOpen={() => onOpenChild(thread.id, open ? null : child.id)} />
-                })}
-              </div>
-            ) : null}
-          </div>
+          </MessageRow>
         )
       })}
       {waitingForReply ? <ReplyProgress /> : null}
@@ -216,14 +224,15 @@ export function ThreadView({
       trailing={composerTrailing}
       attach={composerAttach}
       notice={composerNotice}
+      webSearch={composerWebSearch}
     />
   )
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-lane-id={thread.id}>
-      {header ? <div className="shrink-0 border-b border-border px-4 py-2 sm:px-6"><div className="mx-auto max-w-3xl">{header}</div></div> : null}
-      <ScrollArea ref={scrollRef} className="min-h-0 flex-1" data-testid="thread-scroll">
-        <div className="mx-auto w-full max-w-3xl px-4 py-5 sm:px-6">
+      {header}
+      <ScrollArea ref={scrollRef} className={cn('min-h-0', blank ? 'hidden' : 'flex-1')} data-testid="thread-scroll">
+        <div className="mx-auto w-full max-w-3xl px-7 pb-8 pt-6">
           {thread.anchor ? (
             <>
               <div aria-hidden className="lane-lead" style={{ height: leadOffset }} />
@@ -231,7 +240,7 @@ export function ThreadView({
                 data-lane-anchor
                 data-testid="branch-anchor"
                 title={thread.anchor.quote}
-                className="mb-4 line-clamp-3 border-l-2 border-branch pl-3 text-[13px] italic leading-snug text-muted-foreground"
+                className="mb-5 line-clamp-3 border-l-2 border-branch pl-3 text-[13px] italic leading-snug text-muted-foreground"
               >
                 {thread.anchor.quote}
               </blockquote>
@@ -240,14 +249,17 @@ export function ThreadView({
           {transcript}
         </div>
       </ScrollArea>
-      {awayFromLatest && (isLoading || unseen) ? <div className="relative h-0"><button type="button" className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-paper px-3 py-2 text-xs shadow-lg" onClick={() => {
+      {awayFromLatest && (isLoading || unseen) ? <div className="relative h-0"><button type="button" className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-paper px-3 py-1.5 text-xs shadow-lg" onClick={() => {
         following.current = true
         const viewport = scrollRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')
         if (viewport) viewport.scrollTop = viewport.scrollHeight
       }}>↓ Latest messages</button></div> : null}
-      <div className="border-t border-border bg-foreground/[0.025] px-4 py-3 sm:px-6">
-        <div className="mx-auto max-w-3xl">
-          {error ? <div role="alert" className="mb-3 text-sm text-destructive">{error} <button type="button" className="branch-secondary" onClick={onRetryError}>Try again</button></div> : null}
+      {/* The same slot holds the composer in both layouts, so it keeps focus
+          when the first message moves it from the middle to the bottom. */}
+      <div className={cn('px-4 pb-4', blank ? 'flex flex-1 flex-col justify-center pb-[14vh]' : 'pt-1')}>
+        <div className="mx-auto w-full max-w-3xl">
+          {guide}
+          {error ? <div role="alert" className="mb-2 flex items-center gap-2 text-[13px] text-destructive">{error} <button type="button" className="btn" onClick={onRetryError}>Try again</button></div> : null}
           {composer}
         </div>
       </div>

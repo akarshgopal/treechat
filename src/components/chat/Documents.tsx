@@ -69,7 +69,7 @@ function statusLine(doc: StoredDocument, library: DocumentLibrary): { text: stri
 
 const toneClass = {
   muted: 'text-muted-foreground',
-  busy: 'text-branch-bright',
+  busy: 'text-foreground',
   warn: 'text-amber-500',
   error: 'text-destructive',
 }
@@ -96,7 +96,7 @@ function AddFilesButton({ onAdded, compact = false }: { onAdded: (ids: string[])
           <Plus className="size-3.5" />
         </button>
       ) : (
-        <button type="button" className="branch-secondary border border-border" onClick={() => input.current?.click()} data-testid="documents-add">
+        <button type="button" className="btn btn-outline" onClick={() => input.current?.click()} data-testid="documents-add">
           <Upload className="size-3.5" />
           Add files
         </button>
@@ -117,14 +117,14 @@ function DocumentRow({ doc, library, checked, onToggle, onRemove }: {
   const indexing = Boolean(library.progress[doc.id])
   return (
     <li
-      className={cn('flex min-w-0 items-start gap-2.5 rounded-[7px] px-2 py-2', checked ? 'bg-branch/[0.08]' : 'hover:bg-foreground/[0.04]')}
+      className={cn('flex min-w-0 items-start gap-2.5 rounded-md px-2 py-2', checked ? 'bg-foreground/[0.06]' : 'hover:bg-foreground/[0.04]')}
       data-testid="document-row"
       data-document-id={doc.id}
       data-status={indexing ? 'indexing' : doc.status}
     >
       <input
         type="checkbox"
-        className="mt-0.5 size-4 shrink-0 accent-[var(--branch)]"
+        className="mt-0.5 size-4 shrink-0 accent-[var(--foreground)]"
         checked={checked}
         disabled={doc.status === 'error'}
         onChange={(event) => onToggle(event.target.checked)}
@@ -132,15 +132,15 @@ function DocumentRow({ doc, library, checked, onToggle, onRemove }: {
         data-testid="document-attach"
       />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[12.5px] font-medium text-foreground" title={doc.name}>{doc.name}</div>
-        <div className={cn('text-[11.5px] leading-snug', toneClass[status.tone])} title={doc.error}>{status.text}</div>
+        <div className="truncate text-[13px] font-medium text-foreground" title={doc.name}>{doc.name}</div>
+        <div className={cn('text-xs leading-snug', toneClass[status.tone])} title={doc.error}>{status.text}</div>
       </div>
       {confirming ? (
         <div className="flex shrink-0 items-center gap-1">
-          <button type="button" className="branch-secondary text-destructive" onClick={onRemove} data-testid="document-remove-confirm">
+          <button type="button" className="btn text-destructive hover:text-destructive" onClick={onRemove} data-testid="document-remove-confirm">
             Remove
           </button>
-          <button type="button" className="branch-secondary" onClick={() => setConfirming(false)}>Keep</button>
+          <button type="button" className="btn" onClick={() => setConfirming(false)}>Keep</button>
         </div>
       ) : (
         <button
@@ -177,16 +177,16 @@ export function DocumentsDialog({ open, onOpenChange }: { open: boolean; onOpenC
         </DialogHeader>
         <div className="flex flex-wrap items-center gap-2">
           <AddFilesButton onAdded={attach} />
-          <span className="text-[11.5px] text-muted-foreground">PDF, Markdown, or text — or drop files anywhere.</span>
+          <span className="text-xs text-muted-foreground">PDF, Markdown, or text — or drop files anywhere.</span>
         </div>
         {library.notice ? (
-          <div className="flex items-start gap-2 rounded-md border border-border px-2.5 py-2 text-[12px] text-muted-foreground" role="status">
+          <div className="flex items-start gap-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" role="status">
             <span className="flex-1">{library.notice}</span>
             <button type="button" className="text-[11px] underline-offset-2 hover:underline" onClick={dismissDocumentNotice}>Dismiss</button>
           </div>
         ) : null}
         {library.documents.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-[12.5px] text-muted-foreground">
+          <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground">
             No documents yet. Add a file to ask questions about it.
           </p>
         ) : (
@@ -216,16 +216,19 @@ export function DocumentsDialog({ open, onOpenChange }: { open: boolean; onOpenC
 export function DocumentsSidebarSection({ onOpen }: { onOpen: () => void }) {
   const library = useDocumentLibrary()
   const { attached, setAttached, attach } = useChatDocuments()
+  const count = attached.filter((id) => library.documents.some((doc) => doc.id === id)).length
   return (
-    <div className="flex min-h-0 flex-col gap-1.5" data-testid="documents-section">
+    <div className="flex min-h-0 flex-col gap-0.5" data-testid="documents-section" data-count={count}>
       <div className="flex items-center gap-1">
-        <button type="button" onClick={onOpen} className="eyebrow min-w-0 flex-1 truncate px-0.5 text-left text-muted-foreground hover:text-foreground" data-testid="documents-open">
-          documents{library.documents.length > 0 ? ` · ${library.documents.length}` : ''}
+        <button type="button" onClick={onOpen} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground" data-testid="documents-open" title="Open the document library">
+          <FileText className="size-4 shrink-0" />
+          <span className="truncate">Documents</span>
+          {library.documents.length > 0 ? <span className="ml-auto text-xs tabular-nums">{count}/{library.documents.length}</span> : null}
         </button>
         <AddFilesButton onAdded={attach} compact />
       </div>
       {library.documents.length === 0 ? (
-        <button type="button" onClick={onOpen} className="rounded-md px-0.5 text-left text-[11.5px] text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onOpen} className="rounded-md px-2 pb-1 text-left text-xs text-muted-foreground hover:text-foreground">
           Add files to ask about them
         </button>
       ) : (
@@ -235,17 +238,17 @@ export function DocumentsSidebarSection({ onOpen }: { onOpen: () => void }) {
             const checked = attached.includes(doc.id)
             return (
               <li key={doc.id}>
-                <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded-[7px] px-1 py-[3px] text-[12px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
+                <label className="flex h-7 min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
                   <input
                     type="checkbox"
-                    className="size-3.5 shrink-0 accent-[var(--branch)]"
+                    className="size-3.5 shrink-0 accent-[var(--foreground)]"
                     checked={checked}
                     disabled={doc.status === 'error'}
                     onChange={(event) => setAttached(event.target.checked ? [...attached, doc.id] : attached.filter((id) => id !== doc.id))}
                     aria-label={`Use ${doc.name} in this chat`}
                   />
                   <span className={cn('min-w-0 flex-1 truncate', checked && 'text-foreground')} title={doc.name}>{doc.name}</span>
-                  {busy ? <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-branch" title="Indexing" /> : null}
+                  {busy ? <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground" title="Indexing" /> : null}
                   {doc.status === 'error' ? <span className="size-1.5 shrink-0 rounded-full bg-destructive" title={doc.error} /> : null}
                 </label>
               </li>
@@ -254,33 +257,6 @@ export function DocumentsSidebarSection({ onOpen }: { onOpen: () => void }) {
         </ul>
       )}
     </div>
-  )
-}
-
-/** Header chip: how many documents this chat searches; opens the dialog. */
-export function DocumentsChip({ onOpen }: { onOpen: () => void }) {
-  const library = useDocumentLibrary()
-  const { attached } = useChatDocuments()
-  const count = attached.filter((id) => library.documents.some((doc) => doc.id === id)).length
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      data-testid="documents-chip"
-      data-count={count}
-      aria-label={count > 0 ? `Documents: ${count} used in this chat` : 'Documents'}
-      title={count > 0 ? `${count} ${count === 1 ? 'document' : 'documents'} searched in this chat` : 'Add documents to ask about them'}
-      className={cn(
-        'flex items-center gap-1.5 rounded-md border px-2 py-[3px] text-[11px] transition-colors',
-        count > 0
-          ? 'border-branch/40 bg-branch/[0.08] text-foreground hover:border-branch/70'
-          : 'border-border text-muted-foreground hover:border-branch/50 hover:text-foreground',
-      )}
-    >
-      <FileText className="size-3.5" />
-      <span className="hidden sm:inline">Documents</span>
-      {count > 0 ? <span className="tabular-nums">{count}</span> : null}
-    </button>
   )
 }
 
@@ -294,11 +270,12 @@ export function DocumentsLibraryEntry({ onOpen }: { onOpen: () => void }) {
       type="button"
       onClick={onOpen}
       data-testid="documents-entry"
-      className="flex items-center gap-2 rounded-md border border-border px-3 py-2.5 text-left text-[12.5px] text-foreground transition-colors hover:bg-secondary"
+      data-count={count}
+      className="flex items-center gap-2 rounded-md border border-border px-3 py-2.5 text-left text-[13px] text-foreground transition-colors hover:bg-secondary"
     >
       <FileText className="size-4 shrink-0 text-muted-foreground" />
       <span className="flex-1">Documents</span>
-      <span className="text-[11.5px] text-muted-foreground">
+      <span className="text-xs text-muted-foreground">
         {library.documents.length === 0 ? 'Add files' : `${count} of ${library.documents.length} in this chat`}
       </span>
     </button>
@@ -369,10 +346,10 @@ export function DocumentDropZone({ onDropped }: { onDropped: () => void }) {
   if (!active) return null
   return (
     <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-sm" data-testid="documents-drop-overlay">
-      <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-branch/60 px-10 py-8 text-center">
-        <Upload className="size-6 text-branch-bright" />
+      <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-foreground/40 px-10 py-8 text-center">
+        <Upload className="size-6 text-foreground" />
         <span className="text-sm font-medium text-foreground">Drop to add to this chat’s documents</span>
-        <span className="text-[12px] text-muted-foreground">PDF, Markdown, or text · stays in this browser</span>
+        <span className="text-xs text-muted-foreground">PDF, Markdown, or text · stays in this browser</span>
       </div>
     </div>
   )

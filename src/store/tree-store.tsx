@@ -25,6 +25,7 @@ type TreeContextValue = {
   expand: (parentId: string, childId: string | null) => void
   focus: (threadId: string) => void
   discard: (threadId: string) => void
+  restoreThreads: (threads: Thread[], focusId?: string) => void
   replaceMessages: (threadId: string, messages: ChatMessage[]) => void
   appendMessage: (threadId: string, message: ChatMessage) => void
   undoTakeaway: (threadId: string, messageId: string) => void
@@ -40,6 +41,7 @@ type TreeContextValue = {
   switchSession: (sessionId: string) => void
   renameSession: (sessionId: string, title: string) => void
   deleteSession: (sessionId: string) => void
+  restoreSession: (session: ChatSession) => void
   setSessionDocuments: (sessionId: string, documentIds: string[]) => void
   forgetDocument: (documentId: string) => void
 }
@@ -87,6 +89,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       setWebSearch: (threadId, on) =>
         dispatch({ type: 'tree', action: { type: 'set-web-search', threadId, on } }),
       discard: (threadId) => dispatch({ type: 'tree', action: { type: 'discard', threadId } }),
+      restoreThreads: (threads, focusId) => dispatch({ type: 'tree', action: { type: 'restore-threads', threads, focusId } }),
       replaceMessages: (threadId, messages) =>
         dispatch({
           type: 'tree',
@@ -118,6 +121,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
       renameSession: (sessionId, title) =>
         dispatch({ type: 'rename-session', sessionId, title }),
       deleteSession: (sessionId) => dispatch({ type: 'delete-session', sessionId }),
+      restoreSession: (session) => dispatch({ type: 'restore-session', session }),
       setSessionDocuments: (sessionId, documentIds) =>
         dispatch({ type: 'set-session-documents', sessionId, documentIds }),
       forgetDocument: (documentId) => dispatch({ type: 'forget-document', documentId }),

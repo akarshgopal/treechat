@@ -373,7 +373,37 @@ export function snapOffsetsToWords(text: string, start: number, end: number): { 
   if (to > from && WORD_CHAR.test(text[to - 1] ?? '')) {
     while (to < text.length && WORD_CHAR.test(text[to] ?? '')) to += 1
   }
-  return { start: from, end: to }
+  return trimEdges(text, from, to)
+}
+
+/** Separators a passage never starts or ends with: "any message," → "any message". */
+const EDGE_TRIM = /[\s,;:.…—–·]/u
+const PAIRS: Record<string, string> = { '(': ')', '[': ']', '{': '}', '“': '”', '‘': '’', '«': '»', '"': '"' }
+const CLOSERS = new Map(Object.entries(PAIRS).map(([open, close]) => [close, open]))
+
+/**
+ * Drop whitespace and punctuation at either end, and quotes or brackets whose
+ * partner is outside the passage. "?" and "!" stay: they change the meaning.
+ */
+function trimEdges(text: string, start: number, end: number): { start: number; end: number } {
+  let from = start
+  let to = end
+  const inside = () => text.slice(from, to)
+  for (let changed = true; changed && from < to;) {
+    changed = false
+    const first = text[from] ?? ''
+    const last = text[to - 1] ?? ''
+    if (EDGE_TRIM.test(first) || (PAIRS[first] && !inside().slice(1).includes(PAIRS[first]))) {
+      from += 1
+      changed = true
+    }
+    if (from < to && (EDGE_TRIM.test(last) || (CLOSERS.has(last) && last !== '"' && !inside().slice(0, -1).includes(CLOSERS.get(last)!)))) {
+      to -= 1
+      changed = true
+    }
+  }
+  // A selection of nothing but punctuation keeps its original span.
+  return from < to ? { start: from, end: to } : { start, end }
 }
 
 /**

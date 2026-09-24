@@ -36,7 +36,7 @@ function Thumbnail({ attachment, className }: { attachment: Attachment; classNam
   }
   if (stored === null) return <span className={cn('block animate-pulse rounded-md bg-foreground/10', className)} />
   if (!stored) {
-    return <span className={cn('flex items-center justify-center rounded-md border border-dashed border-border text-[10px] text-muted-foreground', className)}>missing</span>
+    return <span className={cn('flex items-center justify-center rounded-md border border-dashed border-border text-[11px] text-muted-foreground', className)}>missing</span>
   }
   return <img src={stored.data} alt={stored.description ?? attachment.name} className={cn('rounded-md object-cover', className)} draggable={false} />
 }
@@ -82,7 +82,7 @@ export function MessageAttachments({ attachments, alignEnd }: { attachments: Att
               onClick={() => setOpen(attachment)}
               aria-label={`View ${attachment.name}`}
               title={attachmentLabel(attachment)}
-              className="overflow-hidden rounded-md border border-border hover:border-branch/50"
+              className="overflow-hidden rounded-md border border-border hover:border-input"
             >
               <Thumbnail attachment={attachment} className="max-h-40 max-w-60" />
             </button>

@@ -69,29 +69,27 @@ export function SourceLane({ laneId, citation, leadOffset, narrow, onClose }: {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-lane-id={laneId}>
-      <div className="shrink-0 border-b border-border px-4 py-2 sm:px-6">
-        <div className="mx-auto flex max-w-3xl min-w-0 items-center gap-1.5">
-          {narrow ? (
-            <button type="button" className="branch-icon-button" onClick={onClose} aria-label="Back to conversation" title="Back" data-testid="close-source">
-              <ArrowLeft size={16} />
-            </button>
-          ) : null}
-          <Icon size={15} className="shrink-0 text-branch" aria-hidden />
-          <div className="min-w-0 flex-1 py-1">
-            <p className="truncate text-sm text-foreground" data-testid="source-title" title={citation.title}>{citation.title}</p>
-            {where ? <p className="truncate text-xs text-muted-foreground">{where}</p> : null}
-          </div>
-          {original ? (
-            <a className="branch-secondary shrink-0 text-xs text-branch-bright" href={original} target="_blank" rel="noopener noreferrer" data-testid="source-original">
-              <ExternalLink size={14} /> <span className="hidden sm:inline">Open original</span><span className="sr-only sm:hidden">Open original</span>
-            </a>
-          ) : null}
-          {narrow ? null : (
-            <button type="button" className="branch-icon-button" onClick={onClose} aria-label="Close source" title="Close source (Esc)" data-testid="close-source">
-              <X size={15} />
-            </button>
-          )}
+      <div className="flex h-12 min-w-0 shrink-0 items-center gap-1 border-b border-border px-3">
+        {narrow ? (
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Back to conversation" title="Back" data-testid="close-source">
+            <ArrowLeft size={15} />
+          </button>
+        ) : null}
+        <Icon size={15} className="ml-1.5 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="flex min-w-0 flex-1 items-baseline gap-2 px-1.5" title={where ? `${citation.title} · ${where}` : citation.title}>
+          <p className="min-w-0 truncate text-[13px] text-foreground" data-testid="source-title">{citation.title}</p>
+          {where ? <span className="min-w-0 shrink-[2] truncate text-xs text-muted-foreground">{where}</span> : null}
         </div>
+        {original ? (
+          <a className="btn" href={original} target="_blank" rel="noopener noreferrer" data-testid="source-original" aria-label="Open original" title="Open original">
+            <ExternalLink size={14} /> <span className="hidden lg:inline">Open original</span>
+          </a>
+        ) : null}
+        {narrow ? null : (
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close source" title="Close source (Esc)" data-testid="close-source">
+            <X size={15} />
+          </button>
+        )}
       </div>
       <ScrollArea className="min-h-0 flex-1" data-testid="source-scroll">
         <div className="mx-auto w-full max-w-3xl px-4 py-5 sm:px-6">
@@ -112,13 +110,13 @@ export function SourceLane({ laneId, citation, leadOffset, narrow, onClose }: {
                   : 'This document could not be opened here. The cited passage is quoted above.'}
               </p>
               {original ? (
-                <a className="branch-secondary text-branch-bright" href={original} target="_blank" rel="noopener noreferrer">
+                <a className="btn btn-outline" href={original} target="_blank" rel="noopener noreferrer">
                   <ExternalLink size={14} /> Open original
                 </a>
               ) : null}
             </div>
           ) : (
-            <div ref={bodyRef} className="tc-md text-[13.5px] leading-[1.6]" data-testid="source-content">
+            <div ref={bodyRef} className="tc-md text-sm leading-[1.6]" data-testid="source-content">
               {state.content.markdown?.trim() ? (
                 <Markdown remarkPlugins={remarkPlugins} components={{ a: SourceLink, img: SourceImage }}>
                   {state.content.markdown}

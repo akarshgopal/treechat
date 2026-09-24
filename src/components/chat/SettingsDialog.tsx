@@ -116,7 +116,7 @@ function SettingsBody({
         </DialogHeader>
         <form onSubmit={persist} className="grid gap-4" autoComplete="off">
           <label className="grid gap-1.5">
-            <span className="text-[12px] font-medium text-foreground">
+            <span className="text-xs font-medium text-foreground">
               OpenRouter API key
             </span>
             <input
@@ -165,8 +165,14 @@ function SettingsBody({
               </p>
             )}
           </div>
+          <details className="group rounded-lg border border-border" open={Boolean(initial?.backgroundModel || initial?.temperature !== undefined || initial?.maxTokens !== undefined) || undefined}>
+            <summary className="flex h-9 cursor-pointer list-none items-center justify-between rounded-lg px-3 text-[13px] text-muted-foreground hover:text-foreground">
+              Advanced
+              <span className="text-xs transition-transform group-open:rotate-90" aria-hidden>›</span>
+            </summary>
+            <div className="grid gap-4 border-t border-border p-3">
           <div className="grid gap-1.5">
-            <label htmlFor="settings-background-model" className="text-[12px] font-medium text-foreground">
+            <label htmlFor="settings-background-model" className="text-xs font-medium text-foreground">
               Background model
             </label>
             <input
@@ -195,9 +201,9 @@ function SettingsBody({
                   }}
                   data-testid={`background-preset-${option.id || 'main'}`}
                   className={cn(
-                    'rounded-full border px-2 py-[3px] font-mono text-[10px] transition-colors',
+                    'rounded-full border px-2.5 py-1 text-xs transition-colors',
                     backgroundModel.trim() === option.id
-                      ? 'border-branch/50 bg-branch/10 text-branch-bright'
+                      ? 'border-foreground/40 bg-foreground/[0.08] text-foreground'
                       : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
                   )}
                 >
@@ -217,7 +223,7 @@ function SettingsBody({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="grid gap-1.5">
-              <span className="text-[12px] font-medium text-foreground">
+              <span className="text-xs font-medium text-foreground">
                 Temperature
               </span>
               <input
@@ -238,7 +244,7 @@ function SettingsBody({
               <span className="text-[11px] text-muted-foreground">Optional · 0–2</span>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-[12px] font-medium text-foreground">
+              <span className="text-xs font-medium text-foreground">
                 Max tokens
               </span>
               <input
@@ -258,6 +264,8 @@ function SettingsBody({
               <span className="text-[11px] text-muted-foreground">Optional</span>
             </label>
           </div>
+            </div>
+          </details>
           <DialogFooter className="gap-2 sm:justify-between">
             {hasKey ? (
               <Button
@@ -280,22 +288,19 @@ function SettingsBody({
             </div>
           </DialogFooter>
         </form>
-        <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-          <div className="grid gap-0.5">
-            <span className="text-[12px] font-medium text-foreground">Demo conversation</span>
-            <span className="text-[11px] text-muted-foreground">
-              Replace this chat with the “What is TreeChat?” walkthrough.
-              Other chats are left alone.
-            </span>
-          </div>
+        {/* Not part of the form above: it acts at once, and Save does not cover it. */}
+        <div className="-mx-6 -mb-6 flex items-center justify-between gap-3 rounded-b-lg border-t border-border bg-foreground/[0.02] px-6 py-3">
+          <span className="text-xs text-muted-foreground">
+            Replace this chat with the “What is TreeChat?” walkthrough.
+          </span>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={onRestoreDemo}
             data-testid="settings-restore-demo"
           >
-            Restore demo
+            Show walkthrough
           </Button>
         </div>
     </>

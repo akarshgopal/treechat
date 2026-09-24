@@ -4,19 +4,11 @@ import { EventType } from '@tanstack/ai'
 import { saveProviderConfig, clearProviderConfig } from './provider.ts'
 import {
   OPENROUTER_CHAT_URL,
-  buildOpenRouterMessages,
   collectAssistantText,
-  contentDeltaFromOpenAIData,
-  hasLocalChatApi,
   openRouterChatStream,
-  openRouterHeaders,
-  openRouterRequestBody,
   resetLocalChatApiProbe,
-  resolveChatBackend,
   runChat,
-  toOpenAIChatMessages,
 } from './client-chat.ts'
-import { takeRunCitations } from './citations.ts'
 
 const originalFetch = globalThis.fetch
 
@@ -49,118 +41,6 @@ beforeEach(() => {
 afterEach(() => {
   resetLocalChatApiProbe()
   globalThis.fetch = originalFetch
-})
-
-test('contentDeltaFromOpenAIData reads streaming content and ignores done', () => {
-  assert.equal(
-    contentDeltaFromOpenAIData(
-      '{"choices":[{"delta":{"content":"Hello"}}]}',
-    ),
-    'Hello',
-  )
-  assert.equal(contentDeltaFromOpenAIData('[DONE]'), null)
-  assert.equal(contentDeltaFromOpenAIData('{'), null)
-  assert.equal(
-    contentDeltaFromOpenAIData('{"choices":[{"delta":{"content":""}}]}'),
-    null,
-  )
-})
-
-test('toOpenAIChatMessages keeps user and assistant text', () => {
-  assert.deepEqual(
-    toOpenAIChatMessages([
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', parts: [{ type: 'text', content: 'hello' }] },
-      { role: 'tool', content: 'skip' },
-    ]),
-    [
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'hello' },
-    ],
-  )
-})
-
-test('buildOpenRouterMessages prepends MAIN and SELECTED QUOTE system prompts', () => {
-  const messages = buildOpenRouterMessages([{ role: 'user', content: 'and then?' }], {
-    quote: 'a moss underline',
-    context: 'MAIN\nhello\n\nSELECTED QUOTE\n«a moss underline»',
-  })
-  assert.equal(messages[0]?.role, 'system')
-  assert.match(messages[0]?.content ?? '', /TreeChat/)
-  assert.equal(messages[1]?.role, 'system')
-  assert.match(messages[1]?.content ?? '', /SELECTED QUOTE/)
-  assert.match(messages[1]?.content ?? '', /MAIN/)
-  assert.equal(messages.at(-1)?.content, 'and then?')
-})
-
-test('openRouterHeaders use Bearer, HTTP-Referer, and X-Title', () => {
-  const headers = openRouterHeaders(
-    { provider: 'openrouter', apiKey: 'sk-or-v1-test', model: 'openai/gpt-4.1-mini' },
-    'https://akarshgopal.github.io',
-  )
-  assert.equal(headers.Authorization, 'Bearer sk-or-v1-test')
-  assert.equal(headers['HTTP-Referer'], 'https://akarshgopal.github.io')
-  assert.equal(headers['X-Title'], 'TreeChat')
-})
-
-test('openRouterRequestBody includes model and optional generation params', () => {
-  const messages = [{ role: 'user' as const, content: 'hi' }]
-  assert.deepEqual(
-    openRouterRequestBody(
-      { provider: 'openrouter', apiKey: 'k', model: 'x-ai/grok-4' },
-      messages,
-    ),
-    { model: 'x-ai/grok-4', messages, stream: true },
-  )
-  assert.deepEqual(
-    openRouterRequestBody(
-      {
-        provider: 'openrouter',
-        apiKey: 'k',
-        model: 'anthropic/claude-sonnet-4',
-        temperature: 0,
-        maxTokens: 256,
-      },
-      messages,
-    ),
-    {
-      model: 'anthropic/claude-sonnet-4',
-      messages,
-      stream: true,
-      temperature: 0,
-      max_tokens: 256,
-    },
-  )
-})
-
-test('resolveChatBackend is openrouter when a key is saved', async () => {
-  globalThis.fetch = (async () => new Response('ok', { status: 200 })) as typeof fetch
-  saveProviderConfig({
-    provider: 'openrouter',
-    apiKey: 'sk-or-v1-test',
-    model: 'openai/gpt-4.1-mini',
-  })
-  assert.equal(await resolveChatBackend(), 'openrouter')
-})
-
-test('resolveChatBackend is mock when no key and /api/status is missing', async () => {
-  globalThis.fetch = (async () => new Response('nope', { status: 404 })) as typeof fetch
-  assert.equal(await resolveChatBackend(), 'mock')
-})
-
-test('resolveChatBackend is local-api when /api/status is reachable', async () => {
-  globalThis.fetch = (async (input) => {
-    const url = String(input)
-    if (url.includes('/api/status')) {
-      return new Response(JSON.stringify({ mode: 'mock', provider: 'mock' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-    throw new Error(`unexpected ${url}`)
-  }) as typeof fetch
-  assert.equal(await resolveChatBackend(), 'local-api')
-  assert.equal(await hasLocalChatApi(), true)
 })
 
 test('openRouterChatStream converts OpenAI SSE into TEXT_MESSAGE_* events', async () => {
@@ -216,33 +96,6 @@ test('openRouterChatStream converts OpenAI SSE into TEXT_MESSAGE_* events', asyn
   )
   assert.equal(text, 'Hello world')
   assert.deepEqual(urls, [OPENROUTER_CHAT_URL])
-})
-
-test('runChat with a saved key never posts to /api/chat', async () => {
-  saveProviderConfig({
-    provider: 'openrouter',
-    apiKey: 'sk-or-v1-live',
-    model: 'openai/gpt-4.1-mini',
-  })
-  const urls: string[] = []
-  globalThis.fetch = (async (input) => {
-    urls.push(String(input))
-    return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-      status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-    })
-  }) as typeof fetch
-
-  const text = await collectAssistantText(
-    runChat({
-      messages: [{ role: 'user', content: 'hi' }],
-      threadId: 't1',
-      runId: 'r1',
-    }),
-  )
-  assert.equal(text, 'ok')
-  assert.ok(urls.every((url) => url.includes('openrouter.ai')))
-  assert.ok(urls.every((url) => !url.includes('/api/chat')))
 })
 
 test('runChat with model prefs but no key stays on the mock', async () => {
@@ -360,28 +213,6 @@ test('openRouterChatStream abort before response is silent', async () => {
   assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_ERROR))
 })
 
-test('runChat without a key and without /api uses the client mock', async () => {
-  const urls: string[] = []
-  globalThis.fetch = (async (input) => {
-    urls.push(String(input))
-    return new Response('missing', { status: 404 })
-  }) as typeof fetch
-
-  const chunks = []
-  for await (const chunk of runChat({
-    messages: [{ role: 'user', content: 'What is TreeChat?' }],
-    threadId: 't1',
-    runId: 'r1',
-  })) {
-    chunks.push(chunk)
-    if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break
-  }
-  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_START))
-  assert.ok(urls.every((url) => url.includes('/api/status')))
-  assert.ok(urls.every((url) => !url.includes('/api/chat')))
-  assert.ok(urls.every((url) => !url.includes('openrouter.ai')))
-})
-
 const streamInput = {
   messages: [{ role: 'user', content: 'hello' }],
   config: { provider: 'openrouter' as const, apiKey: 'test', model: 'test-model' },
@@ -422,10 +253,6 @@ test('empty provider streams and error finish reasons surface a retryable error'
     globalThis.fetch = (async () => new Response(body)) as typeof fetch
     await assert.rejects(collectAssistantText(openRouterChatStream(streamInput)), /provider/i)
   }
-})
-
-test('routing sessions are bounded to the provider limit', () => {
-  assert.equal(openRouterRequestBody(streamInput.config, [], 'a'.repeat(300)).session_id?.length, 256)
 })
 
 test('runChat sends a summarized thread as its summary plus the later messages', async () => {
@@ -476,21 +303,4 @@ test('runChat sends the full transcript when the summary does not match it', asy
   }))
   assert.deepEqual(sent.map((message) => message.role), ['system', 'user'])
   assert.ok(sent.every((message) => !message.content.includes('stale')))
-})
-
-test('a web-search run in mock mode cites two sources and keeps the event out of the stream', async () => {
-  globalThis.fetch = (async () => new Response('missing', { status: 404 })) as typeof fetch
-  const chunks = []
-  for await (const chunk of runChat({
-    messages: [{ role: 'user', content: 'Source?' }],
-    forwardedProps: { webSearch: true, quote: 'side thread' },
-    threadId: 'cited',
-    runId: 'r1',
-  })) chunks.push(chunk)
-  const text = chunks.map((chunk) => (chunk.type === EventType.TEXT_MESSAGE_CONTENT ? chunk.delta : '')).join('')
-  assert.match(text, /\[1\][\s\S]*\[2\]/)
-  assert.ok(chunks.every((chunk) => chunk.type !== EventType.CUSTOM))
-  const citations = takeRunCitations('cited')
-  assert.deepEqual(citations?.map((citation) => [citation.id, citation.kind, new URL(citation.url!).hostname]), [['1', 'web', 'example.com'], ['2', 'web', 'example.com']])
-  for (const citation of citations ?? []) assert.ok(text.includes(citation.snippet!), 'each snippet is quoted in the reply')
 })

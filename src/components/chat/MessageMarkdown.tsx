@@ -261,7 +261,7 @@ function BranchMark({
     >
       {children}
       {siblings ? (
-        <sup className="ml-0.5 font-mono text-[9px] font-medium tracking-wide text-branch-bright" {...{ [OFFSET_IGNORE_ATTR]: '' }}>
+        <sup className="ml-0.5 font-mono text-[11px] font-medium tracking-wide text-branch-bright" {...{ [OFFSET_IGNORE_ATTR]: '' }}>
           {openIndex >= 0 ? `${openIndex + 1}/${ids.length}` : ids.length}
         </sup>
       ) : null}

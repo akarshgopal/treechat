@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { ArrowUp, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, Globe, Paperclip, Square } from 'lucide-react'
 import { ComposerAttachments } from '@/components/chat/Attachments'
 import { Textarea } from '@/components/ui/textarea'
 import { useAutosize } from '@/lib/use-autosize'
@@ -27,6 +27,8 @@ export type ComposerAttach = {
   onAdd: (files: File[]) => void
   onRemove: (id: string) => void
 }
+
+export type ComposerWebSearch = { on: boolean; onToggle: () => void }
 
 type ComposerProps = {
   value: string
@@ -49,6 +51,8 @@ type ComposerProps = {
   attach?: ComposerAttach
   /** A line above the field, e.g. a problem with the attachments. */
   notice?: ReactNode
+  /** Whether replies search the web; omit to hide the switch. */
+  webSearch?: ComposerWebSearch
 }
 
 const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files')
@@ -71,6 +75,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
       testId,
       attach,
       notice,
+      webSearch,
     },
     ref,
   ) {
@@ -140,9 +145,9 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
           <div
             {...dropProps}
             className={cn(
-              'flex flex-1 flex-col rounded-lg border bg-paper transition-colors focus-within:border-branch/50',
-              accent ? 'border-branch/25' : 'border-input',
-              dropping && 'border-branch bg-branch/5',
+              'flex flex-1 flex-col rounded-lg border bg-paper transition-colors',
+              accent ? 'border-branch/25 focus-within:border-branch/50' : 'border-input focus-within:border-foreground/30',
+              dropping && 'border-foreground/50 bg-foreground/[0.04]',
             )}
           >
             {attach ? <ComposerAttachments attachments={attach.items} busy={attach.busy} onRemove={attach.onRemove} /> : null}
@@ -155,7 +160,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                     aria-label="Attach images or files"
                     title="Attach · or paste / drop"
                     data-testid="composer-attach"
-                    className="branch-icon-button m-1.5 mr-0"
+                    className="icon-button m-1.5 mr-0"
                   >
                     <Paperclip size={16} />
                   </button>
@@ -173,6 +178,19 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                     }}
                   />
                 </>
+              ) : null}
+              {webSearch ? (
+                <button
+                  type="button"
+                  onClick={webSearch.onToggle}
+                  aria-pressed={webSearch.on}
+                  aria-label="Search the web"
+                  title={webSearch.on ? 'Replies search the web and cite sources · click to stop' : 'Search the web for replies here'}
+                  data-testid="web-search-toggle"
+                  className={cn('icon-button m-1.5 mx-0', !attach && 'ml-1.5')}
+                >
+                  <Globe size={16} />
+                </button>
               ) : null}
               <Textarea
                 ref={textareaRef}
@@ -195,7 +213,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                   data-testid="composer-stop"
                   aria-label="Stop response"
                   title="Stop · Esc"
-                  className="branch-icon-button m-1.5"
+                  className="icon-button m-1.5"
                 >
                   <Square className="size-2.5 fill-current" />
                 </button>
@@ -205,7 +223,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                   disabled={disabled}
                   aria-label="Send message"
                   title="Send · Enter"
-                  className="branch-icon-button m-1.5 text-branch-bright disabled:opacity-50"
+                  className="icon-button m-1.5 bg-foreground text-background hover:bg-foreground/85 hover:text-background"
                 >
                   <ArrowUp size={18} />
                 </button>

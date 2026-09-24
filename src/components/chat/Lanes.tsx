@@ -11,7 +11,6 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
-import { FoldHorizontal } from 'lucide-react'
 import { threadTitle } from '@/lib/tree'
 import { cn } from '@/lib/utils'
 import type { Thread } from '@/types'
@@ -20,8 +19,8 @@ import type { Thread } from '@/types'
 export type LaneFrame = {
   /** Space above the branch so it starts level with its source passage. */
   leadOffset: number
-  /** Collapse control for the lane's header; null when it cannot fold. */
-  controls: ReactNode
+  /** Folds the lane into a strip; null when it cannot fold. */
+  onCollapse: (() => void) | null
 }
 
 /**
@@ -51,6 +50,8 @@ type LanesProps = {
   /** Name for the root thread (the chat's title). */
   rootTitle: string
   trailing?: TrailingLane | null
+  /** Threads with a reply streaming in: their connectors pulse. */
+  busyIds?: ReadonlySet<string>
 }
 
 type LaneEntry = { id: string; title: string; thread?: Thread; trailing?: TrailingLane }
@@ -58,13 +59,21 @@ type LaneEntry = { id: string; title: string; thread?: Thread; trailing?: Traili
 /** A connector: from somewhere in one lane to the head of another. */
 type LaneLink = { from: string; to: string; selectors: string[] }
 
-type Connector = { id: string; d: string; offscreen: boolean; start: { x: number; y: number } }
+type Connector = {
+  id: string
+  d: string
+  offscreen: boolean
+  start: { x: number; y: number }
+  /** Passage scrolled out of its lane: a pill at the lane's edge leads back to it. */
+  jump?: { x: number; y: number; direction: 'up' | 'down'; laneId: string; selectors: string[] }
+}
 
 const MAIN_MIN = 360
 const BRANCH_DEFAULT = 460
 const BRANCH_MIN = 320
 const BRANCH_MAX = 960
-const GUTTER = 28
+/** Lanes meet at a border; the resize handle overlaps it and takes no room. */
+const GUTTER = 0
 const STRIP_WIDTH = 44
 const RESIZE_STEP = 32
 const WIDTH_KEY = 'treechat:lane-width:v1'
@@ -112,7 +121,26 @@ function useFullLaneCount(scroller: RefObject<HTMLDivElement | null>, branchWidt
  * a line in the gutter ties the two together. Lanes fold into strips and the
  * gutters resize the lane to their right.
  */
-export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesProps) {
+const NO_IDS: ReadonlySet<string> = new Set()
+
+/** Ids that just stopped being busy, for a moment: "your branch is ready". */
+function useJustFinished(busyIds: ReadonlySet<string>) {
+  const [ready, setReady] = useState<ReadonlySet<string>>(NO_IDS)
+  const previous = useRef(busyIds)
+  useEffect(() => {
+    const finished = [...previous.current].filter((id) => !busyIds.has(id))
+    previous.current = busyIds
+    if (finished.length === 0) return
+    setReady((current) => new Set([...current, ...finished]))
+    const timer = window.setTimeout(() => {
+      setReady((current) => new Set([...current].filter((id) => !finished.includes(id))))
+    }, 1600)
+    return () => window.clearTimeout(timer)
+  }, [busyIds])
+  return ready
+}
+
+export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds = NO_IDS }: LanesProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const [defaultWidth, setDefaultWidth] = useState(loadDefaultWidth)
@@ -148,6 +176,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesPr
     return out
   }, [path, single, trailing])
   const { connectors, offsets } = useLaneGeometry(track, links, fullIds)
+  const ready = useJustFinished(busyIds)
   const deepest = entries.at(-1)?.id
 
   // Bring a newly opened lane into view; closing one needs no scroll.
@@ -160,7 +189,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesPr
     el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' })
   }, [deepest, entries.length, single])
 
-  const setFold = (threadId: string, value: boolean) => {
+  const setFold = useCallback((threadId: string, value: boolean) => {
     setFolds((current) => ({ ...current, [threadId]: value }))
     if (!value) {
       requestAnimationFrame(() =>
@@ -169,7 +198,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesPr
           ?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' }),
       )
     }
-  }
+  }, [])
 
   const resize = useCallback((threadId: string, width: number, remember: boolean) => {
     const next = clampWidth(width)
@@ -181,6 +210,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesPr
   }, [])
 
   const canFold = fullIds.length > 1
+  const collapseLane = (threadId: string) => () => setFolds((current) => ({ ...current, [threadId]: true }))
   const firstFullId = fullIds[0]
 
   return (
@@ -197,7 +227,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesPr
                 className="lane-strip group flex h-full shrink-0 flex-col items-center gap-3 border-r border-border py-4 text-muted-foreground hover:bg-branch/5 hover:text-foreground"
                 style={{ width: STRIP_WIDTH }}
                 onClick={() => setFold(entry.id, false)}
-                aria-label={`Expand pane: ${title}`}
+                aria-label={`Expand lane: ${title}`}
                 title={`Expand ${title}`}
                 aria-expanded={false}
                 data-testid="lane-strip"
@@ -211,18 +241,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesPr
           const width = widths[entry.id] ?? defaultWidth
           const frame: LaneFrame = {
             leadOffset: offsets[entry.id] ?? 0,
-            controls: canFold && index < entries.length - 1 ? (
-              <button
-                type="button"
-                className="branch-icon-button"
-                onClick={() => setFold(entry.id, true)}
-                aria-label={`Collapse pane: ${title}`}
-                title="Collapse pane"
-                data-testid="collapse-lane"
-              >
-                <FoldHorizontal size={15} />
-              </button>
-            ) : null,
+            onCollapse: canFold && index < entries.length - 1 ? collapseLane(entry.id) : null,
           }
           return (
             <Fragment key={entry.id}>
@@ -254,21 +273,47 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing }: LanesPr
         {connectors.length > 0 ? (
           <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible" aria-hidden data-testid="lane-connectors">
             {connectors.map((connector) => (
-              <g key={connector.id} data-connector-for={connector.id} className={cn(connector.offscreen && 'lane-connector-offscreen')}>
+              <g
+                key={connector.id}
+                data-connector-for={connector.id}
+                data-state={busyIds.has(connector.id) ? 'busy' : ready.has(connector.id) ? 'ready' : undefined}
+                className={cn(connector.offscreen && 'lane-connector-offscreen')}
+              >
                 <path d={connector.d} className="lane-connector" />
                 <circle cx={connector.start.x} cy={connector.start.y} r={3} className="lane-connector-dot" />
               </g>
             ))}
           </svg>
         ) : null}
+        {connectors.map((connector) => connector.jump ? (
+          <button
+            key={`jump-${connector.id}`}
+            type="button"
+            className="absolute z-20 flex h-7 -translate-x-full -translate-y-1/2 items-center gap-1 rounded-full border border-branch/30 bg-paper px-2.5 text-xs text-branch-bright shadow-lg hover:border-branch/60"
+            style={{ left: connector.jump.x, top: connector.jump.y }}
+            onClick={() => scrollToPassage(track.current, connector.jump!)}
+            data-testid="lane-jump"
+            title="Scroll to the passage this branch grew from"
+          >
+            {connector.jump.direction === 'up' ? '↑' : '↓'} Passage
+          </button>
+        ) : null)}
       </div>
     </div>
   )
 }
 
+/** Bring a branch's source passage back into the middle of its lane. */
+function scrollToPassage(root: HTMLElement | null, jump: NonNullable<Connector['jump']>) {
+  const lane = root?.querySelector<HTMLElement>(`[data-lane-id="${CSS.escape(jump.laneId)}"]`)
+  const passage = jump.selectors.reduce<HTMLElement | null>((found, selector) => found ?? lane?.querySelector<HTMLElement>(selector) ?? null, null)
+  passage?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
 /**
- * The gap between two lanes: it carries the connector and resizes the lane
- * to its right. Drag, arrow keys, or double-click to reset.
+ * The seam between two lanes: a zero-width slot whose handle straddles the
+ * border and resizes the lane to its right. Drag, arrow keys, or
+ * double-click to reset.
  */
 function ResizeGutter({ label, width, onResize, onReset }: {
   label: string
@@ -308,6 +353,7 @@ function ResizeGutter({ label, width, onResize, onReset }: {
   }
 
   return (
+    <div className="relative z-20 h-full w-0 shrink-0">
     <div
       role="separator"
       aria-orientation="vertical"
@@ -317,8 +363,7 @@ function ResizeGutter({ label, width, onResize, onReset }: {
       aria-valuemax={BRANCH_MAX}
       tabIndex={0}
       title="Drag to resize · double-click to reset"
-      className="lane-gutter group relative h-full shrink-0 cursor-col-resize touch-none outline-none"
-      style={{ width: GUTTER }}
+      className="lane-gutter group absolute inset-y-0 -left-1 w-2 cursor-col-resize touch-none outline-none"
       data-testid="lane-resizer"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -328,6 +373,7 @@ function ResizeGutter({ label, width, onResize, onReset }: {
       onKeyDown={onKeyDown}
     >
       <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-branch/40 group-focus-visible:bg-branch group-active:bg-branch" aria-hidden />
+    </div>
     </div>
   )
 }
@@ -403,16 +449,36 @@ function useLaneGeometry(track: RefObject<HTMLDivElement | null>, links: LaneLin
         const ey = view.top - childViewport.scrollTop + headNatural + settled + head.height / 2 - origin.top
         const sy = y - origin.top
         const bend = Math.max(14, (ex - sx) * 0.9)
+        if (y !== rawY) {
+          // The passage is out of view: a line across the whole screen to the
+          // lane's edge says nothing. A short stub marks the branch head, and
+          // a pill in the parent lane points to where the passage went.
+          const stub = Math.max(10, ex - sx - 4)
+          lines.push({
+            id: link.to,
+            offscreen: true,
+            start: { x: ex - stub, y: ey },
+            d: `M ${ex - stub} ${ey} L ${ex} ${ey}`,
+            jump: {
+              x: sx - 12,
+              y: (rawY < bounds.top ? bounds.top + 22 : bounds.bottom - 22) - origin.top,
+              direction: rawY < bounds.top ? 'up' : 'down',
+              laneId: link.from,
+              selectors: link.selectors,
+            },
+          })
+          continue
+        }
         lines.push({
           id: link.to,
-          offscreen: y !== rawY,
+          offscreen: false,
           start: { x: sx, y: sy },
           d: `M ${sx} ${sy} C ${sx + bend} ${sy}, ${ex - bend} ${ey}, ${ex} ${ey}`,
         })
       }
       offsetsRef.current = lead
       setConnectors((current) =>
-        current.length === lines.length && current.every((c, i) => c.d === lines[i]!.d && c.offscreen === lines[i]!.offscreen)
+        current.length === lines.length && current.every((c, i) => c.d === lines[i]!.d && c.offscreen === lines[i]!.offscreen && c.jump?.y === lines[i]!.jump?.y)
           ? current
           : lines,
       )

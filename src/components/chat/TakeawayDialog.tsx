@@ -64,12 +64,12 @@ export function TakeawayDialog({ thread, state, onClose, onConfirm }: {
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <label htmlFor="takeaway-text" className="sr-only">Your takeaway</label>
             <Textarea id="takeaway-text" value={content} onChange={(event) => setContent(event.target.value)} rows={5} className="mt-2 text-[15px] leading-relaxed" placeholder="Write a takeaway…" />
-            {error ? <button type="button" className="branch-secondary" onClick={() => setAttempt((value) => value + 1)}>Try again</button> : null}
+            {error ? <button type="button" className="btn" onClick={() => setAttempt((value) => value + 1)}>Try again</button> : null}
           </div>
         )}
         <div className="flex flex-wrap justify-end gap-2">
-          <button type="button" className="branch-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="branch-primary" data-testid="confirm-takeaway" onClick={() => onConfirm(content.trim())} disabled={loading || !content.trim() || !parent}>
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" data-testid="confirm-takeaway" onClick={() => onConfirm(content.trim())} disabled={loading || !content.trim() || !parent}>
             Add takeaway <ArrowUpLeft size={16} />
           </button>
         </div>

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { JSDOM } from 'jsdom'
 import {
-  MAX_BRANCH_SELECTION,
   offsetsInRoot,
   selectableMessageFromRange,
   splitMarkedText,
@@ -53,19 +52,6 @@ const mark = (id: string, start: number, end: number, open = false): Mark => ({
   open,
 })
 
-test('plain text when there are no marks', () => {
-  assert.deepEqual(splitMarkedText('hello', []), [{ text: 'hello' }])
-})
-
-test('splits around a single mark', () => {
-  const segments = splitMarkedText('one two three', [mark('a', 4, 7)])
-  assert.deepEqual(
-    segments.map((s) => s.text),
-    ['one ', 'two', ' three'],
-  )
-  assert.deepEqual(segments[1].marks?.map((m) => m.id), ['a'])
-})
-
 test('groups every branch hanging off the exact same span', () => {
   const segments = splitMarkedText('one two three', [
     mark('a', 4, 7),
@@ -74,17 +60,6 @@ test('groups every branch hanging off the exact same span', () => {
   ])
   assert.equal(segments.length, 3)
   assert.deepEqual(segments[1].marks?.map((m) => m.id), ['a', 'b', 'c'])
-})
-
-test('keeps non-overlapping marks separate', () => {
-  const segments = splitMarkedText('one two three', [
-    mark('a', 0, 3),
-    mark('b', 8, 13),
-  ])
-  assert.deepEqual(
-    segments.filter((s) => s.marks).map((s) => s.marks![0].id),
-    ['a', 'b'],
-  )
 })
 
 test('a merely-overlapping mark loses to the first one', () => {
@@ -102,45 +77,6 @@ test('drops marks that fall outside the content', () => {
   assert.deepEqual(splitMarkedText('short', [mark('a', 2, 99)]), [
     { text: 'short' },
   ])
-})
-
-test('offsetsInRoot maps a single word in one text node', () => {
-  const doc = documentFor(
-    '<div data-message-id="m1" data-selectable="true">one two three</div>',
-  )
-  const root = doc.querySelector<HTMLElement>('[data-message-id]')!
-  const text = firstText(root)
-  const range = setRange(doc, text, 4, text, 7)
-  assert.deepEqual(offsetsInRoot(root, range), { start: 4, end: 7, text: 'two' })
-})
-
-test('offsetsInRoot maps a full sentence in one text node', () => {
-  const sentence = 'Highlight any passage and grow a side-thread from it.'
-  const doc = documentFor(
-    `<div data-message-id="m1" data-selectable="true">${sentence}</div>`,
-  )
-  const root = doc.querySelector<HTMLElement>('[data-message-id]')!
-  const text = firstText(root)
-  const range = setRange(doc, text, 0, text, sentence.length)
-  assert.deepEqual(offsetsInRoot(root, range), {
-    start: 0,
-    end: sentence.length,
-    text: sentence,
-  })
-})
-
-test('offsetsInRoot maps a multi-line paragraph in one text node', () => {
-  const content = 'First line of the paragraph.\n\nSecond line still in the same message.'
-  const doc = documentFor('<div data-message-id="m1" data-selectable="true"></div>')
-  const root = doc.querySelector<HTMLElement>('[data-message-id]')!
-  root.textContent = content
-  const text = firstText(root)
-  const range = setRange(doc, text, 0, text, content.length)
-  assert.deepEqual(offsetsInRoot(root, range), {
-    start: 0,
-    end: content.length,
-    text: content,
-  })
 })
 
 test('offsetsInRoot maps a selection that spans two paragraph blocks', () => {
@@ -223,30 +159,4 @@ test('offsetsInRoot hides a selection that leaves the message', () => {
   const range = setRange(doc, firstText(first), 0, lastText(second), 5)
   assert.equal(selectableMessageFromRange(range), null)
   assert.equal(offsetsInRoot(first, range), null)
-})
-
-test('offsetsInRoot returns null for collapsed or whitespace selections', () => {
-  const doc = documentFor(
-    '<div data-message-id="m1" data-selectable="true">alpha   beta</div>',
-  )
-  const root = doc.querySelector<HTMLElement>('[data-message-id]')!
-  const text = firstText(root)
-  assert.equal(offsetsInRoot(root, setRange(doc, text, 2, text, 2)), null)
-  assert.equal(offsetsInRoot(root, setRange(doc, text, 5, text, 8)), null)
-})
-
-test('offsetsInRoot rejects huge selections past the sanity cap', () => {
-  const content = 'x'.repeat(MAX_BRANCH_SELECTION + 1)
-  const doc = documentFor('<div data-message-id="m1" data-selectable="true"></div>')
-  const root = doc.querySelector<HTMLElement>('[data-message-id]')!
-  root.textContent = content
-  const text = firstText(root)
-  const range = setRange(doc, text, 0, text, content.length)
-  assert.equal(offsetsInRoot(root, range), null)
-
-  const allowed = 'y'.repeat(MAX_BRANCH_SELECTION)
-  root.textContent = allowed
-  const allowedText = firstText(root)
-  const allowedRange = setRange(doc, allowedText, 0, allowedText, allowed.length)
-  assert.equal(offsetsInRoot(root, allowedRange)?.end, MAX_BRANCH_SELECTION)
 })

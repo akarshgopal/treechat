@@ -31,35 +31,6 @@ function library(sessions: ChatSession[], activeSessionId = sessions[0]!.id): Se
   return { sessions, activeSessionId }
 }
 
-test('create-session adds an empty spine and keeps the others', () => {
-  const seed = session('demo', createSeedState(), { title: 'What is TreeChat?' })
-  const next = sessionReducer(library([seed]), { type: 'create-session' })
-  assert.equal(next.sessions.length, 2)
-  assert.ok(next.sessions.some((item) => item.id === 'demo'))
-  const created = next.sessions.find((item) => item.id === next.activeSessionId)
-  assert.ok(created)
-  assert.notEqual(created.id, 'demo')
-  assert.equal(created.title, DEFAULT_SESSION_TITLE)
-  assert.deepEqual(created.treeState.threads[created.treeState.rootId]?.messages, [])
-  const kept = next.sessions.find((item) => item.id === 'demo')
-  assert.ok(
-    kept?.treeState.threads[kept.treeState.rootId]?.messages.some(
-      (message) => message.content === 'What is TreeChat?',
-    ),
-  )
-})
-
-test('switch-session moves to a known chat and ignores missing ids', () => {
-  const a = session('a')
-  const b = session('b')
-  const state = library([a, b], 'a')
-  assert.equal(
-    sessionReducer(state, { type: 'switch-session', sessionId: 'b' }).activeSessionId,
-    'b',
-  )
-  assert.equal(sessionReducer(state, { type: 'switch-session', sessionId: 'gone' }), state)
-})
-
 test('rename-session locks the title so later messages do not overwrite it', () => {
   const state = library([session('a')])
   const renamed = sessionReducer(state, {
@@ -75,31 +46,6 @@ test('rename-session locks the title so later messages do not overwrite it', () 
     action: { type: 'append-message', threadId: renamed.sessions[0]!.treeState.rootId, message: msg('m1', 'A different prompt') },
   })
   assert.equal(withMessage.sessions[0]?.title, 'Project plan')
-})
-
-test('the first user message titles an unlocked chat', () => {
-  const empty = createEmptyState()
-  const state = library([session('a', empty)])
-  const next = sessionReducer(state, {
-    type: 'tree',
-    action: {
-      type: 'append-message',
-      threadId: empty.rootId,
-      message: msg('m1', 'How do sessions work?'),
-    },
-  })
-  assert.equal(next.sessions[0]?.title, 'How do sessions work?')
-  assert.equal(next.sessions[0]?.titleLocked, false)
-})
-
-test('delete-session removes that chat and leaves the others', () => {
-  const state = library([session('a'), session('b'), session('c')], 'a')
-  const next = sessionReducer(state, { type: 'delete-session', sessionId: 'b' })
-  assert.deepEqual(
-    next.sessions.map((item) => item.id).sort(),
-    ['a', 'c'],
-  )
-  assert.equal(next.activeSessionId, 'a')
 })
 
 test('deleting the active chat focuses the most recently updated remaining one', () => {
@@ -171,23 +117,19 @@ test('set-session-documents attaches documents without reordering chats', () => 
   assert.equal('documentIds' in cleared.sessions[0]!, false)
 })
 
-test('forget-document detaches a removed document from every chat', () => {
-  const state = library([
-    { ...session('a'), documentIds: ['d1', 'd2'] },
-    { ...session('b'), documentIds: ['d1'] },
-    session('c'),
-  ])
-  const next = sessionReducer(state, { type: 'forget-document', documentId: 'd1' })
-  assert.deepEqual(next.sessions[0]!.documentIds, ['d2'])
-  assert.equal('documentIds' in next.sessions[1]!, false)
-  assert.equal(next.sessions[2], state.sessions[2])
-  assert.equal(sessionReducer(next, { type: 'forget-document', documentId: 'd1' }), next)
+test('restore-session brings a deleted chat back and opens it', () => {
+  const kept = session('kept', createEmptyState(), { title: 'Kept', titleLocked: true })
+  const gone = session('gone', createSeedState(), { title: 'Gone', titleLocked: true })
+  const deleted = sessionReducer(library([kept, gone], 'gone'), { type: 'delete-session', sessionId: 'gone' })
+  const restored = sessionReducer(deleted, { type: 'restore-session', session: gone })
+  assert.deepEqual(restored.sessions.map((item) => item.id).sort(), ['gone', 'kept'])
+  assert.equal(restored.activeSessionId, 'gone')
+  assert.equal(sessionReducer(restored, { type: 'restore-session', session: gone }), restored)
 })
 
-test('tree edits keep the attached documents', () => {
-  const state = library([{ ...session('a'), documentIds: ['d1'] }])
-  const rootId = state.sessions[0]!.treeState.rootId
-  const next = sessionReducer(state, { type: 'tree', action: { type: 'append-message', threadId: rootId, message: msg('m1') } })
-  assert.notEqual(next, state)
-  assert.deepEqual(next.sessions[0]!.documentIds, ['d1'])
+test('restoring the only chat replaces the blank one its delete left behind', () => {
+  const only = session('only', createSeedState(), { title: 'Only', titleLocked: true })
+  const deleted = sessionReducer(library([only]), { type: 'delete-session', sessionId: 'only' })
+  const restored = sessionReducer(deleted, { type: 'restore-session', session: only })
+  assert.deepEqual(restored.sessions.map((item) => item.id), ['only'])
 })

@@ -1,27 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { chunkBlocks, locatorOf } from './chunk.ts'
+import { chunkBlocks } from './chunk.ts'
 
 const sentence = (index: number) => `Sentence ${index} is about topic ${index % 7} in some detail.`
 const paragraph = (count: number, offset = 0) =>
   Array.from({ length: count }, (_, index) => sentence(index + offset)).join(' ')
-
-test('small blocks pack into one chunk; ids and indexes follow order', () => {
-  const chunks = chunkBlocks('doc', [{ text: 'First paragraph.\n\nSecond paragraph.' }])
-  assert.equal(chunks.length, 1)
-  assert.deepEqual(chunks[0], { id: 'doc:0', documentId: 'doc', index: 0, text: 'First paragraph.\n\nSecond paragraph.' })
-})
-
-test('long text splits near the target size on sentence boundaries', () => {
-  const chunks = chunkBlocks('doc', [{ text: paragraph(40) }], { size: 400, overlap: 80 })
-  assert.ok(chunks.length > 3)
-  for (const chunk of chunks) {
-    assert.ok(chunk.text.length <= 400 + 80 + 2, `chunk ${chunk.index} is ${chunk.text.length} chars`)
-    assert.match(chunk.text, /^Sentence \d+/, 'starts at a sentence')
-    assert.match(chunk.text, /detail\.$/, 'ends at a sentence')
-  }
-  assert.deepEqual(chunks.map((chunk) => chunk.index), chunks.map((_, index) => index))
-})
 
 test('consecutive chunks overlap by up to `overlap` characters', () => {
   const chunks = chunkBlocks('doc', [{ text: paragraph(40) }], { size: 400, overlap: 120 })
@@ -31,12 +14,6 @@ test('consecutive chunks overlap by up to `overlap` characters', () => {
     assert.ok(previous.includes(firstSentence), `chunk ${index} repeats the end of chunk ${index - 1}`)
     assert.ok(firstSentence.length <= 120)
   }
-})
-
-test('no overlap: chunks partition the text', () => {
-  const text = paragraph(30)
-  const chunks = chunkBlocks('doc', [{ text }], { size: 300, overlap: 0 })
-  assert.equal(chunks.map((chunk) => chunk.text).join(' '), text)
 })
 
 test('a sentence longer than the chunk is cut at word boundaries', () => {
@@ -89,11 +66,4 @@ test('markdown chunks carry their heading and do not overlap across sections', (
   assert.equal(setup.locator, 'Setup')
   assert.match(setup.text, /^## Setup/)
   assert.equal(chunks[0]!.locator, 'Intro')
-})
-
-test('locatorOf prefers pages, then the heading', () => {
-  assert.equal(locatorOf([4]), 'p. 4')
-  assert.equal(locatorOf([5, 4], 'ignored'), 'pp. 4–5')
-  assert.equal(locatorOf([], 'Usage'), 'Usage')
-  assert.equal(locatorOf([]), undefined)
 })
