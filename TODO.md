@@ -16,7 +16,8 @@ What to do before sharing TreeChat publicly (2026-09-24). Tick items off as they
 - [x] 7. **Preset model ids.** Checked against OpenRouter's model list on 2026-09-24: `x-ai/grok-4` and `meta-llama/llama-3.3-70b-instruct:free` were gone and are now `x-ai/grok-4.6` and `google/gemma-4-31b-it:free` (reads images, so it can describe screenshots too). The rest still exist.
   - Owner decision: the main presets are dated (GPT-4.1 Mini, Claude Sonnet 4, Gemini 2.5 Flash); newer ones such as `anthropic/claude-sonnet-5` and `openai/gpt-5.4-mini` are listed.
 - [x] 8. **Smaller deploy.** Drop the unused 27 MB ONNX runtime from `dist`; split the ~1 MB main bundle (pdf.js, markdown, highlighting) so phones load faster.
-  - Done: the deploy went from 29 MB to 4.1 MB, and highlight.js (~170 KB) now loads with the first code block. The main script is still ~890 KB (React, TanStack AI, markdown); splitting further is a follow-up.
+  - Done: the deploy went from 29 MB to 4.1 MB, and highlight.js (~170 KB) now loads with the first code block.
+  - Follow-up done: Settings, Documents, Takeaway, the command palette and the source lane load in their own chunks (fetched when the app is idle). First-load JS went from 890.6 KB (271.4 KB gzip) to 863.5 KB (265.3 KB gzip). What is left is needed for the first render: React (~190 KB), TanStack AI's chat client (~110 KB, used by every lane) and the markdown pipeline (~100 KB, every reply).
 - [x] 9. **Playwright in CI.** The Pages workflow runs the e2e suite (Chromium, one retry) before building; a failure blocks the deploy and uploads the report and traces.
 - [x] 10. **Export and import chats** as JSON.
 - [ ] 11. Browser check: Safari and Firefox (selection, CSS Custom Highlight API, the iOS bottom sheet).

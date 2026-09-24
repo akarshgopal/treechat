@@ -1,5 +1,7 @@
 import {
   createContext,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -12,15 +14,11 @@ import {
 import { useChat } from '@tanstack/ai-react'
 import { ChevronDown, Settings, SquarePen } from 'lucide-react'
 import { BranchPopover } from '@/components/chat/BranchPopover'
-import { CommandPalette } from '@/components/chat/CommandPalette'
-import { DocumentDropZone, DocumentsDialog, DocumentsLibraryEntry, DocumentsSidebarSection } from '@/components/chat/Documents'
+import { DocumentDropZone, DocumentsLibraryEntry, DocumentsSidebarSection } from '@/components/chat/Documents'
 import { BranchHeader, MainHeader } from '@/components/chat/LaneHeader'
 import { Toast, type ToastState } from '@/components/chat/Toast'
 import { Lanes, type LaneFrame, type TrailingLane } from '@/components/chat/Lanes'
-import { SourceLane } from '@/components/chat/SourceLane'
-import { TakeawayDialog } from '@/components/chat/TakeawayDialog'
 import { SessionList } from '@/components/chat/SessionList'
-import { SettingsDialog } from '@/components/chat/SettingsDialog'
 import { Sidebar } from '@/components/chat/Sidebar'
 import { ThreadView } from '@/components/chat/ThreadView'
 import { TreeRail } from '@/components/chat/TreeRail'
@@ -151,6 +149,41 @@ type ShellValue = {
 }
 
 const ShellContext = createContext<ShellValue | null>(null)
+
+/**
+ * Not needed for first paint, so they load in their own chunks: fetched once
+ * the app is idle, or on first use if that comes sooner.
+ */
+const loadSettingsDialog = () => import('@/components/chat/SettingsDialog')
+const loadDocumentsDialog = () => import('@/components/chat/DocumentsDialog')
+const loadCommandPalette = () => import('@/components/chat/CommandPalette')
+const loadTakeawayDialog = () => import('@/components/chat/TakeawayDialog')
+const loadSourceLane = () => import('@/components/chat/SourceLane')
+const SettingsDialog = lazy(() => loadSettingsDialog().then((module) => ({ default: module.SettingsDialog })))
+const DocumentsDialog = lazy(() => loadDocumentsDialog().then((module) => ({ default: module.DocumentsDialog })))
+const CommandPalette = lazy(() => loadCommandPalette().then((module) => ({ default: module.CommandPalette })))
+const TakeawayDialog = lazy(() => loadTakeawayDialog().then((module) => ({ default: module.TakeawayDialog })))
+const SourceLane = lazy(() => loadSourceLane().then((module) => ({ default: module.SourceLane })))
+
+function usePrefetchLazyParts() {
+  useEffect(() => {
+    const prefetch = () => {
+      for (const load of [loadSettingsDialog, loadDocumentsDialog, loadCommandPalette, loadTakeawayDialog, loadSourceLane]) void load().catch(() => undefined)
+    }
+    const idle = window.requestIdleCallback?.(prefetch, { timeout: 5_000 }) ?? window.setTimeout(prefetch, 2_000)
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idle)
+      else window.clearTimeout(idle)
+    }
+  }, [])
+}
+
+/** True from the first time `open` is: a lazy dialog then stays mounted, so it can animate closed. */
+function useOpenedOnce(open: boolean) {
+  const [opened, setOpened] = useState(open)
+  if (open && !opened) setOpened(true)
+  return opened || open
+}
 
 /** Stable empties, so memoized consumers don't see a new array every render. */
 const NO_ATTACHMENTS: Attachment[] = []
@@ -571,6 +604,10 @@ function TreeChatShell({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [documentsOpen, setDocumentsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const settingsMounted = useOpenedOnce(settingsOpen)
+  const documentsMounted = useOpenedOnce(documentsOpen)
+  const paletteMounted = useOpenedOnce(paletteOpen)
+  usePrefetchLazyParts()
   /** Threads with a reply streaming in, for the sidebar and connectors. */
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set())
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
@@ -1074,14 +1111,16 @@ function TreeChatShell({
       // The chip in the reply; the sources list when the text never cites it.
       selector: `${message} ${cite}, [data-sources-for="${CSS.escape(source.messageId)}"] ${cite}`,
       render: (frame) => (
-        <SourceLane
-          key={`${source.messageId}:${sourceCitation.id}`}
-          laneId={SOURCE_LANE_ID}
-          citation={sourceCitation}
-          leadOffset={frame.leadOffset}
-          narrow={narrow}
-          onClose={closeSource}
-        />
+        <Suspense fallback={null}>
+          <SourceLane
+            key={`${source.messageId}:${sourceCitation.id}`}
+            laneId={SOURCE_LANE_ID}
+            citation={sourceCitation}
+            leadOffset={frame.leadOffset}
+            narrow={narrow}
+            onClose={closeSource}
+          />
+        </Suspense>
       ),
     }
   }, [activeThread.id, closeSource, narrow, source, sourceCitation])
@@ -1235,17 +1274,25 @@ function TreeChatShell({
         </div>
       </ShellContext.Provider>
 
-      <DocumentsDialog open={documentsOpen} onOpenChange={setDocumentsOpen} />
+      {documentsMounted ? (
+        <Suspense fallback={null}>
+          <DocumentsDialog open={documentsOpen} onOpenChange={setDocumentsOpen} />
+        </Suspense>
+      ) : null}
       <DocumentDropZone onDropped={() => setDocumentsOpen(true)} />
 
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        onConfigChange={onProviderConfigChange}
-        onRestoreDemo={onRestoreDemo}
-        onExport={onExport}
-        onImport={(file) => void onImport(file)}
-      />
+      {settingsMounted ? (
+        <Suspense fallback={null}>
+          <SettingsDialog
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+            onConfigChange={onProviderConfigChange}
+            onRestoreDemo={onRestoreDemo}
+            onExport={onExport}
+            onImport={(file) => void onImport(file)}
+          />
+        </Suspense>
+      ) : null}
       <input
         ref={importInput}
         type="file"
@@ -1260,60 +1307,66 @@ function TreeChatShell({
         }}
       />
 
-      <CommandPalette
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        state={state}
-        activeThreadId={activeThread.id}
-        onSwitchChat={onSelectSession}
-        onFocusThread={focus}
-        onNewChat={onNewChat}
-        onToggleWebSearch={() => {
-          if (!activeThread.webSearch) onWebSearchOn()
-          setWebSearch(activeThread.id, !activeThread.webSearch)
-        }}
-        onExport={onExport}
-        onImport={() => importInput.current?.click()}
-        webSearch={Boolean(activeThread.webSearch)}
-        onOpenDocuments={() => setDocumentsOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onShowDemo={onRestoreDemo}
-      />
+      {paletteMounted ? (
+        <Suspense fallback={null}>
+          <CommandPalette
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            state={state}
+            activeThreadId={activeThread.id}
+            onSwitchChat={onSelectSession}
+            onFocusThread={focus}
+            onNewChat={onNewChat}
+            onToggleWebSearch={() => {
+              if (!activeThread.webSearch) onWebSearchOn()
+              setWebSearch(activeThread.id, !activeThread.webSearch)
+            }}
+            onExport={onExport}
+            onImport={() => importInput.current?.click()}
+            webSearch={Boolean(activeThread.webSearch)}
+            onOpenDocuments={() => setDocumentsOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onShowDemo={onRestoreDemo}
+          />
+        </Suspense>
+      ) : null}
 
       {previewThreadId && state.threads[previewThreadId] ? (
-        <TakeawayDialog key={previewThreadId} thread={state.threads[previewThreadId]} state={state} onClose={() => setPreviewThreadId(null)} onConfirm={(content) => {
-          const thread = state.threads[previewThreadId]
-          if (!thread?.parentId || !thread.anchor || !state.threads[thread.parentId]) return
-          const parentId = thread.parentId
-          enginesRef.current[parentId]?.stop()
-          const id = createId('takeaway')
-          appendMessage(parentId, { id, role: 'assistant', content, createdAt: Date.now(), kind: 'drop-summary', quote: thread.anchor.quote, sourceThreadId: thread.id })
-          setPreviewThreadId(null)
-          onToast({
-            id: createId('toast'),
-            text: 'Takeaway added',
-            actions: [
-              {
-                label: 'View takeaway',
-                keepOpen: true,
-                onClick: () => {
-                  focus(parentId)
-                  requestAnimationFrame(() => document.querySelector(`[data-takeaway-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' }))
+        <Suspense fallback={null}>
+          <TakeawayDialog key={previewThreadId} thread={state.threads[previewThreadId]} state={state} onClose={() => setPreviewThreadId(null)} onConfirm={(content) => {
+            const thread = state.threads[previewThreadId]
+            if (!thread?.parentId || !thread.anchor || !state.threads[thread.parentId]) return
+            const parentId = thread.parentId
+            enginesRef.current[parentId]?.stop()
+            const id = createId('takeaway')
+            appendMessage(parentId, { id, role: 'assistant', content, createdAt: Date.now(), kind: 'drop-summary', quote: thread.anchor.quote, sourceThreadId: thread.id })
+            setPreviewThreadId(null)
+            onToast({
+              id: createId('toast'),
+              text: 'Takeaway added',
+              actions: [
+                {
+                  label: 'View takeaway',
+                  keepOpen: true,
+                  onClick: () => {
+                    focus(parentId)
+                    requestAnimationFrame(() => document.querySelector(`[data-takeaway-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' }))
+                  },
                 },
-              },
-              {
-                label: 'Undo',
-                onClick: () => {
-                  enginesRef.current[parentId]?.stop()
-                  undoTakeaway(parentId, id)
+                {
+                  label: 'Undo',
+                  onClick: () => {
+                    enginesRef.current[parentId]?.stop()
+                    undoTakeaway(parentId, id)
+                  },
                 },
-              },
-            ],
-          })
-          returnToPassage(thread.id, id)
-        }} />
+              ],
+            })
+            returnToPassage(thread.id, id)
+          }} />
+        </Suspense>
       ) : null}
 
       <Dialog open={libraryOpen} onOpenChange={setLibraryOpen}>
