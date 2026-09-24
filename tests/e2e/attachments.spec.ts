@@ -1,12 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { TreeState } from '../../src/types'
-
-async function tree(page: Page) {
-  return page.evaluate(() => {
-    const library = JSON.parse(localStorage.getItem('treechat:v3')!)
-    return library.sessions.find((session: { id: string }) => session.id === library.activeSessionId).treeState as TreeState
-  })
-}
+import { tree } from './library'
 
 /** Paste a generated 2000×1000 PNG, as a screenshot from the clipboard arrives. */
 async function pasteScreenshot(page: Page) {

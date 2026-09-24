@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
+import { savedLibrary } from './library'
 
 async function sessionIds(page: Page): Promise<string[]> {
-  return page.evaluate(() => JSON.parse(localStorage.getItem('treechat:v3')!).sessions.map((session: { id: string }) => session.id))
+  return (await savedLibrary(page)).sessions.map((session) => session.id)
 }
 
 test.beforeEach(async ({ page }) => {
@@ -55,13 +56,14 @@ test('chats export to JSON and import into another browser', async ({ page, brow
 
 test('a full storage warns and keeps every chat instead of deleting old ones', async ({ page }) => {
   await page.getByTestId('show-demo').click()
-  const saved = await page.evaluate(() => localStorage.getItem('treechat:v3'))
+  await expect.poll(async () => (await savedLibrary(page)).sessions[0]?.title).toBe('What is TreeChat?')
+  const saved = await savedLibrary(page)
   // From now on the browser refuses to store the chat library.
   await page.evaluate(() => {
-    const setItem = Storage.prototype.setItem
-    Storage.prototype.setItem = function (key: string, value: string) {
-      if (key === 'treechat:v3') throw new DOMException('Quota exceeded', 'QuotaExceededError')
-      return setItem.call(this, key, value)
+    const put = IDBObjectStore.prototype.put
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+      if (this.name === 'library') throw new DOMException('Quota exceeded', 'QuotaExceededError')
+      return put.apply(this, args)
     }
   })
   await page.getByTestId('thread-composer').fill('One more message')
@@ -69,7 +71,7 @@ test('a full storage warns and keeps every chat instead of deleting old ones', a
   const warning = page.getByTestId('storage-full')
   await expect(warning).toBeVisible()
   await expect(warning).toContainText('recent changes are not being saved')
-  expect(await page.evaluate(() => localStorage.getItem('treechat:v3'))).toBe(saved)
+  expect(await savedLibrary(page)).toEqual(saved)
   const [download] = await Promise.all([page.waitForEvent('download'), warning.getByRole('button', { name: 'Export chats' }).click()])
   // The export has what storage could not hold.
   expect(await readFile((await download.path())!, 'utf8')).toContain('One more message')

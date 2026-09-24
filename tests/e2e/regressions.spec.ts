@@ -1,12 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { TreeState } from '../../src/types'
-
-async function tree(page: Page) {
-  return page.evaluate(() => {
-    const library = JSON.parse(localStorage.getItem('treechat:v3')!)
-    return library.sessions.find((session: { id: string }) => session.id === library.activeSessionId).treeState as TreeState
-  })
-}
+import { tree } from './library'
 
 async function restoreDemo(page: Page) {
   await page.getByTestId('settings-button').click()

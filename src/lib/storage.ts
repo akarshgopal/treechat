@@ -256,57 +256,156 @@ function readTreeFromKey(key: string): TreeState | null {
   }
 }
 
-/**
- * Load the session library. A v2 single-tree blob (or v1 spine) becomes one
- * session on first load; that migrated library is written to v3 immediately.
+/*
+ * The library lives in IndexedDB (`treechat-library`), so it is not capped at
+ * localStorage's ~5 MB. localStorage still matters: chats from before the move
+ * are migrated from there, and it is the fallback when IndexedDB is missing or
+ * failing, so a save is never simply dropped.
  */
-export function loadLibrary(): SessionLibrary {
-  if (typeof localStorage === 'undefined') return createEmptyLibrary()
+const DB_NAME = 'treechat-library'
+const DB_VERSION = 1
+const LIBRARY = 'library'
+const RECORD = 'current'
+/** An open that never settles (seen in some Safari versions) must not hang the app. */
+const OPEN_TIMEOUT_MS = 4_000
+
+/** What is written, to either store. `savedAt` tells which copy is newer. */
+type StoredLibrary = SessionLibrary & { savedAt: number }
+
+let opening: Promise<IDBDatabase> | null = null
+
+function request<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+function done(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error ?? new Error('Transaction aborted'))
+  })
+}
+
+function open(): Promise<IDBDatabase> {
+  if (opening) return opening
+  opening = new Promise<IDBDatabase>((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('This browser has no IndexedDB.'))
+      return
+    }
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      reject(new Error('Chat storage did not open.'))
+    }, OPEN_TIMEOUT_MS)
+    const req = indexedDB.open(DB_NAME, DB_VERSION)
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(LIBRARY)) req.result.createObjectStore(LIBRARY)
+    }
+    req.onsuccess = () => {
+      clearTimeout(timer)
+      const db = req.result
+      if (timedOut) {
+        db.close()
+        return
+      }
+      db.onversionchange = () => {
+        db.close()
+        opening = null
+      }
+      resolve(db)
+    }
+    req.onerror = () => {
+      clearTimeout(timer)
+      reject(req.error)
+    }
+    req.onblocked = () => {
+      clearTimeout(timer)
+      reject(new Error('Chat storage is blocked by another tab.'))
+    }
+  })
+  opening.catch(() => { opening = null })
+  return opening
+}
+
+async function readStored(): Promise<unknown> {
+  const db = await open()
+  return request(db.transaction(LIBRARY).objectStore(LIBRARY).get(RECORD))
+}
+
+async function writeStored(value: StoredLibrary): Promise<void> {
+  const db = await open()
+  const tx = db.transaction(LIBRARY, 'readwrite')
+  tx.objectStore(LIBRARY).put(value, RECORD)
+  await done(tx)
+}
+
+function isQuotaError(error: unknown) {
+  return error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22)
+}
+
+function savedAtOf(value: unknown): number {
+  const savedAt = (value as { savedAt?: unknown } | null)?.savedAt
+  return typeof savedAt === 'number' ? savedAt : 0
+}
+
+/** localStorage still holds a v3 library (from before the move, or a fallback save). */
+let localCopy = false
+
+/**
+ * The library as localStorage holds it. A v2 single-tree blob (or v1 spine)
+ * becomes one session; a v3 library wins over both.
+ */
+function readLocalLibrary(): { library: SessionLibrary; savedAt: number } | null {
+  if (typeof localStorage === 'undefined') return null
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
+    localCopy = raw !== null
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as unknown
         const library = parseLibrary(parsed)
-        if (library) return library
+        if (library) return { library, savedAt: savedAtOf(parsed) }
         const tree = parseTreeState(parsed)
-        if (tree) {
-          const migrated = libraryFromTree(tree)
-          saveLibrary(migrated)
-          return migrated
-        }
+        if (tree) return { library: libraryFromTree(tree), savedAt: 0 }
       } catch {
         // unreadable v3 — fall through to v2 / v1
       }
     }
-
-    const v2 = readTreeFromKey(V2_STORAGE_KEY)
-    if (v2) {
-      const migrated = libraryFromTree(v2)
-      saveLibrary(migrated)
-      return migrated
-    }
-
-    const v1 = readTreeFromKey(LEGACY_STORAGE_KEY)
-    if (v1) {
-      const migrated = libraryFromTree(v1)
-      saveLibrary(migrated)
-      return migrated
-    }
-
-    return createEmptyLibrary()
+    const older = readTreeFromKey(V2_STORAGE_KEY) ?? readTreeFromKey(LEGACY_STORAGE_KEY)
+    return older ? { library: libraryFromTree(older), savedAt: 0 } : null
   } catch {
-    return createEmptyLibrary()
+    return null
   }
+}
+
+/**
+ * Load the session library: from IndexedDB, unless localStorage holds a newer
+ * copy (chats from before the move, or saved while IndexedDB was failing).
+ * A copy taken from localStorage, or a migrated v2/v1 tree, is saved at once.
+ */
+export async function loadLibrary(): Promise<SessionLibrary> {
+  let stored: unknown
+  try {
+    stored = await readStored()
+  } catch {
+    // No IndexedDB: localStorage is all there is.
+  }
+  const fromDb = stored ? parseLibrary(stored) : null
+  const local = readLocalLibrary()
+  if (local && (!fromDb || local.savedAt > savedAtOf(stored))) {
+    await saveLibrary(local.library)
+    return local.library
+  }
+  return fromDb ?? createEmptyLibrary()
 }
 
 /** `full`: the browser refused the write (quota); nothing was dropped. */
 export type SaveResult = 'saved' | 'full' | 'unavailable'
 
-/**
- * Write the whole library. Never deletes chats to make room: when storage is
- * full the write fails, the caller warns, and the person decides what to do.
- */
 let lastSave: SaveResult = 'saved'
 const saveListeners = new Set<() => void>()
 
@@ -325,30 +424,83 @@ function reportSave(result: SaveResult): SaveResult {
   return result
 }
 
-export function saveLibrary(library: SessionLibrary): SaveResult {
-  if (typeof localStorage === 'undefined') return 'unavailable'
+/**
+ * Write the whole library. Never deletes chats to make room: when storage is
+ * full the write fails, the caller warns, and the person decides what to do.
+ */
+async function write(library: SessionLibrary): Promise<SaveResult> {
   const sessions = library.sessions.length > 0 ? library.sessions : createEmptyLibrary().sessions
   const activeSessionId = sessions.some((session) => session.id === library.activeSessionId)
     ? library.activeSessionId
     : sessions[0]!.id
+  const value: StoredLibrary = { sessions, activeSessionId, savedAt: Date.now() }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions, activeSessionId }))
-    return reportSave('saved')
+    await writeStored(value)
+    if (localCopy) {
+      try {
+        localStorage.removeItem(STORAGE_KEY)
+        localCopy = false
+      } catch {
+        // Harmless: the IndexedDB copy is newer, so it wins on load.
+      }
+    }
+    return 'saved'
+  } catch (error) {
+    if (isQuotaError(error)) return 'full'
+  }
+  // No usable IndexedDB: save to localStorage, as before the move.
+  if (typeof localStorage === 'undefined') return 'unavailable'
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+    localCopy = true
+    return 'saved'
   } catch {
-    return reportSave('full')
+    return 'full'
   }
 }
 
+let pending: SessionLibrary | null = null
+let writing: Promise<void> | null = null
+
+async function flush() {
+  while (pending) {
+    const next = pending
+    pending = null
+    reportSave(await write(next))
+  }
+  writing = null
+}
+
+/**
+ * Save the library. Writes run one at a time; a save requested while one is
+ * in flight replaces any other still waiting, so only the latest is written.
+ */
+export function saveLibrary(library: SessionLibrary): Promise<SaveResult> {
+  pending = library
+  writing ??= flush()
+  return writing.then(lastSaveResult)
+}
+
+/** Tests: finish writing, then forget the open connection and the last result. */
+export async function closeLibraryStore() {
+  await writing
+  const db = await opening?.catch(() => null)
+  db?.close()
+  opening = null
+  localCopy = false
+  reportSave('saved')
+}
+
 /** Active session's tree — used by tests and anything that still thinks in trees. */
-export function loadTreeState(): TreeState {
-  const library = loadLibrary()
+export async function loadTreeState(): Promise<TreeState> {
+  const library = await loadLibrary()
   const active =
     library.sessions.find((session) => session.id === library.activeSessionId) ??
     library.sessions[0]
   return active?.treeState ?? createEmptyState()
 }
 
-export function saveTreeState(state: TreeState) {
-  const library = loadLibrary()
-  saveLibrary(replaceActiveTree(library, state))
+export async function saveTreeState(state: TreeState) {
+  const library = await loadLibrary()
+  await saveLibrary(replaceActiveTree(library, state))
 }

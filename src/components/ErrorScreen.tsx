@@ -23,7 +23,7 @@ export class ErrorScreen extends Component<{ children: ReactNode }, State> {
 
   private exportAll = async () => {
     try {
-      await exportChats(loadLibrary().sessions)
+      await exportChats((await loadLibrary()).sessions)
       this.setState({ exported: 'done' })
     } catch {
       this.setState({ exported: 'failed' })

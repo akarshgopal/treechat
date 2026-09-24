@@ -1,12 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import type { TreeState } from '../../src/types'
-
-async function tree(page: Page) {
-  return page.evaluate(() => {
-    const library = JSON.parse(localStorage.getItem('treechat:v3')!)
-    return library.sessions.find((session: { id: string }) => session.id === library.activeSessionId).treeState as TreeState
-  })
-}
+import { expect, test } from '@playwright/test'
+import { tree } from './library'
 
 /** A main thread long enough that its older turns outgrow the summary trigger. */
 function longLibrary() {

@@ -87,7 +87,7 @@ No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 9. **Long threads are summarized for the model.** Once a thread's older messages grow past roughly 8k tokens, they are folded into a running summary in the background; requests then send the summary plus the recent messages, and branches get their parent's summary plus the full turns before the passage. A divider in the thread marks where the summary takes over and shows it. Editing summarized messages discards the summary.
 10. **Edit** and **Retry** rewrite a conversation from that point. If that would remove more than the reply being regenerated — later turns or branches anchored below — TreeChat asks first.
 11. The sidebar holds **New chat**, your chats (with the open chat's branches), **Documents**, and **Settings**. **Ctrl/⌘+K** opens a command palette to switch chats, jump to a branch, start a chat, toggle web search, or open Documents and Settings. Collapse it to an icon strip with its toggle or **Ctrl/⌘+\\**, and drag its right edge to resize it; both are remembered in this browser.
-12. Chats persist in `localStorage` (`treechat:v3`) as a session library. Older `treechat:v2` trees and `treechat:v1` spines are migrated on load. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the app bar also lists the current chat's branches, and selecting text opens the lenses as a sheet along the bottom. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
+12. Chats persist in IndexedDB (`treechat-library`) as a session library. Chats saved in `localStorage` by earlier versions (`treechat:v3` libraries, `treechat:v2` trees and `treechat:v1` spines) move there on the first load; if IndexedDB is unavailable, chats are saved to `localStorage` (`treechat:v3`) instead. **New chat** creates a separate session, or reuses one that is still blank. On phones, the chat switcher in the app bar also lists the current chat's branches, and selecting text opens the lenses as a sheet along the bottom. Restore the seeded demo from Settings to replace only the active chat; other sessions and provider settings stay intact.
 
 ## Attachments
 
@@ -134,7 +134,7 @@ These act on the **active session’s active thread** (spine or branch), not acr
 Chats, settings, documents and attachments live only in this browser (`localStorage` and IndexedDB).
 
 - **Export chats** (Settings, or the command palette) downloads every chat as JSON, including pasted images and attached files; **Import chats…** adds the chats in such a file next to the ones already here. Importing the same file twice changes nothing; a chat that changed in both places is kept as a copy. Documents are not included — add them again.
-- If the browser's storage fills up (about 5 MB for chats), TreeChat keeps every chat, stops saving new changes, and says so with an **Export chats** button. It never deletes chats to make room.
+- If the browser's storage fills up, TreeChat keeps every chat, stops saving new changes, and says so with an **Export chats** button. It never deletes chats to make room.
 - If the app ever crashes, the error screen offers **Reload**, **Export my chats** and a prefilled bug report.
 
 ## Privacy

@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
@@ -12,7 +13,7 @@ import { createId } from '@/lib/ids'
 import { activeSessionOf } from '@/lib/sessions'
 import { lastSaveResult, loadLibrary, saveLibrary, subscribeSaveResult } from '@/lib/storage'
 import { sessionReducer } from '@/store/session-reducer'
-import type { Anchor, ChatMessage, ChatSession, Thread, ThreadSummary, TreeState } from '@/types'
+import type { Anchor, ChatMessage, ChatSession, SessionLibrary, Thread, ThreadSummary, TreeState } from '@/types'
 
 type TreeContextValue = {
   state: TreeState
@@ -52,11 +53,31 @@ type TreeContextValue = {
 
 const TreeContext = createContext<TreeContextValue | null>(null)
 
+/** One load per page, shared by StrictMode's double mount; forgotten once done. */
+let loading: Promise<SessionLibrary> | null = null
+
+/** Chats load asynchronously (IndexedDB); nothing renders until they are here. */
 export function TreeProvider({ children }: { children: ReactNode }) {
-  const [library, dispatch] = useReducer(sessionReducer, null, loadLibrary)
+  const [initial, setInitial] = useState<SessionLibrary | null>(null)
+  useEffect(() => {
+    let live = true
+    loading ??= loadLibrary().finally(() => { loading = null })
+    void loading.then((library) => {
+      if (live) setInitial(library)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+  if (!initial) return null
+  return <LoadedTreeProvider initial={initial}>{children}</LoadedTreeProvider>
+}
+
+function LoadedTreeProvider({ initial, children }: { initial: SessionLibrary; children: ReactNode }) {
+  const [library, dispatch] = useReducer(sessionReducer, initial)
 
   useEffect(() => {
-    saveLibrary(library)
+    void saveLibrary(library)
   }, [library])
   const storageFull = useSyncExternalStore(subscribeSaveResult, () => lastSaveResult() === 'full')
 

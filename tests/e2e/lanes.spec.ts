@@ -1,12 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { TreeState } from '../../src/types'
-
-async function tree(page: Page) {
-  return page.evaluate(() => {
-    const library = JSON.parse(localStorage.getItem('treechat:v3')!)
-    return library.sessions.find((session: { id: string }) => session.id === library.activeSessionId).treeState as TreeState
-  })
-}
+import { tree } from './library'
 
 /** Select `length` characters of a message's first text node from `from`. */
 async function select(page: Page, messageId: string, from: number, length: number) {

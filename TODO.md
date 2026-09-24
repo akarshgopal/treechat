@@ -4,7 +4,7 @@ What to do before sharing TreeChat publicly (2026-09-24). Tick items off as they
 
 ## Must fix
 - [x] 1. **No silent data loss.** A full localStorage (~5 MB) quietly drops the oldest chats to make the save fit, and a 41st chat silently deletes the oldest one. Warn instead, keep every chat, and offer Export.
-  - Follow-up: move the chat library to IndexedDB (documents and attachments already live there) so the ~5 MB ceiling goes away.
+  - Follow-up done: the chat library lives in IndexedDB (`treechat-library`), so the ~5 MB ceiling is gone. localStorage chats (v3, and v2/v1 via their migrations) move over on first load; without IndexedDB, chats keep saving to localStorage.
 - [x] 2. **Error screen.** A render error currently leaves a blank page. Catch it and show Reload, Export my chats, the error details and a report link.
 - [x] 3. **API key exposure.** The key lives in localStorage for the site's origin; on `*.github.io` every Pages site of the account shares that origin. Tell people in Settings to use a key with a credit limit.
   - Owner follow-up: serve from a custom domain so no other site shares the origin.
