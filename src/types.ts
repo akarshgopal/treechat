@@ -53,6 +53,17 @@ export type ChatMessage = {
   citations?: Citation[]
   /** Images and files the user sent with this message. */
   attachments?: Attachment[]
+  /** What a reply cost, as OpenRouter reported it. */
+  usage?: MessageUsage
+}
+
+/** Tokens and cost of one reply; `cost` is USD (OpenRouter credits). */
+export type MessageUsage = {
+  promptTokens: number
+  completionTokens: number
+  cost?: number
+  /** The model that answered, which can differ from the one asked for. */
+  model?: string
 }
 
 /**

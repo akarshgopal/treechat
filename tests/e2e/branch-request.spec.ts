@@ -4,7 +4,7 @@ test('a settings-key branch sends its question, quote and ancestor context and r
   const requests: Array<{ session_id?: string; messages: Array<{ role: string; content: string }> }> = []
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.hostname === 'openrouter.ai') {
+    if (url.href === 'https://openrouter.ai/api/v1/chat/completions') {
       requests.push(route.request().postDataJSON())
       return route.fulfill({ status: 200, contentType: 'text/event-stream', body:
         'data: {"choices":[{"delta":{"content":"The branch request reached the provider."}}]}\n\ndata: [DONE]\n\n',
@@ -58,7 +58,7 @@ test('a delayed branch shows progress, surfaces a stream error, and regenerates 
   let requests = 0
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.hostname === 'openrouter.ai') {
+    if (url.href === 'https://openrouter.ai/api/v1/chat/completions') {
       requests += 1
       if (requests === 1) {
         await responseGate

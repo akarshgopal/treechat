@@ -2,6 +2,7 @@ import type { UIMessage } from '@tanstack/ai-react'
 import type { ChatMessage } from '@/types'
 import { parseCitations, sameCitations } from './citations.ts'
 import { parseAttachments, sameAttachments } from './attachments/parse.ts'
+import { parseUsage, sameUsage } from './usage.ts'
 
 export function textOf(message: UIMessage | undefined): string {
   if (!message) return ''
@@ -20,6 +21,7 @@ function metadataOf(message: ChatMessage): Record<string, unknown> | undefined {
   }
   if (message.citations) metadata.citations = message.citations
   if (message.attachments) metadata.attachments = message.attachments
+  if (message.usage) metadata.usage = message.usage
   return Object.keys(metadata).length > 0 ? metadata : undefined
 }
 
@@ -40,6 +42,7 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
       message.metadata?.kind === 'drop-summary' ? 'drop-summary' : 'message'
     const citations = parseCitations(message.metadata?.citations)
     const attachments = parseAttachments(message.metadata?.attachments)
+    const usage = parseUsage(message.metadata?.usage)
     return [
       {
         id: message.id,
@@ -57,6 +60,7 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
             : undefined,
         ...(citations ? { citations } : {}),
         ...(attachments ? { attachments } : {}),
+        ...(usage ? { usage } : {}),
       } satisfies ChatMessage,
     ]
   })
@@ -72,7 +76,8 @@ export function sameTranscript(a: ChatMessage[], b: ChatMessage[]) {
       message.role === other.role &&
       (message.kind ?? 'message') === (other.kind ?? 'message') &&
       sameCitations(message.citations, other.citations) &&
-      sameAttachments(message.attachments, other.attachments)
+      sameAttachments(message.attachments, other.attachments) &&
+      sameUsage(message.usage, other.usage)
     )
   })
 }

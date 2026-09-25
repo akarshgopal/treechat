@@ -45,6 +45,7 @@ import { chatConnection } from '@/lib/chat-connection'
 import { addDocumentFiles } from '@/lib/documents/library'
 import { loadModelCapabilities, modelReadsImages } from '@/lib/model-capabilities'
 import { takeRunCitations } from '@/lib/citations'
+import { takeRunUsage } from '@/lib/usage'
 import { createId } from '@/lib/ids'
 import {
   doomedIdsForAnchors,
@@ -298,10 +299,13 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
     // Off the reply's path: the next request picks the summary up when it lands.
     if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis))
     const citations = takeRunCitations(threadId)
+    const usage = takeRunUsage(threadId)
     const last = chat.messages.at(-1)
-    if (!citations || last?.role !== 'assistant') return
+    if ((!citations && !usage) || last?.role !== 'assistant') return
     setMessages(chat.messages.map((message) =>
-      message === last ? { ...message, metadata: { ...(message.metadata ?? {}), citations } } : message,
+      message === last
+        ? { ...message, metadata: { ...(message.metadata ?? {}), ...(citations ? { citations } : {}), ...(usage ? { usage } : {}) } }
+        : message,
     ))
   }, [chat.error, chat.isLoading, chat.messages, setMessages, setSummary, summary, threadId])
 

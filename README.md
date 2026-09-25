@@ -27,10 +27,12 @@ pnpm preview    # serve the build (Vite plugin still handles /api/chat for mock 
 ## Bring your own key (OpenRouter)
 
 1. Open **Settings** (bottom of the sidebar; the gear in the app bar on phones).
-2. Paste an [OpenRouter](https://openrouter.ai/) API key and optionally a model (default `openai/gpt-4.1-mini`).
+2. Paste an [OpenRouter](https://openrouter.ai/) API key and pick a model: the model field searches OpenRouter's whole public list by name or id, with each model's price per million tokens (input / output), context size, image support and free models marked. Any model id can also be pasted.
 3. **Save**. The sidebar's `Demo · Add key` note disappears.
 4. **Remove key** forgets the key in this browser; the model and generation params stay saved.
 5. Optionally set a **Background model** for summaries and takeaway drafts — e.g. a free `:free` model. Free models may log prompts and have low rate limits; on an error TreeChat retries once with the main model.
+
+**Usage.** With a key saved, Settings shows what the key has spent (today, this month, in total), its credit limit and what is left, straight from OpenRouter. Each reply shows the model that answered, its tokens and its cost; hover it for input and output tokens separately. Costs of background work (summaries, takeaway drafts, image descriptions) count toward the key but are not shown per reply.
 
 Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**, and prefer a key with a [credit limit](https://openrouter.ai/settings/keys): anyone with access to this browser profile can read it, and so could any script running on this site's address (on `*.github.io`, that address is shared by every Pages site of the same account). Every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`); TreeChat's host never sees it.
 
