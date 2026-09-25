@@ -4,30 +4,13 @@ import {
   backgroundModelFor,
   isModelId,
   DEFAULT_OPENROUTER_MODEL,
-  clearProviderConfig,
   loadProviderConfig,
   normalizeProviderConfig,
   parseProviderConfig,
   saveProviderConfig,
   serializeProviderConfig,
 } from './provider.ts'
-
-function installLocalStorage() {
-  const store = new Map<string, string>()
-  Object.defineProperty(globalThis, 'localStorage', {
-    value: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value)
-      },
-      removeItem: (key: string) => {
-        store.delete(key)
-      },
-      clear: () => store.clear(),
-    },
-    configurable: true,
-  })
-}
+import { installLocalStorage } from '../test-support/local-storage.ts'
 
 test('parseProviderConfig rejects missing or invalid payloads', () => {
   assert.equal(parseProviderConfig(null), null)
@@ -113,8 +96,6 @@ test('saveProviderConfig persists params without an API key', () => {
     model: 'google/gemini-2.5-flash',
     temperature: 1.1,
   })
-  clearProviderConfig()
-  assert.equal(loadProviderConfig(), null)
 })
 
 test('isModelId accepts vendor/model ids and rejects partial text', () => {

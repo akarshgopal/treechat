@@ -96,10 +96,3 @@ export async function pruneAttachments(referenced: ReadonlySet<string>, olderTha
   await done(tx)
   return doomed.length
 }
-
-/** Tests: forget the open connection. */
-export async function closeAttachmentStore() {
-  const db = await opening?.catch(() => null)
-  db?.close()
-  opening = null
-}

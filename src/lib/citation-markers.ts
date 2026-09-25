@@ -25,16 +25,6 @@ export function splitCitationMarkers(text: string, ids: ReadonlySet<string>): Ma
   return segments
 }
 
-/** Marker ids in order of first appearance, limited to known citations. */
-export function citedIds(text: string, citations: Citation[] | undefined): string[] {
-  const known = new Set((citations ?? []).map((citation) => citation.id))
-  const seen: string[] = []
-  for (const segment of splitCitationMarkers(text, known)) {
-    if (segment.citationId && !seen.includes(segment.citationId)) seen.push(segment.citationId)
-  }
-  return seen
-}
-
 /** Code and links keep their text as written. */
 const SKIP_TAGS = new Set(['code', 'pre', 'a'])
 

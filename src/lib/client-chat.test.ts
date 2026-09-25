@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import { EventType } from '@tanstack/ai'
-import { saveProviderConfig, clearProviderConfig } from './provider.ts'
+import { saveProviderConfig } from './provider.ts'
 import {
   OPENROUTER_CHAT_URL,
   collectAssistantText,
@@ -9,33 +9,13 @@ import {
   resetLocalChatApiProbe,
   runChat,
 } from './client-chat.ts'
+import { installLocalStorage } from '../test-support/local-storage.ts'
 
 const originalFetch = globalThis.fetch
-
-function installLocalStorage() {
-  const store = new Map<string, string>()
-  const localStorage = {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      store.set(key, value)
-    },
-    removeItem: (key: string) => {
-      store.delete(key)
-    },
-    clear: () => {
-      store.clear()
-    },
-  }
-  Object.defineProperty(globalThis, 'localStorage', {
-    value: localStorage,
-    configurable: true,
-  })
-}
 
 beforeEach(() => {
   installLocalStorage()
   resetLocalChatApiProbe()
-  clearProviderConfig()
 })
 
 afterEach(() => {

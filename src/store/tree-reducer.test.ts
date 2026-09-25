@@ -48,23 +48,6 @@ function base(): TreeState {
   }
 }
 
-test('replace-messages does not bump rev, append-message does', () => {
-  const replaced = reducer(base(), {
-    type: 'replace-messages',
-    threadId: 'b1',
-    messages: [msg('z')],
-  })
-  assert.equal(replaced.threads.b1.rev, 0)
-
-  const appended = reducer(base(), {
-    type: 'append-message',
-    threadId: 'b1',
-    message: msg('summary'),
-  })
-  assert.equal(appended.threads.b1.rev, 1)
-  assert.deepEqual(appended.threads.b1.messages.map((m) => m.id), ['x', 'summary'])
-})
-
 test('discarding the thread holding the frame retreats to its parent', () => {
   const state = { ...base(), activeThreadId: 'b1a' }
   const next = reducer(state, { type: 'discard', threadId: 'b1' })

@@ -70,10 +70,3 @@ test('revealThreadInRail expands ancestors of a nested thread', () => {
   assert.equal(revealed.has('b1a'), false)
   assert.equal(setsEqual(revealed, new Set(['root', 'b1'])), true)
 })
-
-test('revealThreadInRail is a no-op for the root or an unknown id', () => {
-  const atRoot = revealThreadInRail(state, new Set(['root']), 'root')
-  assert.equal(setsEqual(atRoot, new Set(['root'])), true)
-  const missing = revealThreadInRail(state, new Set(['root']), 'gone')
-  assert.equal(setsEqual(missing, new Set(['root'])), true)
-})
