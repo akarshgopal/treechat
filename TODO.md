@@ -4,7 +4,7 @@ What to do before sharing TreeChat publicly (2026-09-24). Tick items off as they
 
 ## Must fix
 - [x] 1. **No silent data loss.** A full localStorage (~5 MB) quietly drops the oldest chats to make the save fit, and a 41st chat silently deletes the oldest one. Warn instead, keep every chat, and offer Export.
-  - Follow-up: move the chat library to IndexedDB (documents and attachments already live there) so the ~5 MB ceiling goes away.
+  - Follow-up done: the chat library lives in IndexedDB (`treechat-library`), so the ~5 MB ceiling is gone. localStorage chats (v3, and v2/v1 via their migrations) move over on first load; without IndexedDB, chats keep saving to localStorage.
 - [x] 2. **Error screen.** A render error currently leaves a blank page. Catch it and show Reload, Export my chats, the error details and a report link.
 - [x] 3. **API key exposure.** The key lives in localStorage for the site's origin; on `*.github.io` every Pages site of the account shares that origin. Tell people in Settings to use a key with a credit limit.
   - Owner follow-up: serve from a custom domain so no other site shares the origin.
@@ -13,12 +13,15 @@ What to do before sharing TreeChat publicly (2026-09-24). Tick items off as they
 
 ## Should fix
 - [ ] 6. Real-key smoke test by hand: streaming, web-search citation numbering, the image-model check, free background models and fallback, long-thread summaries.
-- [ ] 7. Check the preset model ids still exist on OpenRouter and are sensible defaults.
+- [x] 7. **Preset model ids.** Checked against OpenRouter's model list on 2026-09-24: `x-ai/grok-4` and `meta-llama/llama-3.3-70b-instruct:free` were gone and are now `x-ai/grok-4.6` and `google/gemma-4-31b-it:free` (reads images, so it can describe screenshots too). The rest still exist.
+  - Owner decision: the main presets are dated (GPT-4.1 Mini, Claude Sonnet 4, Gemini 2.5 Flash); newer ones such as `anthropic/claude-sonnet-5` and `openai/gpt-5.4-mini` are listed.
 - [x] 8. **Smaller deploy.** Drop the unused 27 MB ONNX runtime from `dist`; split the ~1 MB main bundle (pdf.js, markdown, highlighting) so phones load faster.
-  - Done: the deploy went from 29 MB to 4.1 MB, and highlight.js (~170 KB) now loads with the first code block. The main script is still ~890 KB (React, TanStack AI, markdown); splitting further is a follow-up.
-- [ ] 9. Run the Playwright suite in the Pages workflow so a broken build never deploys.
+  - Done: the deploy went from 29 MB to 4.1 MB, and highlight.js (~170 KB) now loads with the first code block.
+  - Follow-up done: Settings, Documents, Takeaway, the command palette and the source lane load in their own chunks (fetched when the app is idle). First-load JS went from 890.6 KB (271.4 KB gzip) to 863.5 KB (265.3 KB gzip). What is left is needed for the first render: React (~190 KB), TanStack AI's chat client (~110 KB, used by every lane) and the markdown pipeline (~100 KB, every reply).
+- [x] 9. **Playwright in CI.** The Pages workflow runs the e2e suite (Chromium, one retry) before building; a failure blocks the deploy and uploads the report and traces.
 - [x] 10. **Export and import chats** as JSON.
-- [ ] 11. Browser check: Safari and Firefox (selection, CSS Custom Highlight API, the iOS bottom sheet).
+- [x] 11. **Browser check.** The e2e suite passes in Firefox, WebKit (desktop Safari) and an iPhone 15 WebKit profile (opt-in: `E2E_CROSS_BROWSER=1`), including selection → branch popover, the phone bottom sheet, and with the CSS Custom Highlight API removed (passages just go unpainted). Fixed: a reload right after a change could lose it (Firefox aborts in-flight IndexedDB writes). Firefox ignores `clipboardData` in a synthetic paste, so the test sets it itself.
+  - Still by hand on real devices: long-press selection and the on-screen keyboard over the sheet in iOS Safari.
 
 ## Presentation
 - [x] 12. **Page metadata:** current description, Open Graph and Twitter tags, a social preview image, theme colour.

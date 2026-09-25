@@ -1,15 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
+import { savedLibrary, tree } from './library'
 import type { TreeState } from '../../src/types'
 
 const question = 'What does this mean in practice?'
 const takeaway = 'Keep each exploration anchored to its source, then bring the useful conclusion back.'
-
-async function tree(page: Page) {
-  return page.evaluate(() => {
-    const library = JSON.parse(localStorage.getItem('treechat:v3')!)
-    return library.sessions.find((session: { id: string }) => session.id === library.activeSessionId).treeState as TreeState
-  })
-}
 
 async function restoreDemo(page: Page) {
   await page.getByTestId('settings-button').click()
@@ -65,11 +59,14 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
   await page.screenshot({ path: testInfo.outputPath('ask-about-passage.png') })
   await page.getByLabel('Your branch question').press('Enter')
   await expect.poll(async () => Object.keys((await tree(page)).threads).length).toBe(4)
+  const answered = (state: TreeState) => Boolean(Object.values(state.threads).find((entry) => entry.messages.some((message) => message.content === question))
+    ?.messages.some((message) => message.role === 'assistant' && message.content.length > 0))
+  // The branch is saved before its question and reply are, and before the stop button shows.
+  await expect.poll(async () => answered(await tree(page))).toBe(true)
   await expect(page.getByTestId('composer-stop')).toHaveCount(0)
   const branched = await tree(page)
   const branch = Object.values(branched.threads).find((entry) => entry.messages.some((message) => message.content === question))!
   expect(branch.messages.filter((message) => message.role === 'user')).toHaveLength(1)
-  expect(branch.messages.some((message) => message.role === 'assistant' && message.content.length > 0)).toBe(true)
   expect(branched.threads[branched.rootId].messages).toEqual(before.threads[before.rootId].messages)
 
   await expect(page.getByTestId('back-to-spine')).toBeVisible()
@@ -104,7 +101,7 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
 test('message action supports touch and drafts stay with their chat', async ({ page }, testInfo) => {
   await expect(page.getByTestId('empty-chat-guide')).toBeVisible()
   await page.getByRole('textbox', { name: 'Message to Main conversation', exact: true }).fill('First chat draft')
-  const firstSession = await page.evaluate(() => JSON.parse(localStorage.getItem('treechat:v3')!).activeSessionId)
+  const firstSession = (await savedLibrary(page)).activeSessionId
   await page.getByTestId('new-chat').click()
   await expect(page.getByRole('textbox', { name: 'Message to Main conversation', exact: true })).toHaveValue('')
   await page.getByRole('textbox', { name: 'Message to Main conversation', exact: true }).fill('Second chat draft')

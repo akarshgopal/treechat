@@ -1,8 +1,8 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { newIssueUrl } from '@/lib/links'
-import { ModelPicker, ModelPresetChips } from '@/components/chat/ModelPicker'
+import { KeyUsagePanel } from '@/components/chat/KeyUsage'
+import { ModelPicker } from '@/components/chat/ModelPicker'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   BACKGROUND_MODEL_OPTIONS,
+  OPENROUTER_MODEL_OPTIONS,
   DEFAULT_OPENROUTER_MODEL,
   isModelId,
   loadProviderConfig,
@@ -84,7 +85,9 @@ function SettingsBody({
   const [backgroundModel, setBackgroundModel] = useState(initial?.backgroundModel ?? '')
   const [saved, setSaved] = useState(false)
   const [savedModel, setSavedModel] = useState(initial?.model || DEFAULT_OPENROUTER_MODEL)
-  const [hasKey, setHasKey] = useState(Boolean(initial?.apiKey))
+  /** The key as saved; usage is looked up for this one, not a half-typed one. */
+  const [savedKey, setSavedKey] = useState(initial?.apiKey ?? '')
+  const hasKey = Boolean(savedKey)
   const modelValid = isModelId(model)
   const backgroundValid = !backgroundModel.trim() || isModelId(backgroundModel)
 
@@ -106,7 +109,7 @@ function SettingsBody({
     setMaxTokens(next.maxTokens !== undefined ? String(next.maxTokens) : '')
     setBackgroundModel(next.backgroundModel ?? '')
     setSavedModel(next.model)
-    setHasKey(Boolean(next.apiKey))
+    setSavedKey(next.apiKey)
     setSaved(true)
   }
 
@@ -115,7 +118,7 @@ function SettingsBody({
     const next = normalizeProviderConfig({ ...(loadProviderConfig() ?? {}), apiKey: '' })
     saveProviderConfig(next)
     setApiKey('')
-    setHasKey(false)
+    setSavedKey('')
     setSaved(false)
     onConfigChange(next)
   }
@@ -153,27 +156,23 @@ function SettingsBody({
               on this site’s address could read it.
             </span>
           </label>
+          {hasKey ? <KeyUsagePanel apiKey={savedKey} /> : null}
           <div className="grid gap-1.5">
             <ModelPicker
               id="settings-model"
-              name="openrouter-model"
+              label="Model"
+              testId="settings-model"
               invalid={!modelValid}
               value={model}
+              suggestions={OPENROUTER_MODEL_OPTIONS}
               onChange={(next) => {
-                setModel(next)
-                setSaved(false)
-              }}
-            />
-            <ModelPresetChips
-              value={model}
-              onSelect={(next) => {
                 setModel(next)
                 setSaved(false)
               }}
             />
             {modelValid ? (
               <p className="text-[11px] text-muted-foreground">
-                Pick a preset or paste any OpenRouter model id.
+                Prices are per million tokens, input / output. Any OpenRouter model id works.
               </p>
             ) : (
               <p className="text-[11px] text-destructive" role="alert" data-testid="settings-model-error">
@@ -188,45 +187,19 @@ function SettingsBody({
             </summary>
             <div className="grid gap-4 border-t border-border p-3">
           <div className="grid gap-1.5">
-            <label htmlFor="settings-background-model" className="text-xs font-medium text-foreground">
-              Background model
-            </label>
-            <input
+            <ModelPicker
               id="settings-background-model"
-              name="openrouter-background-model"
+              label="Background model"
+              testId="settings-background-model"
+              invalid={!backgroundValid}
               value={backgroundModel}
-              onChange={(event) => {
-                setBackgroundModel(event.target.value)
+              suggestions={BACKGROUND_MODEL_OPTIONS}
+              empty="Same as the main model"
+              onChange={(next) => {
+                setBackgroundModel(next)
                 setSaved(false)
               }}
-              placeholder="Same as the main model"
-              spellCheck={false}
-              autoComplete="off"
-              aria-invalid={!backgroundValid || undefined}
-              data-testid="settings-background-model"
-              className={cn(fieldClass, 'aria-invalid:border-destructive')}
             />
-            <div className="flex flex-wrap gap-1">
-              {[{ id: '', label: 'Main model' }, ...BACKGROUND_MODEL_OPTIONS].map((option) => (
-                <button
-                  key={option.id || 'main'}
-                  type="button"
-                  onClick={() => {
-                    setBackgroundModel(option.id)
-                    setSaved(false)
-                  }}
-                  data-testid={`background-preset-${option.id || 'main'}`}
-                  className={cn(
-                    'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                    backgroundModel.trim() === option.id
-                      ? 'border-foreground/40 bg-foreground/[0.08] text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
             {backgroundValid ? (
               <p className="text-[11px] text-muted-foreground">
                 Writes summaries of long threads and takeaway drafts. Free models (<span className="font-mono">:free</span>) may log prompts and have low rate limits; failures fall back to the main model.

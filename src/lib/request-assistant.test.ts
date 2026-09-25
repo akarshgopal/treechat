@@ -46,7 +46,7 @@ test('background requests try the background model first', async () => {
     provider: 'openrouter',
     apiKey: 'sk-or-v1-test',
     model: 'anthropic/claude-sonnet-4',
-    backgroundModel: 'meta-llama/llama-3.3-70b-instruct:free',
+    backgroundModel: 'google/gemma-4-31b-it:free',
   })
   const models: string[] = []
   globalThis.fetch = (async (_input, init) => {
@@ -55,7 +55,7 @@ test('background requests try the background model first', async () => {
   }) as typeof fetch
 
   assert.equal(await requestAssistantText('summarize', undefined, undefined, undefined, { background: true }), 'cheap draft')
-  assert.deepEqual(models, ['meta-llama/llama-3.3-70b-instruct:free'])
+  assert.deepEqual(models, ['google/gemma-4-31b-it:free'])
   // Ordinary requests stay on the main model.
   assert.equal(await requestAssistantText('hello'), 'cheap draft')
   assert.deepEqual(models.at(-1), 'anthropic/claude-sonnet-4')
@@ -66,7 +66,7 @@ test('a rate-limited background model falls back once to the main model', async 
     provider: 'openrouter',
     apiKey: 'sk-or-v1-test',
     model: 'anthropic/claude-sonnet-4',
-    backgroundModel: 'meta-llama/llama-3.3-70b-instruct:free',
+    backgroundModel: 'google/gemma-4-31b-it:free',
   })
   const models: string[] = []
   globalThis.fetch = (async (_input, init) => {
@@ -79,7 +79,7 @@ test('a rate-limited background model falls back once to the main model', async 
   }) as typeof fetch
 
   assert.equal(await requestAssistantText('summarize', undefined, undefined, undefined, { background: true }), 'main draft')
-  assert.deepEqual(models, ['meta-llama/llama-3.3-70b-instruct:free', 'anthropic/claude-sonnet-4'])
+  assert.deepEqual(models, ['google/gemma-4-31b-it:free', 'anthropic/claude-sonnet-4'])
 })
 
 test('a failing main model after the fallback surfaces its error', async () => {

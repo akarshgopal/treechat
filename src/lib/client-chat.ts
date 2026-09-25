@@ -9,6 +9,7 @@ import {
 import { CITATIONS_EVENT, mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
 import { buildSystemPrompts } from '../../shared/system-prompts.ts'
 import { clearRunCitations, parseCitations, recordRunCitations } from './citations.ts'
+import { clearRunUsage, recordRunUsage, usageFromOpenRouterChunk } from './usage.ts'
 import { applyWebSearch, createWebCitationCollector, isWebSearch } from './web-search.ts'
 import { applySummaryToRequest } from './compaction.ts'
 import { withDocumentNote, withDocuments } from './documents/rag.ts'
@@ -97,6 +98,7 @@ export function openRouterRequestBody(
   temperature?: number
   max_tokens?: number
   session_id?: string
+  usage: { include: true }
 } {
   const body: {
     model: string
@@ -105,10 +107,13 @@ export function openRouterRequestBody(
     temperature?: number
     max_tokens?: number
     session_id?: string
+    usage: { include: true }
   } = {
     model: config.model.trim() || DEFAULT_OPENROUTER_MODEL,
     messages,
     stream: true,
+    // Tokens and cost on the last chunk, shown beside the reply.
+    usage: { include: true },
   }
   if (typeof config.temperature === 'number') body.temperature = config.temperature
   if (typeof config.maxTokens === 'number') body.max_tokens = config.maxTokens
@@ -336,6 +341,8 @@ export async function* openRouterChatStream(input: {
         return
       }
       if (webCitations.add(event)) recordRunCitations(threadId, webCitations.citations())
+      const usage = usageFromOpenRouterChunk(event)
+      if (usage) recordRunUsage(threadId, usage)
       const delta = contentDeltaFromOpenAIData(payload)
       if (!delta) continue
       receivedText = true
@@ -376,6 +383,7 @@ export async function* openRouterChatStream(input: {
 
 export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   clearRunCitations(input.threadId)
+  clearRunUsage(input.threadId)
   // Sources arrive as a CUSTOM event (mock, local API); they belong to the
   // thread's run, not to the chat engine's message stream.
   for await (const chunk of routeChat(input)) {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { ChatSession, Citation } from '../../src/types'
+import { activeSession } from './library'
+import type { Citation } from '../../src/types'
 
 const NOTES = [
   '# Garden',
@@ -10,13 +11,6 @@ const NOTES = [
   '',
   'Sourdough bread needs a lively starter and a long, cool rise overnight.',
 ].join('\n')
-
-async function activeSession(page: Page) {
-  return page.evaluate(() => {
-    const library = JSON.parse(localStorage.getItem('treechat:v3')!)
-    return library.sessions.find((session: { id: string }) => session.id === library.activeSessionId) as ChatSession
-  })
-}
 
 async function lastAssistantCitations(page: Page): Promise<Citation[] | undefined> {
   const session = await activeSession(page)

@@ -6,7 +6,10 @@ import { MessageMarkdown } from '@/components/chat/MessageMarkdown'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { threadTitle } from '@/lib/tree'
-import type { ChatMessage, Thread } from '@/types'
+import type { ChatMessage, MessageUsage, Thread } from '@/types'
+import { useModelCatalog } from '@/lib/use-model-catalog'
+import { loadModelCapabilities, modelInfo } from '@/lib/model-capabilities'
+import { formatCost, formatTokens } from '@/lib/usage'
 
 type MessageBubbleProps = {
   message: ChatMessage
@@ -205,6 +208,7 @@ export function MessageBubble({
       messageId={message.id}
       unanswered={unanswered}
       latest={latest}
+      usage={isUser ? undefined : message.usage}
     />
   ) : null
 
@@ -249,6 +253,7 @@ function MessageActions({
   messageId,
   unanswered,
   latest,
+  usage,
 }: {
   isUser: boolean
   onRetry?: () => void
@@ -257,8 +262,9 @@ function MessageActions({
   messageId: string
   unanswered: boolean
   latest: boolean
+  usage?: MessageUsage
 }) {
-  if (!onRetry && !onEdit && !onAsk) return null
+  if (!onRetry && !onEdit && !onAsk && !usage) return null
   return (
     // Hangs in the gap below the message, so it never takes space of its own.
     // Invisible until hover or focus, but reachable: moving onto a button
@@ -266,7 +272,7 @@ function MessageActions({
     // only the latest messages (or one tapped to focus it) show them, in flow.
     <div
       className={cn(
-        'message-actions absolute top-full z-10 flex gap-0.5 pt-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
+        'message-actions absolute top-full z-10 flex items-center gap-0.5 pt-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
         unanswered || latest
           ? '[@media(hover:none)]:static [@media(hover:none)]:opacity-100'
           : '[@media(hover:none)]:pointer-events-none [@media(hover:none)]:group-focus-within:pointer-events-auto',
@@ -292,6 +298,25 @@ function MessageActions({
           <RotateCw size={14} />
         </button>
       ) : null}
+      {usage ? <UsageLabel usage={usage} /> : null}
     </div>
+  )
+}
+
+/** "GPT-4.1 Mini · 1.2k tokens · $0.0031": what this reply cost, from OpenRouter. */
+function UsageLabel({ usage }: { usage: MessageUsage }) {
+  // The model's display name comes from OpenRouter's public list (cached a day).
+  const catalog = useModelCatalog()
+  useEffect(() => {
+    if (!catalog && usage.model) void loadModelCapabilities()
+  }, [catalog, usage.model])
+  const model = usage.model ? (modelInfo(usage.model)?.name ?? usage.model.replace(/^[^/]+\//, '')) : undefined
+  const total = usage.promptTokens + usage.completionTokens
+  const parts = [model, `${formatTokens(total)} tokens`, usage.cost !== undefined ? formatCost(usage.cost) : undefined].filter(Boolean)
+  const detail = `${usage.promptTokens.toLocaleString()} in · ${usage.completionTokens.toLocaleString()} out${usage.cost !== undefined ? ` · $${usage.cost.toFixed(6)}` : ''}${usage.model ? ` · ${usage.model}` : ''}`
+  return (
+    <span className="ml-1.5 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground" title={detail} data-testid="message-usage">
+      {parts.join(' · ')}
+    </span>
   )
 }

@@ -102,7 +102,7 @@ test('runChat with model prefs but no key stays on the mock', async () => {
   saveProviderConfig({
     provider: 'openrouter',
     apiKey: '',
-    model: 'x-ai/grok-4',
+    model: 'x-ai/grok-4.6',
     temperature: 0.2,
     maxTokens: 128,
   })
