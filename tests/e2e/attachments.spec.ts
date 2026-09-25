@@ -87,7 +87,7 @@ test('with a key, images go to the model as image parts, with a warning for text
     contentType: 'application/json',
     body: JSON.stringify({ data: [
       { id: 'test/text-only', architecture: { input_modalities: ['text'] } },
-      { id: 'openai/gpt-4.1-mini', architecture: { input_modalities: ['text', 'image'] } },
+      { id: 'openai/gpt-5.6-luna', architecture: { input_modalities: ['text', 'image'] } },
     ] }),
   }))
   await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {
@@ -104,9 +104,9 @@ test('with a key, images go to the model as image parts, with a warning for text
   await pasteScreenshot(page)
   const warning = page.getByTestId('vision-warning')
   await expect(warning).toContainText('text-only can’t read images')
-  await warning.getByRole('button', { name: 'Switch to GPT-4.1 Mini' }).click()
+  await warning.getByRole('button', { name: 'Switch to GPT-5.6 Luna' }).click()
   await expect(warning).toHaveCount(0)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('treechat:provider:v1')!).model)).toBe('openai/gpt-4.1-mini')
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('treechat:provider:v1')!).model)).toBe('openai/gpt-5.6-luna')
 
   await page.getByTestId('thread-composer').fill('What is this?')
   await page.getByTestId('thread-composer').press('Enter')
@@ -115,7 +115,7 @@ test('with a key, images go to the model as image parts, with a warning for text
   const asks = (body: (typeof bodies)[number], text: string) =>
     JSON.stringify(body.messages.at(-1)?.content).includes(text)
   const chat = bodies.find((body) => asks(body, 'What is this?'))!
-  expect(chat.model).toBe('openai/gpt-4.1-mini')
+  expect(chat.model).toBe('openai/gpt-5.6-luna')
   const user = chat.messages.at(-1)!
   expect(user.content).toEqual([
     { type: 'text', text: 'What is this?' },

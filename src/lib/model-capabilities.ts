@@ -7,7 +7,7 @@
  */
 
 export const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
-const CACHE_KEY = 'treechat:models:v2'
+const CACHE_KEY = 'treechat:models:v3'
 const CACHE_MS = 24 * 60 * 60 * 1000
 
 export type ModelInfo = {
@@ -20,13 +20,18 @@ export type ModelInfo = {
   completion?: number
   vision: boolean
   free: boolean
+  /** When OpenRouter added it (Unix seconds); newest models list first. */
+  created?: number
 }
 
 type Cache = { fetchedAt: number; models: ModelInfo[] }
 
 let memory: { list: ModelInfo[]; byId: Map<string, ModelInfo> } | null = null
 let loading: Promise<void> | null = null
+/** The last fetch failed (offline, blocked); the next load tries again. */
+let failed = false
 const listeners = new Set<() => void>()
+const notify = () => { for (const listener of listeners) listener() }
 
 const price = (value: unknown): number | undefined => {
   const parsed = typeof value === 'string' || typeof value === 'number' ? Number(value) : Number.NaN
@@ -47,6 +52,7 @@ export function parseModelCatalog(payload: unknown): ModelInfo[] {
     const record = entry as {
       id?: unknown
       name?: unknown
+      created?: unknown
       context_length?: unknown
       pricing?: { prompt?: unknown; completion?: unknown }
       architecture?: { input_modalities?: unknown; modality?: unknown }
@@ -67,6 +73,7 @@ export function parseModelCatalog(payload: unknown): ModelInfo[] {
         (Array.isArray(inputs) && inputs.includes('image')) ||
         (typeof modality === 'string' && (modality.split('->')[0] ?? '').split('+').includes('image')),
       free: record.id.endsWith(':free') || (prompt === 0 && completion === 0),
+      ...(typeof record.created === 'number' ? { created: record.created } : {}),
     })
   }
   return out
@@ -74,7 +81,8 @@ export function parseModelCatalog(payload: unknown): ModelInfo[] {
 
 function remember(list: ModelInfo[]) {
   memory = { list, byId: new Map(list.map((model) => [model.id, model])) }
-  for (const listener of listeners) listener()
+  failed = false
+  notify()
 }
 
 function readCache(): Cache | null {
@@ -108,7 +116,10 @@ export function loadModelCapabilities(fetcher: typeof fetch = fetch): Promise<vo
           // Too big or blocked: keep it in memory for this visit.
         }
       })
-      .catch(() => undefined)
+      .catch(() => {
+        failed = true
+        notify()
+      })
       .finally(() => { loading = null })
   }
   return loading
@@ -120,6 +131,7 @@ export function subscribeModelCatalog(listener: () => void) {
   return () => listeners.delete(listener)
 }
 export const modelCatalog = (): ModelInfo[] | null => memory?.list ?? null
+export const modelCatalogFailed = () => failed
 
 export function modelInfo(model: string): ModelInfo | undefined {
   return memory?.byId.get(model.trim())
@@ -148,4 +160,5 @@ export function contextLabel(tokens: number | undefined): string {
 export function resetModelCapabilities() {
   memory = null
   loading = null
+  failed = false
 }

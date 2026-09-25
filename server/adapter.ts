@@ -12,7 +12,7 @@ export type ProviderStatus = {
 /** String env map from the Vite plugin, tests, or a process env fallback. */
 export type RequestEnv = Record<string, string | undefined>
 
-export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4.1-mini'
+export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-5.6-luna'
 export const TREECHAT_MODEL_HEADER = 'X-TreeChat-Model'
 
 type ResolvedProvider = ProviderStatus & { apiKey: string | null }

@@ -94,14 +94,16 @@ test('discarding a branch happens at once and Undo brings it back', async ({ pag
   await expect(page.getByTestId('branch-lane')).toBeVisible()
 })
 
-test('Settings refuses a half-typed model id', async ({ page }) => {
+test('Settings saves a model id pasted into the picker even when OpenRouter’s list is unreachable', async ({ page }) => {
   await page.getByTestId('settings-button').click()
-  await page.getByTestId('settings-model').fill('anthro')
-  await page.getByTestId('settings-model').press('Tab')
-  await expect(page.getByTestId('settings-model-error')).toBeVisible()
-  await expect(page.getByTestId('settings-save')).toBeDisabled()
-  await page.getByTestId('settings-model').fill('anthropic/claude-sonnet-4')
-  await expect(page.getByTestId('settings-save')).toBeEnabled()
+  await page.getByTestId('settings-model').click()
+  // The list request is blocked in tests: suggestions still show, and so does why.
+  await expect(page.getByTestId('settings-model-options')).toContainText('Could not load OpenRouter’s full list')
+  await page.getByTestId('settings-model-search').fill('anthropic/claude-sonnet-4')
+  await page.getByTestId('settings-model-search').press('Enter')
+  await expect(page.getByTestId('settings-model')).toHaveAttribute('data-value', 'anthropic/claude-sonnet-4')
+  await page.getByTestId('settings-save').click()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('treechat:provider:v1')!).model)).toBe('anthropic/claude-sonnet-4')
 })
 
 test('New chat reuses a blank chat instead of stacking empty ones', async ({ page }, testInfo) => {

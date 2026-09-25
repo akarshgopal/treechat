@@ -27,7 +27,7 @@ pnpm preview    # serve the build (Vite plugin still handles /api/chat for mock 
 ## Bring your own key (OpenRouter)
 
 1. Open **Settings** (bottom of the sidebar; the gear in the app bar on phones).
-2. Paste an [OpenRouter](https://openrouter.ai/) API key and pick a model: the model field searches OpenRouter's whole public list by name or id, with each model's price per million tokens (input / output), context size, image support and free models marked. Any model id can also be pasted.
+2. Paste an [OpenRouter](https://openrouter.ai/) API key and pick a model (default `openai/gpt-5.6-luna`). The model picker opens a searchable list of OpenRouter's public models, newest first after a few suggestions, with each model's price per million tokens (input / output), context size, image support and free models marked. To use a model that is not listed, paste its full id and choose **Use “…”**.
 3. **Save**. The sidebar's `Demo · Add key` note disappears.
 4. **Remove key** forgets the key in this browser; the model and generation params stay saved.
 5. Optionally set a **Background model** for summaries and takeaway drafts — e.g. a free `:free` model. Free models may log prompts and have low rate limits; on an error TreeChat retries once with the main model.
@@ -58,7 +58,7 @@ Copy `.env.example` to `.env`. Production BYOK is client-side; these keys are **
 | `OPENAI_API_KEY` | Used if `XAI_API_KEY` is unset. |
 | `OPENAI_MODEL` | Defaults to `gpt-4.1-mini`. |
 | `OPENROUTER_API_KEY` | Used if neither xAI nor OpenAI is set. |
-| `OPENROUTER_MODEL` | Defaults to `openai/gpt-4.1-mini`. |
+| `OPENROUTER_MODEL` | Defaults to `openai/gpt-5.6-luna`. |
 | `VITE_BASE` | Public path. Defaults to `/` locally. In GitHub Actions, `GITHUB_REPOSITORY` (`akarshgopal/treechat`) sets `/treechat/`. Use `VITE_BASE=/` for a user/org site at the domain root. |
 
 Do not prefix provider keys with `VITE_`. A Settings OpenRouter key always wins over env.

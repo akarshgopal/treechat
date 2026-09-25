@@ -1,12 +1,12 @@
 export const PROVIDER_STORAGE_KEY = 'treechat:provider:v1'
-export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4.1-mini'
+export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-5.6-luna'
 export const TREECHAT_MODEL_HEADER = 'X-TreeChat-Model'
 
 export const OPENROUTER_MODEL_OPTIONS = [
-  { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-  { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
-  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { id: 'x-ai/grok-4.6', label: 'Grok 4.6' },
+  { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+  { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' },
+  { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
+  { id: 'x-ai/grok-4.7', label: 'Grok 4.7' },
 ] as const
 
 /**
@@ -14,9 +14,9 @@ export const OPENROUTER_MODEL_OPTIONS = [
  * prompts and are tightly rate limited, so failures fall back to the main model.
  */
 export const BACKGROUND_MODEL_OPTIONS = [
-  { id: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B (free)' },
-  { id: 'openai/gpt-4.1-nano', label: 'GPT-4.1 Nano' },
-  { id: 'google/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+  { id: 'qwen/qwen3.8-27b:free', label: 'Qwen3.8 27B (free)' },
+  { id: 'qwen/qwen3.7-flash', label: 'Qwen3.7 Flash' },
+  { id: 'google/gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
 ] as const
 
 export type ClientProviderConfig = {

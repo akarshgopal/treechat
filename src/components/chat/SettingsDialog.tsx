@@ -160,26 +160,19 @@ function SettingsBody({
           <div className="grid gap-1.5">
             <ModelPicker
               id="settings-model"
-              name="openrouter-model"
               label="Model"
               testId="settings-model"
               invalid={!modelValid}
               value={model}
               suggestions={OPENROUTER_MODEL_OPTIONS}
-              placeholder={DEFAULT_OPENROUTER_MODEL}
               onChange={(next) => {
                 setModel(next)
                 setSaved(false)
               }}
-              onCommit={(next) => {
-                // Tidy on leave; an invalid id stays put so the form can flag it.
-                const tidy = next.trim() || DEFAULT_OPENROUTER_MODEL
-                if (isModelId(tidy)) setModel(tidy)
-              }}
             />
             {modelValid ? (
               <p className="text-[11px] text-muted-foreground">
-                Search OpenRouter’s models by name, or paste any model id. Prices are per million tokens, input / output.
+                Prices are per million tokens, input / output. Any OpenRouter model id works.
               </p>
             ) : (
               <p className="text-[11px] text-destructive" role="alert" data-testid="settings-model-error">
@@ -196,14 +189,12 @@ function SettingsBody({
           <div className="grid gap-1.5">
             <ModelPicker
               id="settings-background-model"
-              name="openrouter-background-model"
               label="Background model"
               testId="settings-background-model"
               invalid={!backgroundValid}
               value={backgroundModel}
               suggestions={BACKGROUND_MODEL_OPTIONS}
               empty="Same as the main model"
-              placeholder="Same as the main model"
               onChange={(next) => {
                 setBackgroundModel(next)
                 setSaved(false)
