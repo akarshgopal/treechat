@@ -17,6 +17,7 @@ import remarkGfm from 'remark-gfm'
 import { Check, Copy } from 'lucide-react'
 import { CitationContext } from '@/components/chat/citation-context'
 import { CitationSup } from '@/components/chat/Citations'
+import { RemoteImage } from '@/components/chat/RemoteImage'
 import { rehypeCitationMarkers } from '@/lib/citation-markers'
 import { sameCitations } from '@/lib/citations'
 import { languageFromClassName, rehypeBranchMarks } from '@/lib/markdown'
@@ -109,6 +110,8 @@ export const MessageMarkdown = memo(function MessageMarkdown({
     () => ({
       a: MarkdownLink,
       pre: CodeFence,
+      // Never fetched unasked: see RemoteImage.
+      img: RemoteImage,
       code: MarkdownCode,
       table: MarkdownTable,
       input: MarkdownInput,
