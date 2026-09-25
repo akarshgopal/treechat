@@ -4,30 +4,17 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { type StreamChunk } from '@tanstack/ai'
 import { takeRunCitations } from '../citations.ts'
 import { resetLocalChatApiProbe, runChat } from '../client-chat.ts'
-import { clearProviderConfig, saveProviderConfig } from '../provider.ts'
+import { saveProviderConfig } from '../provider.ts'
 import { setEmbedder } from './active-embedder.ts'
 import { fakeEmbedder } from './embedder.ts'
 import { indexFile } from './ingest.ts'
+import { installLocalStorage } from '../../test-support/local-storage.ts'
 
 const originalFetch = globalThis.fetch
-
-function installLocalStorage() {
-  const store = new Map<string, string>()
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => { store.set(key, value) },
-      removeItem: (key: string) => { store.delete(key) },
-      clear: () => store.clear(),
-    },
-  })
-}
 
 beforeEach(async () => {
   installLocalStorage()
   resetLocalChatApiProbe()
-  clearProviderConfig()
   setEmbedder(fakeEmbedder)
   await indexFile(
     new File(['# Deploy\n\nThe site deploys to GitHub Pages from the main branch.\n\n# Cooking\n\nBoil pasta in salted water.'], 'handbook.md', { type: 'text/markdown' }),

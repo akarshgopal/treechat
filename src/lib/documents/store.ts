@@ -59,13 +59,6 @@ function open(): Promise<IDBDatabase> {
   return opening
 }
 
-/** Tests: forget the open connection (e.g. after swapping the IDB factory). */
-export async function closeDocumentStore() {
-  const db = await opening?.catch(() => null)
-  db?.close()
-  opening = null
-}
-
 export async function listDocuments(): Promise<StoredDocument[]> {
   const db = await open()
   const docs = await request(db.transaction(DOCUMENTS).objectStore(DOCUMENTS).getAll() as IDBRequest<StoredDocument[]>)
@@ -123,11 +116,6 @@ export async function getChunks(documentId: string): Promise<DocumentChunk[]> {
     db.transaction(CHUNKS).objectStore(CHUNKS).index('documentId').getAll(documentId) as IDBRequest<DocumentChunk[]>,
   )
   return chunks.sort((a, b) => a.index - b.index)
-}
-
-export async function getChunk(id: string): Promise<DocumentChunk | undefined> {
-  const db = await open()
-  return request(db.transaction(CHUNKS).objectStore(CHUNKS).get(id) as IDBRequest<DocumentChunk | undefined>)
 }
 
 /**

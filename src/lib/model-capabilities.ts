@@ -155,10 +155,3 @@ export function contextLabel(tokens: number | undefined): string {
   if (!tokens) return ''
   return tokens >= 1_000_000 ? `${+(tokens / 1_000_000).toFixed(1)}M` : `${Math.round(tokens / 1000)}k`
 }
-
-/** Tests: forget what was loaded. */
-export function resetModelCapabilities() {
-  memory = null
-  loading = null
-  failed = false
-}

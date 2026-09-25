@@ -4,8 +4,10 @@ import assert from 'node:assert/strict'
 import { beforeEach } from 'node:test'
 import test from 'node:test'
 import { createEmptyState, createSeedState } from './seed.ts'
-import { closeLibraryStore, loadLibrary, loadTreeState, saveLibrary, saveTreeState } from './storage.ts'
-import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '../types.ts'
+import { libraryFromTree } from './sessions.ts'
+import { closeLibraryStore, loadLibrary, saveLibrary } from './storage.ts'
+import { installLocalStorage } from '../test-support/local-storage.ts'
+import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY, type SessionLibrary } from '../types.ts'
 
 /** A fresh, empty IndexedDB per test; `false` for a browser without one. */
 async function useIndexedDB(available = true) {
@@ -15,69 +17,30 @@ async function useIndexedDB(available = true) {
 
 beforeEach(() => useIndexedDB())
 
-function mockLocalStorage() {
-  const data = new Map<string, string>()
-  const storage: Storage = {
-    get length() {
-      return data.size
-    },
-    clear() {
-      data.clear()
-    },
-    getItem(key) {
-      return data.has(key) ? data.get(key)! : null
-    },
-    key(index) {
-      return [...data.keys()][index] ?? null
-    },
-    removeItem(key) {
-      data.delete(key)
-    },
-    setItem(key, value) {
-      data.set(key, String(value))
-    },
-  }
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: storage,
-  })
-  return storage
-}
+const activeTree = (library: SessionLibrary) =>
+  library.sessions.find((session) => session.id === library.activeSessionId)!.treeState
 
 test('empty state round-trips without being re-seeded', async () => {
-  mockLocalStorage()
+  installLocalStorage()
   const empty = createEmptyState()
-  await saveTreeState(empty)
-  const loaded = await loadTreeState()
+  await saveLibrary(libraryFromTree(empty))
+  const loaded = activeTree(await loadLibrary())
   assert.equal(loaded.rootId, empty.rootId)
   assert.deepEqual(loaded.threads[loaded.rootId]?.messages, [])
   assert.equal(Object.keys(loaded.threads).length, 1)
   assert.equal(JSON.stringify(await loadLibrary()).includes('What is TreeChat?'), false)
 })
 
-test('existing v2 seed state is kept', async () => {
-  mockLocalStorage()
-  const seed = createSeedState()
-  await saveTreeState(seed)
-  const loaded = await loadTreeState()
-  assert.ok(
-    loaded.threads[loaded.rootId]?.messages.some(
-      (message) => message.content === 'What is TreeChat?',
-    ),
-  )
-  assert.equal(Object.keys(loaded.threads).length, Object.keys(seed.threads).length)
-})
-
 test('unreadable v3 payload falls back to empty, not seed', async () => {
-  const storage = mockLocalStorage()
+  const storage = installLocalStorage()
   storage.setItem(STORAGE_KEY, '{not-json')
-  const loaded = await loadTreeState()
+  const loaded = activeTree(await loadLibrary())
   assert.deepEqual(loaded.threads[loaded.rootId]?.messages, [])
   assert.equal(Object.keys(loaded.threads).length, 1)
 })
 
 test('a v2 single tree migrates into one session on first load', async () => {
-  const storage = mockLocalStorage()
+  const storage = installLocalStorage()
   const seed = createSeedState()
   storage.setItem(V2_STORAGE_KEY, JSON.stringify(seed))
   const library = await loadLibrary()
@@ -97,7 +60,7 @@ test('a v2 single tree migrates into one session on first load', async () => {
 })
 
 test('a v1 spine migrates into one session', async () => {
-  const storage = mockLocalStorage()
+  const storage = installLocalStorage()
   storage.setItem(
     LEGACY_STORAGE_KEY,
     JSON.stringify({
@@ -128,7 +91,7 @@ test('a v1 spine migrates into one session', async () => {
 })
 
 test('v3 library round-trips and wins over a leftover v2 blob', async () => {
-  mockLocalStorage()
+  installLocalStorage()
   const empty = createEmptyState()
   const seed = createSeedState()
   await saveLibrary({
@@ -157,12 +120,12 @@ test('v3 library round-trips and wins over a leftover v2 blob', async () => {
   assert.equal(loaded.sessions.length, 2)
   assert.equal(loaded.activeSessionId, 'keep')
   assert.equal(loaded.sessions[0]?.title, 'Saved chat')
-  const active = await loadTreeState()
+  const active = activeTree(loaded)
   assert.deepEqual(active.threads[active.rootId]?.messages, [])
 })
 
 test('unreadable v3 falls through to a leftover v2 tree', async () => {
-  const storage = mockLocalStorage()
+  const storage = installLocalStorage()
   storage.setItem(STORAGE_KEY, '{not-json')
   storage.setItem(V2_STORAGE_KEY, JSON.stringify(createSeedState()))
   const library = await loadLibrary()
@@ -171,17 +134,17 @@ test('unreadable v3 falls through to a leftover v2 tree', async () => {
 })
 
 test('a thread summary survives storage, and a stale one is dropped', async () => {
-  mockLocalStorage()
+  installLocalStorage()
   const state = createSeedState()
   const root = state.threads[state.rootId]
   const throughMessageId = root.messages[1].id
   root.summary = { content: 'Earlier: the basics', throughMessageId, createdAt: 5 }
-  await saveTreeState(state)
-  assert.deepEqual((await loadTreeState()).threads[state.rootId].summary, root.summary)
+  await saveLibrary(libraryFromTree(state))
+  assert.deepEqual(activeTree(await loadLibrary()).threads[state.rootId].summary, root.summary)
 
   root.summary = { content: 'Earlier: gone', throughMessageId: 'not-a-message', createdAt: 5 }
-  await saveTreeState(state)
-  const reloaded = await loadTreeState()
+  await saveLibrary(libraryFromTree(state))
+  const reloaded = activeTree(await loadLibrary())
   assert.ok(!('summary' in reloaded.threads[state.rootId]))
   // Threads without one stay free of the key (strict round-trips elsewhere rely on it).
   const branch = Object.values(reloaded.threads).find((thread) => thread.parentId)
@@ -189,7 +152,7 @@ test('a thread summary survives storage, and a stale one is dropped', async () =
 })
 
 test('chats in localStorage move to IndexedDB on first load, and the old copy goes', async () => {
-  const storage = mockLocalStorage()
+  const storage = installLocalStorage()
   const seed = createSeedState()
   storage.setItem(STORAGE_KEY, JSON.stringify({
     sessions: [{ id: 'old', title: 'From localStorage', createdAt: 1, updatedAt: 2, treeState: seed, titleLocked: true }],
@@ -202,7 +165,7 @@ test('chats in localStorage move to IndexedDB on first load, and the old copy go
 })
 
 test('without IndexedDB, chats are saved to localStorage and move over once it works', async () => {
-  const storage = mockLocalStorage()
+  const storage = installLocalStorage()
   await useIndexedDB(false)
   const library = await loadLibrary()
   const renamed = { ...library, sessions: [{ ...library.sessions[0]!, title: 'Saved without IndexedDB' }] }
@@ -219,7 +182,7 @@ test('without IndexedDB, chats are saved to localStorage and move over once it w
 })
 
 test('a full storage refuses the save and reports it, without dropping any chat', async () => {
-  mockLocalStorage()
+  installLocalStorage()
   const first = await loadLibrary()
   assert.equal(await saveLibrary(first), 'saved')
   const put = IDBObjectStore.prototype.put

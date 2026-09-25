@@ -60,20 +60,3 @@ export function activeSessionOf(library: SessionLibrary): ChatSession {
 export function sortSessions(sessions: ChatSession[]): ChatSession[] {
   return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)
 }
-
-export function replaceActiveTree(
-  library: SessionLibrary,
-  treeState: TreeState,
-  now = Date.now(),
-): SessionLibrary {
-  const current = activeSessionOf(library)
-  const title = current.titleLocked ? current.title : titleFromTree(treeState)
-  return {
-    ...library,
-    sessions: library.sessions.map((session) =>
-      session.id === current.id
-        ? { ...session, treeState, title, updatedAt: now }
-        : session,
-    ),
-  }
-}

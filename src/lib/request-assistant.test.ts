@@ -1,32 +1,15 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
-import { clearProviderConfig, saveProviderConfig } from './provider.ts'
+import { saveProviderConfig } from './provider.ts'
 import { resetLocalChatApiProbe } from './client-chat.ts'
 import { requestAssistantText } from './request-assistant.ts'
+import { installLocalStorage } from '../test-support/local-storage.ts'
 
 const originalFetch = globalThis.fetch
-
-function installLocalStorage() {
-  const store = new Map<string, string>()
-  Object.defineProperty(globalThis, 'localStorage', {
-    value: {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value)
-      },
-      removeItem: (key: string) => {
-        store.delete(key)
-      },
-      clear: () => store.clear(),
-    },
-    configurable: true,
-  })
-}
 
 beforeEach(() => {
   installLocalStorage()
   resetLocalChatApiProbe()
-  clearProviderConfig()
 })
 
 afterEach(() => {

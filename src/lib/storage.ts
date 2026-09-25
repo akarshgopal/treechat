@@ -1,8 +1,6 @@
-import { createEmptyState } from '@/lib/seed'
 import {
   createEmptyLibrary,
   libraryFromTree,
-  replaceActiveTree,
   titleFromTree,
 } from '@/lib/sessions'
 import type {
@@ -519,18 +517,4 @@ export async function closeLibraryStore() {
   localCopy = false
   unsaved = null
   reportSave('saved')
-}
-
-/** Active session's tree — used by tests and anything that still thinks in trees. */
-export async function loadTreeState(): Promise<TreeState> {
-  const library = await loadLibrary()
-  const active =
-    library.sessions.find((session) => session.id === library.activeSessionId) ??
-    library.sessions[0]
-  return active?.treeState ?? createEmptyState()
-}
-
-export async function saveTreeState(state: TreeState) {
-  const library = await loadLibrary()
-  await saveLibrary(replaceActiveTree(library, state))
 }

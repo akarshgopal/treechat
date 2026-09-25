@@ -135,15 +135,6 @@ export function patchProviderConfig(
   return next
 }
 
-export function clearProviderConfig() {
-  if (typeof localStorage === 'undefined') return
-  localStorage.removeItem(PROVIDER_STORAGE_KEY)
-}
-
-export function hasClientApiKey(config: ClientProviderConfig | null): boolean {
-  return Boolean(config?.apiKey)
-}
-
 /**
  * OpenRouter ids are `vendor/model`, optionally with a `:variant` suffix.
  * Catches half-typed text before it is saved and sent with every request.

@@ -33,10 +33,6 @@ export function contextOmittedLabel(count: number) {
   return `[${count} ancestor level${count === 1 ? '' : 's'} omitted]`
 }
 
-export function threadOf(state: TreeState, threadId: string): Thread | null {
-  return state.threads[threadId] ?? null
-}
-
 /** Direct children of a thread, oldest first. */
 export function childThreads(state: TreeState, threadId: string): Thread[] {
   return Object.values(state.threads)
@@ -70,21 +66,6 @@ export function pathTo(state: TreeState, threadId: string): Thread[] {
 
 export function depthOf(state: TreeState, threadId: string): number {
   return Math.max(0, pathTo(state, threadId).length - 1)
-}
-
-/**
- * How many steps `threadId` is below `ancestorId`. `0` if they are the same
- * thread. `Infinity` if the ancestor is not on the path.
- */
-export function depthFrom(
-  state: TreeState,
-  ancestorId: string,
-  threadId: string,
-): number {
-  const path = pathTo(state, threadId)
-  const index = path.findIndex((thread) => thread.id === ancestorId)
-  if (index < 0) return Number.POSITIVE_INFINITY
-  return path.length - 1 - index
 }
 
 /** A thread and everything beneath it, for cascade discard. */
