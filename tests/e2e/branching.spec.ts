@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { savedLibrary, tree } from './library'
+import { expect, test, type Page } from './fixtures'
+import { afterSaves, savedLibrary, tree } from './library'
 import type { TreeState } from '../../src/types'
 
 const question = 'What does this mean in practice?'
@@ -9,6 +9,8 @@ async function restoreDemo(page: Page) {
   await page.getByTestId('settings-button').click()
   await page.getByTestId('settings-restore-demo').click()
   await expect(page.locator('[data-message-id="msg-root-4"]')).toBeAttached()
+  // Saved, so a snapshot taken next is the demo.
+  await afterSaves(page)
 }
 
 async function selectPassage(page: Page) {
@@ -31,11 +33,6 @@ async function selectPassage(page: Page) {
 test.beforeEach(async ({ page }) => {
   // Exercise the static site's browser mock. Never use local .env credentials
   // or send a request to a real model provider during UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
 })
 
@@ -49,6 +46,7 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
   await expect.poll(async () => Object.keys((await tree(page)).threads).length).toBe(3)
   await page.getByRole('button', { name: 'Cancel branch', exact: true }).click()
   await expect(page.getByTestId('branch-question')).toHaveCount(0)
+  await afterSaves(page)
   expect(Object.keys((await tree(page)).threads)).toEqual(Object.keys(before.threads))
 
   await selectPassage(page)
@@ -76,6 +74,7 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
   await page.getByTestId('drop-summary').click()
   await expect(page.getByTestId('takeaway-dialog')).toBeVisible()
   await expect(page.getByLabel('Your takeaway', { exact: true })).toBeVisible()
+  await afterSaves(page)
   expect((await tree(page)).threads[before.rootId].messages).toHaveLength(6)
   await page.getByLabel('Your takeaway', { exact: true }).fill(takeaway)
   await page.screenshot({ path: testInfo.outputPath('review-takeaway.png') })
@@ -83,6 +82,7 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
   await expect(page.getByTestId('takeaway-dialog')).toHaveCount(0)
   await expect(page.locator('[data-view="spine"]')).toBeVisible()
   await expect(page.locator('.source-return').first()).toBeVisible()
+  await expect.poll(async () => (await tree(page)).threads[before.rootId].messages.at(-1)?.content).toBe(takeaway)
   const merged = await tree(page)
   expect(merged.threads[before.rootId].messages.at(-1)).toMatchObject({ content: takeaway, sourceThreadId: branch.id, kind: 'drop-summary' })
   expect(merged.threads[branch.id]).toBeDefined()
@@ -91,7 +91,7 @@ test('select, ask, expand, review takeaway, return to source, and undo', async (
   await page.getByRole('button', { name: 'View branch', exact: true }).click()
   await expect(page.getByRole('textbox', { name: `Message to ${question}`, exact: true })).toHaveValue('A draft worth keeping')
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
-  expect((await tree(page)).threads[before.rootId].messages).toHaveLength(6)
+  await expect.poll(async () => (await tree(page)).threads[before.rootId].messages).toHaveLength(6)
   expect((await tree(page)).threads[branch.id]).toBeDefined()
   expect(errors).toEqual([])
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -115,6 +115,7 @@ test('message action supports touch and drafts stay with their chat', async ({ p
   await page.getByLabel('Your branch question').press('Escape')
   await expect(page.getByTestId('branch-question')).toHaveCount(0)
   await expect(page.locator('[data-ask-message="msg-root-4"]')).toBeFocused()
+  await afterSaves(page)
   expect(Object.keys((await tree(page)).threads)).toHaveLength(3)
 })
 
@@ -133,6 +134,7 @@ test('failed takeaways can be cancelled or written manually and remain linked af
   await page.getByLabel('Your takeaway', { exact: true }).press('Escape')
   await expect(page.getByTestId('takeaway-dialog')).toHaveCount(0)
   await expect(page.getByTestId('back-to-spine')).toBeVisible()
+  await afterSaves(page)
   expect((await tree(page)).threads['thread-root'].messages).toHaveLength(6)
 
   await page.getByTestId('drop-summary').click()
@@ -142,5 +144,5 @@ test('failed takeaways can be cancelled or written manually and remain linked af
   await expect(page.locator('[data-takeaway-id]')).toContainText(takeaway)
   await page.getByRole('button', { name: 'View branch', exact: true }).click()
   await expect(page.getByTestId('back-to-spine')).toBeVisible()
-  expect((await tree(page)).activeThreadId).toBe('thread-branch-1')
+  await expect.poll(async () => (await tree(page)).activeThreadId).toBe('thread-branch-1')
 })

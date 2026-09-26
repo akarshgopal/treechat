@@ -33,3 +33,11 @@ export async function activeSession(page: Page): Promise<ChatSession> {
 export async function tree(page: Page): Promise<TreeState> {
   return (await activeSession(page)).treeState
 }
+
+/**
+ * Wait out one save interval (the app writes the library at most every
+ * 400 ms), so a check that something did NOT change reads the latest save.
+ */
+export async function afterSaves(page: Page) {
+  await page.waitForTimeout(500)
+}

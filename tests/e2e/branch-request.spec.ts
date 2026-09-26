@@ -1,17 +1,12 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 test('a settings-key branch sends its question, quote and ancestor context and renders the reply', async ({ page }) => {
   const requests: Array<{ session_id?: string; messages: Array<{ role: string; content: string }> }> = []
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.href === 'https://openrouter.ai/api/v1/chat/completions') {
-      requests.push(route.request().postDataJSON())
-      return route.fulfill({ status: 200, contentType: 'text/event-stream', body:
-        'data: {"choices":[{"delta":{"content":"The branch request reached the provider."}}]}\n\ndata: [DONE]\n\n',
-      })
-    }
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
+  await page.route('https://openrouter.ai/api/v1/chat/completions', (route) => {
+    requests.push(route.request().postDataJSON())
+    return route.fulfill({ status: 200, contentType: 'text/event-stream', body:
+      'data: {"choices":[{"delta":{"content":"The branch request reached the provider."}}]}\n\ndata: [DONE]\n\n',
+    })
   })
   await page.goto('/')
   await page.getByTestId('settings-button').click()
@@ -55,18 +50,13 @@ test('a delayed branch shows progress, surfaces a stream error, and regenerates 
   let releaseResponse!: () => void
   const responseGate = new Promise<void>((resolve) => { releaseResponse = resolve })
   let requests = 0
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.href === 'https://openrouter.ai/api/v1/chat/completions') {
-      requests += 1
-      if (requests === 1) {
-        await responseGate
-        return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"error":{"message":"Provider overloaded. Try again."}}\n\n' })
-      }
-      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"choices":[{"delta":{"content":"Recovered reply"}}]}\n\ndata: [DONE]\n\n' })
+  await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {
+    requests += 1
+    if (requests === 1) {
+      await responseGate
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"error":{"message":"Provider overloaded. Try again."}}\n\n' })
     }
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
+    return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"choices":[{"delta":{"content":"Recovered reply"}}]}\n\ndata: [DONE]\n\n' })
   })
   await page.goto('/')
   await page.getByTestId('settings-button').click()

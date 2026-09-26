@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 import { tree } from './library'
 
 /** Paste a generated 2000×1000 PNG, as a screenshot from the clipboard arrives. */
@@ -32,12 +32,6 @@ async function dropOnComposer(page: Page, files: Array<{ name: string; type: str
 }
 
 test.beforeEach(async ({ page }) => {
-  // Static-site mock only: never reach a real provider from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
 })
 
@@ -51,6 +45,7 @@ test('a pasted screenshot is resized, sent, shown, and survives a reload', async
   await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.getByTestId('composer-attachments')).toHaveCount(0)
   await expect(page.locator('article').last()).toContainText('I received 1 image (Screenshot')
+  await expect.poll(async () => (await tree(page)).threads['thread-root'].messages[0]?.attachments?.length).toBe(1)
   const sent = (await tree(page)).threads['thread-root'].messages[0]!
   expect(sent).toMatchObject({ role: 'user', content: '', attachments: [{ kind: 'image', width: 1568, height: 784 }] })
   expect(JSON.stringify(sent)).not.toContain('data:image')

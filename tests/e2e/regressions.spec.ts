@@ -1,10 +1,12 @@
-import { expect, test, type Page } from '@playwright/test'
-import { tree } from './library'
+import { expect, test, type Page } from './fixtures'
+import { afterSaves, tree } from './library'
 
 async function restoreDemo(page: Page) {
   await page.getByTestId('settings-button').click()
   await page.getByTestId('settings-restore-demo').click()
   await expect(page.locator('[data-message-id="msg-root-4"]')).toBeAttached()
+  // Saved, so a snapshot taken next is the demo.
+  await afterSaves(page)
 }
 
 async function select(page: Page, messageId: string, length: number) {
@@ -24,12 +26,6 @@ async function select(page: Page, messageId: string, length: number) {
 }
 
 test.beforeEach(async ({ page }) => {
-  // Static-site mock only: never reach a real provider from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
 })
 
@@ -52,6 +48,7 @@ test('editing an early message asks before removing later turns and branches', a
   await expect(page.getByTestId('rewrite-confirm')).toContainText('4 later messages and 2 branches')
 
   await page.getByRole('button', { name: 'Keep conversation' }).click()
+  await afterSaves(page)
   expect(await tree(page)).toEqual(before)
   await expect(page.getByTestId('message-edit-input')).toHaveValue('What is TreeChat, briefly?')
 

@@ -1,18 +1,12 @@
 import { readFile } from 'node:fs/promises'
-import { expect, test, type Page } from '@playwright/test'
-import { savedLibrary } from './library'
+import { blockOutsideTraffic, expect, test, type Page } from './fixtures'
+import { afterSaves, savedLibrary } from './library'
 
 async function sessionIds(page: Page): Promise<string[]> {
   return (await savedLibrary(page)).sessions.map((session) => session.id)
 }
 
 test.beforeEach(async ({ page }) => {
-  // Static-site mock only: never reach a real provider from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
 })
 
@@ -27,22 +21,20 @@ test('chats export to JSON and import into another browser', async ({ page, brow
 
   // A fresh browser: its blank chat gives way to the imported one.
   const context = await browser.newContext({ ...testInfo.project.use })
+  await blockOutsideTraffic(context)
   const other = await context.newPage()
-  await other.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    return url.hostname === '127.0.0.1' ? route.continue() : route.abort()
-  })
   await other.goto('/')
   await other.getByTestId('settings-button').click()
   await other.getByTestId('settings-import-input').setInputFiles({ name: 'chats.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) })
   await expect(other.getByTestId('toast')).toContainText('Imported 1 chat')
   await expect(other.locator('[data-message-id="msg-root-4"]')).toBeAttached()
-  expect(await sessionIds(other)).toEqual([file.sessions[0].id])
+  await expect.poll(() => sessionIds(other)).toEqual([file.sessions[0].id])
 
   // The same file again changes nothing; a foreign file is refused.
   await other.getByTestId('settings-button').click()
   await other.getByTestId('settings-import-input').setInputFiles({ name: 'chats.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) })
   await expect(other.getByTestId('toast')).toContainText('already here')
+  await afterSaves(other)
   expect(await sessionIds(other)).toHaveLength(1)
   // Reopening mid close-animation can be swallowed; wait for it to finish.
   await expect(other.getByTestId('settings-dialog')).toBeHidden()

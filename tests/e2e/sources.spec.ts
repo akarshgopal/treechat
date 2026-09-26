@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 import { tree } from './library'
 import type { Thread } from '../../src/types'
 
@@ -59,11 +59,6 @@ ${'More filler after the passage. '.repeat(20)}`
 
 test.beforeEach(async ({ page }) => {
   // Static-site mock only: never reach a real provider or reader from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
   await page.getByTestId('show-demo').click()
   await expect(page.locator('[data-message-id="msg-root-4"]')).toBeAttached()
@@ -81,8 +76,10 @@ async function askForSource(page: Page) {
 }
 
 async function citedBranch(page: Page): Promise<Thread> {
-  const state = await tree(page)
-  return Object.values(state.threads).find((thread) => thread.anchor?.quote === 'Highlight text in any message')!
+  const find = async () => Object.values((await tree(page)).threads).find((thread) => thread.anchor?.quote === 'Highlight text in any message')
+  // Sources are saved with the reply once it finishes.
+  await expect.poll(async () => (await find())?.messages.at(-1)?.citations?.length ?? 0).toBeGreaterThan(0)
+  return (await find())!
 }
 
 test('Source? searches the web, cites the reply, and opens a source beside it', async ({ page }, testInfo) => {

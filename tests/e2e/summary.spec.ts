@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { tree } from './library'
 
 /** A main thread long enough that its older turns outgrow the summary trigger. */
@@ -22,12 +22,6 @@ function longLibrary() {
 }
 
 test.beforeEach(async ({ page }) => {
-  // Static-site mock only: never reach a real provider from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   const library = longLibrary()
   await page.addInitScript((value) => {
     if (!sessionStorage.getItem('seeded')) {
