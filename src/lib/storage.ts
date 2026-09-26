@@ -412,13 +412,23 @@ async function write(library: SessionLibrary): Promise<SaveResult> {
 
 let pending: SessionLibrary | null = null
 let writing: Promise<void> | null = null
+/**
+ * At most one write per this many ms. A streaming reply changes the library
+ * with every token; writing the whole of it back to back would keep the
+ * main thread busy. Leaving the page still keeps the latest (keepUnsaved).
+ */
+const SAVE_INTERVAL_MS = 400
+let lastWriteAt = 0
 /** The latest library asked to be saved, until a write of it goes through. */
 let unsaved: SessionLibrary | null = null
 
 async function flush() {
   while (pending) {
+    const wait = lastWriteAt + SAVE_INTERVAL_MS - Date.now()
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
     const next = pending
     pending = null
+    lastWriteAt = Date.now()
     const result = reportSave(await write(next))
     if (result === 'saved' && unsaved === next) unsaved = null
   }
@@ -462,6 +472,7 @@ export function saveLibrary(library: SessionLibrary): Promise<SaveResult> {
 export async function closeLibraryStore() {
   await writing
   await database.close()
+  lastWriteAt = 0
   localCopy = false
   unsaved = null
   reportSave('saved')
