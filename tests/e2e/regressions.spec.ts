@@ -117,3 +117,9 @@ test('an empty chat offers the walkthrough', async ({ page }) => {
   await page.getByTestId('show-demo').click()
   await expect(page.locator('[data-message-id="msg-root-4"]')).toBeAttached()
 })
+
+test('an empty chat offers starter questions that send at once', async ({ page }) => {
+  await page.getByTestId('starters').getByRole('button', { name: 'How does TreeChat keep long chats usable?' }).click()
+  await expect(page.getByTestId('empty-chat-guide')).toHaveCount(0)
+  await expect(page.locator('article').last()).toContainText('running summary')
+})

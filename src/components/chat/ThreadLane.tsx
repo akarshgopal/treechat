@@ -80,6 +80,21 @@ type PendingRewrite = {
 }
 
 /**
+ * First questions for an empty chat. With a key, open questions whose answers
+ * are worth branching from; in the demo, questions the demo answers well.
+ */
+const LIVE_STARTERS = [
+  'How does a large language model actually work?',
+  'Compare Rust and Go for a small command-line tool',
+  'What caused the 2008 financial crisis?',
+] as const
+const DEMO_STARTERS = [
+  'How do branches work?',
+  'How does TreeChat keep long chats usable?',
+  'Can I ask about my own documents?',
+] as const
+
+/**
  * A thread's lane: its transcript, composer and actions. The conversation
  * itself runs in `ThreadRunners`, so closing the lane never cuts a reply off.
  */
@@ -209,6 +224,8 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
       error={chat.error?.message}
       onRetryError={() => { void chat.reload() }}
       onShowDemo={shell.onShowDemo}
+      starters={shell.status.mode === 'live' ? LIVE_STARTERS : DEMO_STARTERS}
+      onStarter={(question) => void chat.sendMessage(question)}
       blankNote={shell.narrow && shell.status.mode === 'mock' ? 'Replies are demo text until you add an OpenRouter key in Settings.' : undefined}
       onAskMessage={shell.onAskMessage}
       leadOffset={frame.leadOffset}
@@ -225,7 +242,8 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
         />
       ) : shell.narrow ? undefined : (
         <MainHeader
-          title={activeSession.title}
+          // An empty chat has nothing to name yet; "New chat" is already in the sidebar.
+          title={thread.messages.length > 0 ? activeSession.title : ''}
           onRename={shell.onRenameChat}
           onDelete={shell.onDeleteChat}
           onCollapse={frame.onCollapse}

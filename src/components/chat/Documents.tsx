@@ -50,18 +50,14 @@ export function DocumentsSidebarSection({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="flex min-h-0 flex-col gap-0.5" data-testid="documents-section" data-count={count}>
       <div className="flex items-center gap-1">
-        <button type="button" onClick={onOpen} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground" data-testid="documents-open" title="Open the document library">
+        <button type="button" onClick={onOpen} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground" data-testid="documents-open" title={library.documents.length > 0 ? "Open the document library" : "Add files to ask questions about them"}>
           <FileText className="size-4 shrink-0" />
           <span className="truncate">Documents</span>
           {library.documents.length > 0 ? <span className="ml-auto text-xs tabular-nums">{count}/{library.documents.length}</span> : null}
         </button>
         <AddFilesButton onAdded={attach} compact />
       </div>
-      {library.documents.length === 0 ? (
-        <button type="button" onClick={onOpen} className="rounded-md px-2 pb-1 text-left text-xs text-muted-foreground hover:text-foreground">
-          Add files to ask about them
-        </button>
-      ) : (
+      {library.documents.length === 0 ? null : (
         <ul className="flex max-h-28 min-h-0 flex-col gap-0.5 overflow-y-auto">
           {library.documents.map((doc) => {
             const busy = Boolean(library.progress[doc.id]) || doc.status === 'indexing'
