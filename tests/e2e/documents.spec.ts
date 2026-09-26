@@ -101,7 +101,7 @@ test('a document added to a chat is retrieved and cited, then removed', async ({
   await expect(dialog).toContainText('No documents yet')
   await page.keyboard.press('Escape')
   await expectDocumentCount(page, mobile, 0)
-  expect((await activeSession(page)).documentIds).toBeUndefined()
+  await expect.poll(async () => (await activeSession(page)).documentIds).toBeUndefined()
   // The citation already on the reply is history and stays.
   expect((await lastAssistantCitations(page))?.[0]?.documentId).toBe(documentId)
 })

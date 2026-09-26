@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixtures'
-import { savedLibrary, tree } from './library'
+import { afterSaves, savedLibrary, tree } from './library'
 
 /** Select `length` characters of a message's first text node from `from`. */
 async function select(page: Page, messageId: string, from: number, length: number) {
@@ -34,8 +34,9 @@ test('a lens grows a branch from whole words and opens it beside its source', as
   await expect(branch).toBeVisible()
   await expect(branch.locator('article').first()).toContainText('Explain “Highlight text in any message”')
   await expect(branch.getByTestId('reply-progress')).toHaveCount(0, { timeout: 10_000 })
-  const created = Object.values((await tree(page)).threads).find((thread) => thread.anchor?.quote === 'Highlight text in any message')
-  expect(created).toBeDefined()
+  const findCreated = async () => Object.values((await tree(page)).threads).find((thread) => thread.anchor?.quote === 'Highlight text in any message')
+  await expect.poll(findCreated).toBeDefined()
+  const created = await findCreated()
 
   if (testInfo.project.use.isMobile) {
     // One lane at a time on phones; the back arrow returns to the passage.
@@ -72,12 +73,14 @@ test('typing with a passage selected asks about it in place', async ({ page }) =
 })
 
 test('Escape cancels an unsent question without creating a branch', async ({ page }) => {
+  await afterSaves(page)
   const before = Object.keys((await tree(page)).threads)
   await select(page, 'msg-root-4', 0, 20)
   await page.getByTestId('branch-chip').click()
   await page.getByLabel('Your branch question').fill('Never mind')
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('branch-popover')).toHaveCount(0)
+  await afterSaves(page)
   expect(Object.keys((await tree(page)).threads)).toEqual(before)
 })
 

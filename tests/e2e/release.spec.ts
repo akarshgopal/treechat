@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { blockOutsideTraffic, expect, test, type Page } from './fixtures'
-import { savedLibrary } from './library'
+import { afterSaves, savedLibrary } from './library'
 
 async function sessionIds(page: Page): Promise<string[]> {
   return (await savedLibrary(page)).sessions.map((session) => session.id)
@@ -28,12 +28,13 @@ test('chats export to JSON and import into another browser', async ({ page, brow
   await other.getByTestId('settings-import-input').setInputFiles({ name: 'chats.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) })
   await expect(other.getByTestId('toast')).toContainText('Imported 1 chat')
   await expect(other.locator('[data-message-id="msg-root-4"]')).toBeAttached()
-  expect(await sessionIds(other)).toEqual([file.sessions[0].id])
+  await expect.poll(() => sessionIds(other)).toEqual([file.sessions[0].id])
 
   // The same file again changes nothing; a foreign file is refused.
   await other.getByTestId('settings-button').click()
   await other.getByTestId('settings-import-input').setInputFiles({ name: 'chats.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) })
   await expect(other.getByTestId('toast')).toContainText('already here')
+  await afterSaves(other)
   expect(await sessionIds(other)).toHaveLength(1)
   // Reopening mid close-animation can be swallowed; wait for it to finish.
   await expect(other.getByTestId('settings-dialog')).toBeHidden()

@@ -76,8 +76,10 @@ async function askForSource(page: Page) {
 }
 
 async function citedBranch(page: Page): Promise<Thread> {
-  const state = await tree(page)
-  return Object.values(state.threads).find((thread) => thread.anchor?.quote === 'Highlight text in any message')!
+  const find = async () => Object.values((await tree(page)).threads).find((thread) => thread.anchor?.quote === 'Highlight text in any message')
+  // Sources are saved with the reply once it finishes.
+  await expect.poll(async () => (await find())?.messages.at(-1)?.citations?.length ?? 0).toBeGreaterThan(0)
+  return (await find())!
 }
 
 test('Source? searches the web, cites the reply, and opens a source beside it', async ({ page }, testInfo) => {

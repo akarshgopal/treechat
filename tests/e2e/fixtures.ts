@@ -15,8 +15,8 @@ export async function blockOutsideTraffic(target: Page | BrowserContext) {
 
 /** `test`, with outside traffic blocked in every test's browser context. */
 export const test = base.extend({
-  context: async ({ context }, use) => {
+  context: async ({ context }, provide) => {
     await blockOutsideTraffic(context)
-    await use(context)
+    await provide(context)
   },
 })

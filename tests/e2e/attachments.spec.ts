@@ -45,6 +45,7 @@ test('a pasted screenshot is resized, sent, shown, and survives a reload', async
   await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.getByTestId('composer-attachments')).toHaveCount(0)
   await expect(page.locator('article').last()).toContainText('I received 1 image (Screenshot')
+  await expect.poll(async () => (await tree(page)).threads['thread-root'].messages[0]?.attachments?.length).toBe(1)
   const sent = (await tree(page)).threads['thread-root'].messages[0]!
   expect(sent).toMatchObject({ role: 'user', content: '', attachments: [{ kind: 'image', width: 1568, height: 784 }] })
   expect(JSON.stringify(sent)).not.toContain('data:image')
