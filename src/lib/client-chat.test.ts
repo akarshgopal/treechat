@@ -6,7 +6,6 @@ import {
   OPENROUTER_CHAT_URL,
   collectAssistantText,
   openRouterChatStream,
-  resetLocalChatApiProbe,
   runChat,
 } from './client-chat.ts'
 import { installLocalStorage } from '../test-support/local-storage.ts'
@@ -15,11 +14,9 @@ const originalFetch = globalThis.fetch
 
 beforeEach(() => {
   installLocalStorage()
-  resetLocalChatApiProbe()
 })
 
 afterEach(() => {
-  resetLocalChatApiProbe()
   globalThis.fetch = originalFetch
 })
 
@@ -103,7 +100,6 @@ test('runChat with model prefs but no key stays on the mock', async () => {
   }
   assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_START))
   assert.ok(urls.every((url) => !url.includes('openrouter.ai')))
-  assert.ok(urls.every((url) => !url.includes('/api/chat')))
 })
 
 test('openRouterChatStream abort after start does not emit RUN_ERROR', async () => {

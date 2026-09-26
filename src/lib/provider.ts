@@ -1,6 +1,5 @@
 export const PROVIDER_STORAGE_KEY = 'treechat:provider:v1'
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-5.6-luna'
-export const TREECHAT_MODEL_HEADER = 'X-TreeChat-Model'
 
 export const OPENROUTER_MODEL_OPTIONS = [
   { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
@@ -156,14 +155,4 @@ export function shortModelName(model: string): string {
   const trimmed = model.trim()
   const slash = trimmed.lastIndexOf('/')
   return slash >= 0 ? trimmed.slice(slash + 1) : trimmed
-}
-
-export function providerRequestHeaders(
-  config: ClientProviderConfig | null = loadProviderConfig(),
-): Record<string, string> {
-  if (!config?.apiKey) return {}
-  return {
-    Authorization: `Bearer ${config.apiKey}`,
-    [TREECHAT_MODEL_HEADER]: config.model || DEFAULT_OPENROUTER_MODEL,
-  }
 }

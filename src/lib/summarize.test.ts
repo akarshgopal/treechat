@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
-import { resetLocalChatApiProbe } from './client-chat.ts'
 import { saveProviderConfig } from './provider.ts'
 import { refreshSummary } from './summarize.ts'
 import type { ChatMessage, ThreadSummary } from '../types.ts'
@@ -10,11 +9,9 @@ const originalFetch = globalThis.fetch
 
 beforeEach(() => {
   installLocalStorage()
-  resetLocalChatApiProbe()
 })
 
 afterEach(() => {
-  resetLocalChatApiProbe()
   globalThis.fetch = originalFetch
 })
 

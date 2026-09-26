@@ -4,10 +4,10 @@ import { safeHttpUrl } from './citation-markers.ts'
 /**
  * Live web search for a branch, via OpenRouter's `web` plugin.
  *
- * Only threads with `webSearch: true` (the Source? lens or the branch
- * header's globe) send the plugin: every search costs a small fee, even on
- * free models, so ordinary messages never search. The local `/api/chat`
- * fallback and the mock do not use this (the mock fakes a searched reply).
+ * Only threads with `webSearch: true` (the Source? lens or the composer's
+ * globe) send the plugin: every search costs a small fee, even on free
+ * models, so ordinary messages never search. The demo mock fakes a searched
+ * reply instead.
  */
 export const WEB_SEARCH_MAX_RESULTS = 5
 
