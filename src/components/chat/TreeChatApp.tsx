@@ -11,9 +11,10 @@ import {
   type ReactNode,
   type TouchEvent,
 } from 'react'
-import { useChat } from '@tanstack/ai-react'
 import { ChevronDown, Settings, SquarePen } from 'lucide-react'
 import { BranchPopover } from '@/components/chat/BranchPopover'
+import { ThreadRunners } from '@/components/chat/thread-runs'
+import { queueQuestion, stopChat, stopThread, useBusyThreads, useThreadChat } from '@/lib/thread-run-registry'
 import { DocumentDropZone, DocumentsLibraryEntry, DocumentsSidebarSection } from '@/components/chat/Documents'
 import { BranchHeader, MainHeader } from '@/components/chat/LaneHeader'
 import { Toast, type ToastState } from '@/components/chat/Toast'
@@ -41,11 +42,8 @@ import {
 } from '@/components/ui/dialog'
 import { MAX_ATTACHMENTS, prepareFiles } from '@/lib/attachments/prepare'
 import { pruneAttachments } from '@/lib/attachments/store'
-import { chatConnection } from '@/lib/chat-connection'
 import { addDocumentFiles } from '@/lib/documents/library'
 import { loadModelCapabilities, modelReadsImages } from '@/lib/model-capabilities'
-import { takeRunCitations } from '@/lib/citations'
-import { takeRunUsage } from '@/lib/usage'
 import { createId } from '@/lib/ids'
 import {
   doomedIdsForAnchors,
@@ -55,7 +53,7 @@ import {
   retryFromAssistant,
   retryFromUser,
 } from '@/lib/message-actions'
-import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
+import { fromUIMessages, toUIMessages } from '@/lib/messages'
 import {
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_MODEL_OPTIONS,
@@ -74,8 +72,7 @@ import {
   plainTextSkippingIgnore,
   snapRangeToWords,
 } from '@/lib/selection'
-import { branchForwardedProps, descendantIds, pathTo } from '@/lib/tree'
-import { refreshSummary } from '@/lib/summarize'
+import { descendantIds, pathTo } from '@/lib/tree'
 import { isBranchShortcut } from '@/lib/utils'
 import { useTree } from '@/store/tree-store'
 import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
@@ -102,15 +99,6 @@ type ChipState = {
   range: Range | null
 }
 
-/**
- * Handlers shared by every thread in the tree. Threads render recursively, so
- * drilling these as props would mean re-threading a dozen of them at each level.
- */
-type EngineHandle = {
-  stop: () => void
-  isLoading: boolean
-}
-
 /** A source open beside the reply that cites it. Shell state, never persisted. */
 type OpenSource = { threadId: string; messageId: string; citationId: string }
 
@@ -127,13 +115,11 @@ type ShellValue = {
   status: ProviderStatus
   onSwitchModel: (model: string) => void
   registerComposer: (threadId: string, el: HTMLTextAreaElement | null) => void
-  registerEngine: (threadId: string, handle: EngineHandle | null) => void
   onSelectMessage: (threadId: string, messageId: string) => void
   onOpenChild: (parentId: string, childId: string | null) => void
   onFocus: (threadId: string) => void
   onMerge: (threadId: string) => void
   onDiscard: (threadId: string) => void
-  takeInitialQuestion: (threadId: string) => string | undefined
   onAskMessage: (threadId: string, messageId: string) => void
   onReturn: (threadId: string, takeawayId?: string) => void
   scrollPositions: Map<string, number>
@@ -242,80 +228,15 @@ type PendingRewrite = {
  * external write (a merged summary) remounts it and it re-reads the transcript
  * rather than overwriting it with its own stale copy.
  */
+/**
+ * A thread's lane: its transcript, composer and actions. The conversation
+ * itself runs in `ThreadRunners`, so closing the lane never cuts a reply off.
+ */
 function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; openChildId: string | null; frame: LaneFrame }) {
-  const { state, replaceMessages, rewriteThread, setSummary, setWebSearch, activeSession, setSessionDocuments } = useTree()
+  const { state, rewriteThread, setWebSearch, activeSession, setSessionDocuments } = useTree()
   const shell = useShell()
   const thread = state.threads[threadId]
-
-  const [initialMessages] = useState(() => toUIMessages(thread?.messages ?? []))
-  const forwarded = branchForwardedProps(state, threadId)
-  const summary = thread?.summary
-  const anchorAttachments = thread?.anchor && thread.parentId
-    ? state.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
-    : undefined
-  const chat = useChat({
-    threadId,
-    connection: chatConnection,
-    initialMessages,
-    forwardedProps: {
-      ...forwarded,
-      cacheSessionId: shell.sessionId,
-      // The transport retrieves excerpts from these documents before sending.
-      documentIds: activeSession.documentIds ?? [],
-      ...(thread?.webSearch ? { webSearch: true } : {}),
-      ...(summary ? { threadSummary: { content: summary.content, throughMessageId: summary.throughMessageId } } : {}),
-      // A branch from a message with images shows the model those images too.
-      ...(anchorAttachments ? { anchorAttachments } : {}),
-    },
-  })
-
-  const { sendMessage } = chat
-  const { takeInitialQuestion } = shell
-  useEffect(() => {
-    // StrictMode detaches and reattaches useChat during its mount replay.
-    // Sending in that first effect starts a request that detach immediately
-    // aborts. Consume the pending question only after the mount has settled.
-    const timer = window.setTimeout(() => {
-      const question = takeInitialQuestion(threadId)
-      if (question) void sendMessage(question)
-    }, 0)
-    return () => window.clearTimeout(timer)
-  }, [sendMessage, takeInitialQuestion, threadId])
-
-  const initial = useMemo(() => thread?.messages ?? [], [thread])
-  useEffect(() => {
-    const next = fromUIMessages(chat.messages)
-    if (next.length === 0 && initial.length > 0) return
-    if (!sameTranscript(next, initial)) replaceMessages(threadId, next)
-  }, [chat.messages, initial, replaceMessages, threadId])
-
-  // When a reply finishes, attach any sources its transport recorded.
-  const wasLoading = useRef(false)
-  const { setMessages } = chat
-  useEffect(() => {
-    const finished = wasLoading.current && !chat.isLoading
-    wasLoading.current = chat.isLoading
-    if (!finished) return
-    // Off the reply's path: the next request picks the summary up when it lands.
-    if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis))
-    const citations = takeRunCitations(threadId)
-    const usage = takeRunUsage(threadId)
-    const last = chat.messages.at(-1)
-    if ((!citations && !usage) || last?.role !== 'assistant') return
-    setMessages(chat.messages.map((message) =>
-      message === last
-        ? { ...message, metadata: { ...(message.metadata ?? {}), ...(citations ? { citations } : {}), ...(usage ? { usage } : {}) } }
-        : message,
-    ))
-  }, [chat.error, chat.isLoading, chat.messages, setMessages, setSummary, summary, threadId])
-
-  useEffect(() => {
-    shell.registerEngine(threadId, {
-      stop: () => chat.stop(),
-      isLoading: chat.isLoading,
-    })
-    return () => shell.registerEngine(threadId, null)
-  }, [chat, shell, threadId])
+  const chat = useThreadChat(shell.sessionId, threadId)
 
   const [pendingRewrite, setPendingRewrite] = useState<PendingRewrite | null>(null)
   const [attachBusy, setAttachBusy] = useState(false)
@@ -323,7 +244,7 @@ function ThreadEngine({ threadId, openChildId, frame }: { threadId: string; open
   const pendingFiles = shell.attachmentsFor(threadId)
   const visionNotice = useVisionNotice(pendingFiles, shell.status, shell.onSwitchModel)
 
-  if (!thread) return null
+  if (!thread || !chat) return null
 
   const snapshot = () => {
     const live = fromUIMessages(chat.messages)
@@ -613,22 +534,15 @@ function TreeChatShell({
   const paletteMounted = useOpenedOnce(paletteOpen)
   usePrefetchLazyParts()
   /** Threads with a reply streaming in, for the sidebar and connectors. */
-  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set())
+  const busyIds = useBusyThreads(activeSessionId)
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
-  const enginesRef = useRef<Record<string, EngineHandle>>({})
   const lastRangeRef = useRef<ChipState | null>(null)
   const focusNextRef = useRef<string | null>(null)
   const holdChipRef = useRef(false)
-  const initialQuestionsRef = useRef<Record<string, string>>({})
 
   const draftFor = useCallback((threadId: string) => drafts[threadId] ?? '', [drafts])
   const attachmentsFor = useCallback((threadId: string) => attachments[threadId] ?? NO_ATTACHMENTS, [attachments])
   const setDraft = onDraftChange
-  const takeInitialQuestion = useCallback((threadId: string) => {
-    const question = initialQuestionsRef.current[threadId]
-    delete initialQuestionsRef.current[threadId]
-    return question
-  }, [])
 
   const registerComposer = useCallback(
     (threadId: string, el: HTMLTextAreaElement | null) => {
@@ -650,31 +564,7 @@ function TreeChatShell({
     [],
   )
 
-  const registerEngine = useCallback(
-    (threadId: string, handle: EngineHandle | null) => {
-      if (!handle) delete enginesRef.current[threadId]
-      else enginesRef.current[threadId] = handle
-      const busy = Boolean(handle?.isLoading)
-      setBusyIds((current) => {
-        if (current.has(threadId) === busy) return current
-        const next = new Set(current)
-        if (busy) next.add(threadId)
-        else next.delete(threadId)
-        return next
-      })
-    },
-    [],
-  )
-
-  const stopGenerating = useCallback(() => {
-    let stopped = false
-    for (const handle of Object.values(enginesRef.current)) {
-      if (!handle.isLoading) continue
-      handle.stop()
-      stopped = true
-    }
-    return stopped
-  }, [])
+  const stopGenerating = useCallback(() => stopChat(activeSessionId), [activeSessionId])
 
   const syncChipFromSelection = useCallback(() => {
     const selection = window.getSelection()
@@ -758,12 +648,12 @@ function TreeChatShell({
       end: passage.end,
       quote: passage.quote,
     }, { webSearch: options?.webSearch })
-    initialQuestionsRef.current[id] = question
+    queueQuestion(activeSessionId, id, question)
     if (options?.focusComposer !== false) focusNextRef.current = id
     setAsking(null)
     clearSelection()
     focus(id)
-  }, [clearSelection, createThread, focus])
+  }, [activeSessionId, clearSelection, createThread, focus])
 
   /**
    * With a key, web search costs extra per search. Say so the first time it
@@ -907,24 +797,24 @@ function TreeChatShell({
     (threadId: string) => {
       const thread = state.threads[threadId]
       if (!thread || !thread.parentId || !thread.anchor) return
-      enginesRef.current[threadId]?.stop()
+      stopThread(activeSessionId, threadId)
       setPreviewThreadId(threadId)
     },
-    [state],
+    [activeSessionId, state],
   )
 
   const discardWithUndo = useCallback((threadId: string) => {
     const removed = descendantIds(state, threadId).flatMap((id) => state.threads[id] ? [state.threads[id]] : [])
     if (removed.length === 0) return
     const focusedBefore = state.activeThreadId
-    for (const thread of removed) enginesRef.current[thread.id]?.stop()
+    for (const thread of removed) stopThread(activeSessionId, thread.id)
     discard(threadId)
     onToast({
       id: createId('toast'),
       text: 'Branch discarded',
       actions: [{ label: 'Undo', onClick: () => restoreThreads(removed, focusedBefore) }],
     })
-  }, [discard, onToast, restoreThreads, state])
+  }, [activeSessionId, discard, onToast, restoreThreads, state])
 
   const deleteWithUndo = useCallback((sessionId: string) => {
     const session = sessions.find((entry) => entry.id === sessionId)
@@ -970,13 +860,11 @@ function TreeChatShell({
       status,
       onSwitchModel,
       registerComposer,
-      registerEngine,
       onSelectMessage,
       onOpenChild,
       onFocus: focus,
       onMerge,
       onDiscard: discardWithUndo,
-      takeInitialQuestion,
       onAskMessage,
       onReturn: returnToPassage,
       scrollPositions,
@@ -997,13 +885,11 @@ function TreeChatShell({
       status,
       onSwitchModel,
       registerComposer,
-      registerEngine,
       onSelectMessage,
       onOpenChild,
       focus,
       onMerge,
       discardWithUndo,
-      takeInitialQuestion,
       onAskMessage,
       returnToPassage,
       scrollPositions,
@@ -1343,7 +1229,7 @@ function TreeChatShell({
             const thread = state.threads[previewThreadId]
             if (!thread?.parentId || !thread.anchor || !state.threads[thread.parentId]) return
             const parentId = thread.parentId
-            enginesRef.current[parentId]?.stop()
+            stopThread(activeSessionId, parentId)
             const id = createId('takeaway')
             appendMessage(parentId, { id, role: 'assistant', content, createdAt: Date.now(), kind: 'drop-summary', quote: thread.anchor.quote, sourceThreadId: thread.id })
             setPreviewThreadId(null)
@@ -1362,7 +1248,7 @@ function TreeChatShell({
                 {
                   label: 'Undo',
                   onClick: () => {
-                    enginesRef.current[parentId]?.stop()
+                    stopThread(activeSessionId, parentId)
                     undoTakeaway(parentId, id)
                   },
                 },
@@ -1531,6 +1417,9 @@ export function TreeChatApp() {
   }, [epoch, clientConfig])
 
   return (
+    <>
+    {/* Outside the shell, which remounts per chat: replies outlive it. */}
+    <ThreadRunners epoch={epoch} />
     <TreeChatShell
       key={`${activeSessionId}:${epoch}`}
       epoch={epoch}
@@ -1547,5 +1436,6 @@ export function TreeChatApp() {
       toast={toast}
       onToast={setToast}
     />
+    </>
   )
 }

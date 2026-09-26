@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { tree } from './library'
+import { savedLibrary, tree } from './library'
 
 /** Select `length` characters of a message's first text node from `from`. */
 async function select(page: Page, messageId: string, from: number, length: number) {
@@ -191,4 +191,34 @@ test('a branch whose passage scrolled away points back to it instead of drawing 
   await jump.click()
   await expect(jump).toHaveCount(0)
   await expect(page.locator('[data-message-id="msg-root-2"] mark[data-open="true"]').first()).toBeInViewport()
+})
+
+test('a branch keeps answering after its lane is closed, and after switching chats', async ({ page }) => {
+  const branchReply = async (quote: string) => {
+    const library = await savedLibrary(page)
+    for (const session of library.sessions) {
+      const branch = Object.values(session.treeState.threads).find((thread) => thread.anchor?.quote === quote)
+      if (branch) return branch.messages.find((message) => message.role === 'assistant')?.content ?? ''
+    }
+    return ''
+  }
+  // The demo reply for a lens ends with this sentence.
+  const complete = /before adding it\.$/
+
+  // Close the branch as soon as its reply starts streaming.
+  await select(page, 'msg-root-4', 0, 29)
+  await page.locator('[data-lens="explain"]').click()
+  await expect.poll(() => branchReply('Highlight text in any message')).not.toBe('')
+  expect(await branchReply('Highlight text in any message')).not.toMatch(complete)
+  await page.getByTestId('back-to-spine').click()
+  await expect(page.getByTestId('branch-lane')).toHaveCount(0)
+  await expect.poll(() => branchReply('Highlight text in any message'), { timeout: 15_000 }).toMatch(complete)
+
+  // Start another, then leave the chat while it answers.
+  await select(page, 'msg-root-2', 0, 23)
+  await page.locator('[data-lens="explain"]').click()
+  await expect.poll(() => branchReply('TreeChat is a branching')).not.toBe('')
+  await page.getByTestId('new-chat').click()
+  await expect(page.getByTestId('empty-chat-guide')).toBeVisible()
+  await expect.poll(() => branchReply('TreeChat is a branching'), { timeout: 15_000 }).toMatch(complete)
 })

@@ -29,7 +29,8 @@ type TreeContextValue = {
   focus: (threadId: string) => void
   discard: (threadId: string) => void
   restoreThreads: (threads: Thread[], focusId?: string) => void
-  replaceMessages: (threadId: string, messages: ChatMessage[]) => void
+  /** `sessionId`: a chat other than the open one (a reply that finished in the background). */
+  replaceMessages: (threadId: string, messages: ChatMessage[], sessionId?: string) => void
   appendMessage: (threadId: string, message: ChatMessage) => void
   undoTakeaway: (threadId: string, messageId: string) => void
   rewriteThread: (
@@ -37,7 +38,7 @@ type TreeContextValue = {
     messages: ChatMessage[],
     dropAnchorMessageIds: string[],
   ) => void
-  setSummary: (threadId: string, summary: ThreadSummary, basis: string) => void
+  setSummary: (threadId: string, summary: ThreadSummary, basis: string, sessionId?: string) => void
   reset: () => void
   restoreDemo: () => void
   createSession: () => void
@@ -119,10 +120,11 @@ function LoadedTreeProvider({ initial, children }: { initial: SessionLibrary; ch
         dispatch({ type: 'tree', action: { type: 'set-web-search', threadId, on } }),
       discard: (threadId) => dispatch({ type: 'tree', action: { type: 'discard', threadId } }),
       restoreThreads: (threads, focusId) => dispatch({ type: 'tree', action: { type: 'restore-threads', threads, focusId } }),
-      replaceMessages: (threadId, messages) =>
+      replaceMessages: (threadId, messages, sessionId) =>
         dispatch({
           type: 'tree',
           action: { type: 'replace-messages', threadId, messages },
+          sessionId,
         }),
       appendMessage: (threadId, message) =>
         dispatch({
@@ -141,8 +143,8 @@ function LoadedTreeProvider({ initial, children }: { initial: SessionLibrary; ch
             dropAnchorMessageIds,
           },
         }),
-      setSummary: (threadId, summary, basis) =>
-        dispatch({ type: 'tree', action: { type: 'set-summary', threadId, summary, basis } }),
+      setSummary: (threadId, summary, basis, sessionId) =>
+        dispatch({ type: 'tree', action: { type: 'set-summary', threadId, summary, basis }, sessionId }),
       reset: () => dispatch({ type: 'tree', action: { type: 'reset' } }),
       restoreDemo: () => dispatch({ type: 'tree', action: { type: 'restoreDemo' } }),
       createSession: () => dispatch({ type: 'create-session' }),

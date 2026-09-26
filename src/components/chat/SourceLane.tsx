@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { citationWhere, safeHttpUrl } from '@/lib/citation-markers'
 import { loadSourceContent, locateSnippet, type SourceContent } from '@/lib/source-content'
 import type { Citation } from '@/types'
+import { RemoteImage } from '@/components/chat/RemoteImage'
 
 type LoadState =
   | { status: 'loading' }
@@ -118,7 +119,7 @@ export function SourceLane({ laneId, citation, leadOffset, narrow, onClose }: {
           ) : (
             <div ref={bodyRef} className="tc-md text-sm leading-[1.6]" data-testid="source-content">
               {state.content.markdown?.trim() ? (
-                <Markdown remarkPlugins={remarkPlugins} components={{ a: SourceLink, img: SourceImage }}>
+                <Markdown remarkPlugins={remarkPlugins} components={{ a: SourceLink, img: RemoteImage }}>
                   {state.content.markdown}
                 </Markdown>
               ) : (
@@ -136,11 +137,6 @@ function SourceLink({ node: _node, href, children, ...props }: ComponentProps<'a
   const safe = safeHttpUrl(href)
   if (!safe) return <span>{children}</span>
   return <a {...props} href={safe} target="_blank" rel="noopener noreferrer">{children}</a>
-}
-
-/** Third-party pages: images load lazily and without telling the host where from. */
-function SourceImage({ node: _node, alt, ...props }: ComponentProps<'img'> & ExtraProps) {
-  return <img {...props} alt={alt ?? ''} loading="lazy" referrerPolicy="no-referrer" className="max-w-full" />
 }
 
 /** The DOM range of `snippet` inside `root`'s text, if it can be found. */

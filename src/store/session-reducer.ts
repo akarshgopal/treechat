@@ -20,7 +20,8 @@ export type SessionAction =
   | { type: 'set-session-documents'; sessionId: string; documentIds: string[] }
   /** A document was removed from the library: detach it everywhere. */
   | { type: 'forget-document'; documentId: string }
-  | { type: 'tree'; action: TreeAction }
+  /** A tree edit: to the open chat, or to `sessionId` (a reply finishing in the background). */
+  | { type: 'tree'; action: TreeAction; sessionId?: string }
 
 function mapSession(
   library: SessionLibrary,
@@ -133,7 +134,7 @@ export function sessionReducer(
     }
     case 'tree': {
       const current = state.sessions.find(
-        (session) => session.id === state.activeSessionId,
+        (session) => session.id === (action.sessionId ?? state.activeSessionId),
       )
       if (!current) return state
       const treeState = treeReducer(current.treeState, action.action)
