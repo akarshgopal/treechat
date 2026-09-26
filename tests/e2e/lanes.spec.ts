@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 import { savedLibrary, tree } from './library'
 
 /** Select `length` characters of a message's first text node from `from`. */
@@ -20,12 +20,6 @@ async function select(page: Page, messageId: string, from: number, length: numbe
 }
 
 test.beforeEach(async ({ page }) => {
-  // Static-site mock only: never reach a real provider from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
   await page.getByTestId('show-demo').click()
   await expect(page.locator('[data-message-id="msg-root-4"]')).toBeAttached()

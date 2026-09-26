@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 import { activeSession } from './library'
 import type { Citation } from '../../src/types'
 
@@ -44,12 +44,6 @@ async function expectDocumentCount(page: Page, mobile: boolean, count: number) {
 test.beforeEach(async ({ page }) => {
   // Deterministic bag-of-words embedder: never download the model in tests.
   await page.addInitScript(() => localStorage.setItem('treechat:fake-embedder', '1'))
-  // Static-site mock only: never reach a real provider from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
 })
 

@@ -38,8 +38,10 @@ export async function buildExport(sessions: ChatSession[], now = new Date()): Pr
   return { format: EXPORT_FORMAT, version: EXPORT_VERSION, exportedAt: now.toISOString(), sessions, attachments }
 }
 
+/** Named for the local date, the day the person sees on their clock. */
 export function exportFileName(now = new Date()): string {
-  return `treechat-chats-${now.toISOString().slice(0, 10)}.json`
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `treechat-chats-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`
 }
 
 /** Save a JSON file through the browser's download. */

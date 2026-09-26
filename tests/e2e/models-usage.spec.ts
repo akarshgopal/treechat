@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 
 const MODELS = { data: [
   { id: 'openai/gpt-5.6-luna', name: 'OpenAI: GPT-5.6 Luna', context_length: 1050000, pricing: { prompt: '0.0000002', completion: '0.0000012' }, architecture: { input_modalities: ['text', 'image'] } },
@@ -7,13 +7,8 @@ const MODELS = { data: [
 ] }
 
 async function mockOpenRouter(page: Page) {
-  // Static-site mock only: never reach a real provider from UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.href === 'https://openrouter.ai/api/v1/models') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MODELS) })
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
+  await page.route('https://openrouter.ai/api/v1/models', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MODELS) }))
 }
 
 test('the model picker is a search-select over OpenRouter’s list, and still takes any id', async ({ page }) => {

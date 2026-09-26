@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 import { savedLibrary, tree } from './library'
 import type { TreeState } from '../../src/types'
 
@@ -31,11 +31,6 @@ async function selectPassage(page: Page) {
 test.beforeEach(async ({ page }) => {
   // Exercise the static site's browser mock. Never use local .env credentials
   // or send a request to a real model provider during UI tests.
-  await page.route('**/*', async (route) => {
-    const url = new URL(route.request().url())
-    if (url.hostname !== '127.0.0.1') return route.abort()
-    return route.continue()
-  })
   await page.goto('/')
 })
 

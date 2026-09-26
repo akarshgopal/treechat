@@ -16,6 +16,7 @@ import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
 import { parseCitations } from './citations.ts'
 import { parseUsage } from './usage.ts'
 import { parseAttachments } from './attachments/parse.ts'
+import { idbDatabase, idbDone as done, idbRequest as request } from './idb.ts'
 
 function isRole(value: unknown): value is ChatMessage['role'] {
   return value === 'user' || value === 'assistant'
@@ -267,70 +268,19 @@ const DB_NAME = 'treechat-library'
 const DB_VERSION = 1
 const LIBRARY = 'library'
 const RECORD = 'current'
-/** An open that never settles (seen in some Safari versions) must not hang the app. */
-const OPEN_TIMEOUT_MS = 4_000
+
+const database = idbDatabase({
+  name: DB_NAME,
+  version: DB_VERSION,
+  label: 'chats',
+  upgrade: (db) => {
+    if (!db.objectStoreNames.contains(LIBRARY)) db.createObjectStore(LIBRARY)
+  },
+})
+const open = database.open
 
 /** What is written, to either store. `savedAt` tells which copy is newer. */
 type StoredLibrary = SessionLibrary & { savedAt: number }
-
-let opening: Promise<IDBDatabase> | null = null
-
-function request<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-function done(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
-    tx.onabort = () => reject(tx.error ?? new Error('Transaction aborted'))
-  })
-}
-
-function open(): Promise<IDBDatabase> {
-  if (opening) return opening
-  opening = new Promise<IDBDatabase>((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('This browser has no IndexedDB.'))
-      return
-    }
-    let timedOut = false
-    const timer = setTimeout(() => {
-      timedOut = true
-      reject(new Error('Chat storage did not open.'))
-    }, OPEN_TIMEOUT_MS)
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(LIBRARY)) req.result.createObjectStore(LIBRARY)
-    }
-    req.onsuccess = () => {
-      clearTimeout(timer)
-      const db = req.result
-      if (timedOut) {
-        db.close()
-        return
-      }
-      db.onversionchange = () => {
-        db.close()
-        opening = null
-      }
-      resolve(db)
-    }
-    req.onerror = () => {
-      clearTimeout(timer)
-      reject(req.error)
-    }
-    req.onblocked = () => {
-      clearTimeout(timer)
-      reject(new Error('Chat storage is blocked by another tab.'))
-    }
-  })
-  opening.catch(() => { opening = null })
-  return opening
-}
 
 async function readStored(): Promise<unknown> {
   const db = await open()
@@ -511,9 +461,7 @@ export function saveLibrary(library: SessionLibrary): Promise<SaveResult> {
 /** Tests: finish writing, then forget the open connection and the last result. */
 export async function closeLibraryStore() {
   await writing
-  const db = await opening?.catch(() => null)
-  db?.close()
-  opening = null
+  await database.close()
   localCopy = false
   unsaved = null
   reportSave('saved')
