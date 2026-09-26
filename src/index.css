@@ -146,16 +146,22 @@ body {
 .btn { padding: 0 10px; }
 .icon-button { width: 32px; }
 .icon-button-sm { width: 28px; height: 28px; }
-.btn:hover, .icon-button:hover { background: var(--secondary); color: var(--foreground); }
-.btn:disabled, .icon-button:disabled { opacity: 0.4; cursor: default; background: transparent; }
-.btn-primary { background: var(--foreground); color: var(--background); }
-.btn-primary:hover { background: color-mix(in oklch, var(--foreground) 85%, transparent); color: var(--background); }
+.btn:disabled, .icon-button:disabled { opacity: 0.4; cursor: default; }
+/* The one filled action in a view (Add takeaway), and filled Send / Stop arrows. */
+.btn-primary, .icon-button-primary { background: var(--foreground); color: var(--background); }
 .btn-outline { border: 1px solid var(--border); }
-.btn-outline:hover { border-color: var(--input); }
 /* Branch actions (bring back, branch starters) are the only green buttons. */
 .btn-branch { color: var(--branch-bright); }
-.btn-branch:hover { color: var(--branch-bright); background: color-mix(in oklch, var(--branch) 12%, transparent); }
-.icon-button[aria-pressed="true"] { color: var(--branch-bright); background: color-mix(in oklch, var(--branch) 12%, transparent); }
+/* An on/off switch that is on (web search): neutral, like everything but branching. */
+.icon-button[aria-pressed="true"], .btn[aria-pressed="true"] { color: var(--foreground); background: var(--secondary); }
+
+/* Hover only where the pointer can hover: on touch, a tapped button would stay lit. */
+@media (hover: hover) {
+  .btn:not(:disabled):hover, .icon-button:not(:disabled):hover { background: var(--secondary); color: var(--foreground); }
+  .btn-primary:not(:disabled):hover, .icon-button-primary:not(:disabled):hover { background: color-mix(in oklch, var(--foreground) 85%, transparent); color: var(--background); }
+  .btn-outline:not(:disabled):hover { border-color: var(--input); }
+  .btn-branch:not(:disabled):hover { color: var(--branch-bright); background: color-mix(in oklch, var(--branch) 12%, transparent); }
+}
 
 button:focus-visible, summary:focus-visible, [role="button"]:focus-visible {
   outline: 2px solid var(--ring);
@@ -248,7 +254,9 @@ button:focus-visible, summary:focus-visible, [role="button"]:focus-visible {
   white-space: nowrap;
   transition: background 120ms ease, color 120ms ease;
 }
-.lens-button:hover { background: color-mix(in oklch, var(--branch) 14%, transparent); color: var(--branch-bright); }
+@media (hover: hover) {
+  .lens-button:hover { background: color-mix(in oklch, var(--branch) 14%, transparent); color: var(--branch-bright); }
+}
 @media (hover: none) { .lens-button { min-height: 40px; } }
 
 /* The passage a question is being written about stays painted while the

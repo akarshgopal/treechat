@@ -125,43 +125,91 @@ function branch(quote: string) {
 Select \`quote.trim()\` in that block, or this **bold** phrase, to grow a branch. Links like [TreeChat](https://example.com) open in a new tab.`
   }
 
-  if (text.includes('summarize') || text.includes('merge') || text.includes('drop')) {
-    const q = quote ? `“${quote}”` : 'the selected passage'
-    return `The exploration on ${q} stays connected to its source passage. A takeaway carries the useful conclusion back to the parent, with a link to revisit the full branch.`
+  // The takeaway dialog's draft request.
+  if (text.startsWith('summarize this treechat branch')) {
+    const q = quote ? `“${quote}”` : 'this passage'
+    return `The branch on ${q} kept its tangent beside the passage it came from, so the main conversation stayed readable; this short takeaway is the part worth keeping, and it links back to the full branch.`
   }
 
-  if (quote) {
-    if (text.includes('deep') || text.includes('nest') || text.includes('again')) {
-      return `You can branch from here too — this thread is a conversation like any other, so select a passage in it and fork again. Each level carries upstream context. When lanes no longer fit side by side, older ones fold into strips, and the back arrow returns you to the source.`
-    }
-    if (text.includes('composer') || text.includes('post')) {
-      return `This composer posts only into this thread. Every thread has its own — the one at the bottom belongs to whichever thread holds the frame. The quote “${quote}” is this thread's anchor, and Esc walks back up one level.`
-    }
-    return `Staying on the branch from “${quote}”. This branch includes context from the conversation above and has its own lane and composer; the back arrow returns you to the source. When you find something useful, Bring back lets you review and edit a takeaway before adding it.`
-  }
+  if (quote) return lensReply(userText, quote)
 
-  if (text.includes('select') || text.includes('shortcut') || text.includes('chip')) {
-    return 'Select any span in any message, in any thread. Choose "Branch" — or press ⌘⇧B / Ctrl+Shift+B — to open a question beside the passage. Send to start the branch, or cancel without creating one. You can also use the button below each message.'
-  }
+  const topic = TOPICS.find(({ match }) => match.test(text))
+  if (topic) return topic.reply
 
-  if (text.includes('pip') || text.includes('underline') || text.includes('closed') || text.includes('hover')) {
-    return 'Closed branches stay quiet: a moss underline on the span, and a pill on the hairline below the message carrying the quote and a reply count. Click either to open the thread in place. Several branches can share one passage — then the underline doubles and the pill numbers them.'
-  }
-
-  if (text.includes('composer') || text.includes('main') || text.includes('thread')) {
-    return 'Each lane has its own composer at the bottom, so a reply always lands in the thread you type it in. Branches open in lanes to the right, and the back arrow in a branch header returns you to its source passage.'
-  }
-
-  if (text.includes('discard') || text.includes('chat') || text.includes('conversation')) {
-    return 'Choose Bring back to review and edit a takeaway for the parent conversation. The takeaway links to the branch, and Undo removes just the takeaway. Discard branch, in the branch’s ⋯ menu, removes it and the branches below it — with Undo, in case.'
-  }
-
-  if (text.includes('what is') || text.includes('treechat') || text.includes('how do')) {
-    return 'TreeChat treats a chat as an actual tree. Every thread is a full conversation; the root one is just the thread with no parent. Highlight a passage to grow a branch, branch that branch if you want, and each level carries the chain above it as context. The whole tree persists in localStorage.'
-  }
-
-  return `This is a demo reply — TreeChat has no model connected yet, so it can't answer that. Add an OpenRouter key in Settings for real answers. You can still try branching: select a phrase here and press ⌘⇧B / Ctrl+Shift+B.`
+  return 'This is a demo reply — no model is connected, so TreeChat can’t really answer that. Add an OpenRouter key in Settings for real answers. Meanwhile, select a phrase in this reply and tap a lens to see branching work.'
 }
+
+/**
+ * Demo replies in a branch. Each lens shows a different side of TreeChat, so
+ * trying them all is a tour. Questions come from `lensQuestion`.
+ */
+function lensReply(question: string, quote: string): string {
+  const q = `“${quote}”`
+  if (/^explain “/i.test(question)) {
+    return `**${q}** is now the anchor of this branch. A branch is a side conversation about one passage: it opens in its own lane, sees the conversation above it as context, and never pushes the main thread out of the way. The dot in the margin and the underline on the passage lead back here later. When something here is worth keeping, Bring back lets you review and edit a takeaway before adding it.`
+  }
+  if (/^give a concrete example of “/i.test(question)) {
+    return `Say a reply about databases mentions a “covering index” in passing. Instead of derailing the main answer, you select the phrase, tap **Explain**, and read the explanation in a lane beside it — the main reply stays exactly where it was. That is what just happened here with ${q}. With an OpenRouter key, this lane would give a real example.`
+  }
+  if (/^what's the strongest case against “/i.test(question)) {
+    return `The strongest case against ${q}: every branch is one more thread to keep track of. A few tangents are easier to follow side by side than scrolled away, but a dozen would be clutter. That is why older lanes fold into strips, why **Bring back** condenses a branch into a takeaway, and why **Discard branch** comes with Undo.`
+  }
+  if (/^say “.*” more simply$/i.test(question)) {
+    return `Simpler: ask a side question about exactly this bit — ${q} — without losing your place in the main answer.`
+  }
+  if (/^go deeper on “/i.test(question)) {
+    return `Going deeper on ${q}: a branch is a full conversation, so you can select a passage here and branch again, to any depth. Each branch sends the model the passage it grew from plus the conversation above it — the nearest levels in full, older ones summarized once they get long — so answers stay on topic without resending everything. When lanes no longer fit side by side, the older ones fold into strips on the left.`
+  }
+  return `With an OpenRouter key, this branch would answer your question about ${q}, with the conversation above as context. This is a demo reply; until then, try a lens on any passage — Explain, Example, Challenge, Simpler and Deeper each show a different part of TreeChat.`
+}
+
+/** Demo answers about TreeChat itself, matched by keyword, first match wins. */
+const TOPICS: Array<{ match: RegExp; reply: string }> = [
+  {
+    match: /takeaway|bring (it )?back|merge/,
+    reply: 'When a branch turns up something useful, choose **Bring back**: TreeChat drafts a short takeaway, you edit it, and it is added to the conversation the branch came from, linked back to the full branch. Undo removes just the takeaway.',
+  },
+  {
+    match: /long|summar|context|memory|forget/,
+    reply: 'Long threads stay usable. Once a thread’s older messages grow past about 8k tokens, TreeChat folds them into a running summary in the background and sends that plus the recent turns. A divider in the thread shows where the summary takes over; click it to read it. Branches get their parent’s summary plus the full turns before their passage.',
+  },
+  {
+    match: /document|pdf|rag|notes/,
+    reply: 'Add PDFs, Markdown or text files under **Documents** in the sidebar, or drop them anywhere. They are indexed in your browser; each question sends only the few excerpts that match, numbered so the reply can cite them, and a citation opens its passage beside the reply. Nothing is uploaded anywhere else.',
+  },
+  {
+    match: /source|cite|citation|web|search|internet/,
+    reply: 'Tap **Source?** on any passage, or the globe beside a composer, and that thread’s replies search the web and cite what they find. Numbered chips open each source in a lane beside the reply, with the cited passage highlighted. With a key, each search adds a small OpenRouter fee.',
+  },
+  {
+    match: /image|screenshot|photo|paste|attach|file/,
+    reply: 'Paste a screenshot, drop an image or text file on a composer, or use the paperclip. Images are resized in your browser and sent to models that can read them; if the chosen model cannot, TreeChat says so and offers one that can.',
+  },
+  {
+    match: /export|import|backup|another (browser|device)|sync/,
+    reply: 'Chats live only in this browser. **Export chats** in Settings (or Ctrl/⌘+K) downloads everything, pasted images included, as one JSON file; **Import chats…** adds them in another browser. Documents are not included.',
+  },
+  {
+    match: /api key|\bkey\b|model|cost|price|pay|usage|openrouter|token/,
+    reply: 'TreeChat has no server: add your own OpenRouter key in Settings and replies come straight from the model you pick — search them by name, with prices shown. Settings shows what the key has spent, and each reply shows its tokens and cost. Use a key with a credit limit.',
+  },
+  {
+    match: /undo|delete|discard|remove/,
+    reply: '**Discard branch** and **Delete chat** act at once and offer Undo for a few seconds, so nothing needs an “are you sure?”. Rewriting an earlier message that later turns or branches depend on still asks first.',
+  },
+  {
+    match: /shortcut|keyboard|hotkey|⌘|ctrl/,
+    reply: '**Ctrl/⌘+K** opens the command palette: chats, branches and actions. With a passage selected, just start typing to ask about it, or press **Ctrl/⌘+Shift+B**. **Esc** stops a reply, closes a source, or goes back from a branch. **Ctrl/⌘+\\** folds the sidebar.',
+  },
+  {
+    match: /branch|select|lens|highlight|tangent|side/,
+    reply: 'Select any words in any reply. A bar appears with **Explain**, **Example**, **Source?**, **Challenge**, **Simpler** and **Deeper**: tap one and a branch opens beside the passage, already answering. Or just start typing to ask your own question. A dot in the margin marks passages that have branches.',
+  },
+  {
+    match: /what is|treechat|how does|how do|help|hello|\bhi\b/,
+    reply: 'TreeChat is a chat you can branch. Select any passage in a reply to ask about it in a side branch that opens right beside it, without losing your place; branch that branch if you like, then bring the useful part back. Everything runs and stays in your browser.',
+  },
+]
 
 function tokensOf(reply: string): string[] {
   return reply.match(/\s+|\S+/g) ?? [reply]

@@ -40,7 +40,8 @@ export const sameUsage = (a: MessageUsage | undefined, b: MessageUsage | undefin
 export function formatCost(cost: number): string {
   if (cost === 0) return 'free'
   if (cost < 0.0001) return '<$0.0001'
-  return `$${cost < 0.01 ? cost.toPrecision(2) : cost.toFixed(cost < 1 ? 3 : 2)}`
+  // Number() drops the trailing zeros toPrecision keeps: 0.00080 → 0.0008.
+  return `$${cost < 0.01 ? Number(cost.toPrecision(2)) : cost.toFixed(cost < 1 ? 3 : 2)}`
 }
 
 /** "1.2k" */

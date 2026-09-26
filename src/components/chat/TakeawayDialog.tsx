@@ -31,7 +31,7 @@ export function TakeawayDialog({ thread, state, onClose, onConfirm }: {
       try {
         const forwarded = branchForwardedProps(snapshot.state, snapshot.thread.id)
         const summary = await requestAssistantText(
-          `Summarize this TreeChat side-thread for its parent conversation. Capture the useful conclusion and any important uncertainty in two to four sentences, no preamble. Transcript:\n${compactTranscript(snapshot.thread)}`,
+          `Summarize this TreeChat branch for its parent conversation. Capture the useful conclusion and any important uncertainty in two to four sentences, no preamble. Transcript:\n${compactTranscript(snapshot.thread)}`,
           forwarded?.quote, forwarded?.context, abort.signal, { background: true },
         )
         if (!abort.signal.aborted) {
