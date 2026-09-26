@@ -23,7 +23,8 @@ export function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () =
     return () => window.clearTimeout(timer)
   }, [held, onDismiss, toast.id])
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+    // Just below the lane headers: clear of their titles and menus, and of the newest message.
+    <div className="pointer-events-none absolute inset-x-0 top-14 z-30 flex justify-center px-3">
       <div
         key={toast.id}
         className="rise pointer-events-auto flex max-w-full items-center gap-1 rounded-lg border border-border bg-paper py-1 pl-3.5 pr-1 text-[13px] text-foreground shadow-xl"

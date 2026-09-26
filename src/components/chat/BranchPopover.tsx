@@ -109,7 +109,8 @@ export function BranchPopover({
 
   // The question box opens where the lens bar was and grows away from the
   // passage, so it never jumps to the other side of it.
-  const width = mode === 'ask' ? Math.min(420, window.innerWidth - 24) : undefined
+  // Wide enough for every lens beside the question's cancel button.
+  const width = mode === 'ask' ? Math.min(500, window.innerWidth - 24) : undefined
   const needed = measured.height || (mode === 'ask' ? 110 : 44)
   const roomAbove = position.top >= needed + 18
   const top = roomAbove ? Math.max(8, position.top - 10) : position.bottom + 10
@@ -131,8 +132,16 @@ export function BranchPopover({
       {lens.label}
     </button>
   ))
+  // On phones the row can outrun the screen: fade its end so it reads as scrollable.
   const lensRow = (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto" role="group" aria-label="Quick questions">
+    <div
+      className={cn(
+        'flex min-w-0 items-center gap-0.5 overflow-x-auto',
+        sheet && 'pr-8 [mask-image:linear-gradient(to_right,black_calc(100%-32px),transparent)]',
+      )}
+      role="group"
+      aria-label="Quick questions"
+    >
       {lensButtons}
     </div>
   )
@@ -190,7 +199,7 @@ export function BranchPopover({
             }
           }}
         />
-        <button type="submit" className="icon-button m-1 bg-foreground text-background hover:bg-foreground/85 hover:text-background" disabled={!question.trim()} aria-label="Send branch question" title="Send · Enter">
+        <button type="submit" className="icon-button icon-button-primary m-1" disabled={!question.trim()} aria-label="Send branch question" title="Send · Enter">
           <ArrowUp size={16} />
         </button>
       </div>

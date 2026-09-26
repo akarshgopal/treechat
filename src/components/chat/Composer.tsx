@@ -188,9 +188,11 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                   aria-label="Search the web"
                   title={`${webSearch.on ? 'Replies search the web and cite sources · click to stop' : 'Search the web for replies here'}${webSearch.paid ? ' · each search adds a small OpenRouter fee' : ''}`}
                   data-testid="web-search-toggle"
-                  className={cn('icon-button m-1.5 mx-0', !attach && 'ml-1.5')}
+                  // On, it says so in words: every search costs with a key.
+                  className={cn(webSearch.on ? 'btn m-1.5 mx-0 h-8 gap-1.5 px-2 text-xs' : 'icon-button m-1.5 mx-0', !attach && 'ml-1.5')}
                 >
-                  <Globe size={16} />
+                  <Globe size={webSearch.on ? 14 : 16} />
+                  {webSearch.on ? <span>Web search</span> : null}
                 </button>
               ) : null}
               <Textarea
@@ -214,9 +216,9 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                   data-testid="composer-stop"
                   aria-label="Stop response"
                   title="Stop · Esc"
-                  className="icon-button m-1.5"
+                  className="icon-button icon-button-primary m-1.5"
                 >
-                  <Square className="size-2.5 fill-current" />
+                  <Square className="size-3 fill-current" />
                 </button>
               ) : canSend ? (
                 <button
@@ -224,7 +226,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(
                   disabled={disabled}
                   aria-label="Send message"
                   title="Send · Enter"
-                  className="icon-button m-1.5 bg-foreground text-background hover:bg-foreground/85 hover:text-background"
+                  className="icon-button icon-button-primary m-1.5"
                 >
                   <ArrowUp size={18} />
                 </button>
