@@ -415,13 +415,16 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   }), citations)
 }
 
+/** The reply's text, once it ends; `onText` sees it grow along the way. */
 export async function collectAssistantText(
   stream: AsyncIterable<StreamChunk>,
+  onText?: (text: string) => void,
 ): Promise<string> {
   let text = ''
   for await (const chunk of stream) {
     if (chunk.type === EventType.TEXT_MESSAGE_CONTENT && chunk.delta) {
       text += chunk.delta
+      onText?.(text)
     } else if (chunk.type === EventType.RUN_ERROR) {
       throw new Error(chunk.message || 'Chat request failed')
     }

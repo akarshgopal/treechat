@@ -48,6 +48,9 @@ type ThreadViewProps = {
   onShowDemo?: () => void
   /** A line under the empty chat's prompt, e.g. that replies are demo text. */
   blankNote?: ReactNode
+  /** Questions an empty chat offers to start with; picking one sends it. */
+  starters?: readonly string[]
+  onStarter?: (question: string) => void
   /** Space above a branch so its anchor sits level with the source passage. */
   leadOffset?: number
   /** The citation in this thread whose source lane is open beside it. */
@@ -102,6 +105,8 @@ export function ThreadView({
   onRetryError,
   onShowDemo,
   blankNote,
+  starters,
+  onStarter,
   leadOffset = 0,
   openCitation = null,
   onOpenCitation,
@@ -155,8 +160,17 @@ export function ThreadView({
         Then select any passage in a reply to branch off, without losing your place.
       </p>
       {blankNote ? <p className="max-w-sm text-xs text-muted-foreground">{blankNote}</p> : null}
+      {starters?.length && onStarter ? (
+        <div className="mt-2 flex max-w-xl flex-wrap justify-center gap-1.5" data-testid="starters">
+          {starters.map((question) => (
+            <button key={question} type="button" className="btn btn-outline h-auto min-h-8 py-1.5 text-left font-normal" onClick={() => onStarter(question)}>
+              {question}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {onShowDemo ? (
-        <button type="button" className="btn mt-1" onClick={onShowDemo} data-testid="show-demo">
+        <button type="button" className="btn mt-1 text-xs" onClick={onShowDemo} data-testid="show-demo">
           See how it works
         </button>
       ) : null}

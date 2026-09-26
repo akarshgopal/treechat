@@ -4,6 +4,8 @@ import { backgroundModelFor, loadProviderConfig } from './provider.ts'
 export type AssistantRequestOptions = {
   /** Background work (summaries, takeaway drafts): try the background model first. */
   background?: boolean
+  /** The reply so far, as it streams (starts over if a fallback model takes over). */
+  onText?: (text: string) => void
 }
 
 export async function requestAssistantText(
@@ -14,7 +16,9 @@ export async function requestAssistantText(
   options: AssistantRequestOptions = {},
 ): Promise<string> {
   const content = userText
-  const run = (model?: string) => collectAssistantText(
+  const run = (model?: string) => {
+    options.onText?.('')
+    return collectAssistantText(
     runChat({
       signal,
       threadId: crypto.randomUUID(),
@@ -33,7 +37,9 @@ export async function requestAssistantText(
         context: context ?? '',
       },
     }),
+    options.onText,
   )
+  }
 
   const background = options.background ? backgroundModelFor(loadProviderConfig()) : undefined
   if (!background) return run()

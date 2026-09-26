@@ -98,9 +98,10 @@ export function MainHeader({ title, onRename, onDelete, onCollapse }: {
       ) : (
         <h1
           className="min-w-0 flex-1 truncate px-1.5 text-[13px] font-medium text-foreground"
-          title={title}
+          title={title || undefined}
           data-testid="session-title"
           onDoubleClick={() => {
+            if (!title) return
             setDraft(title)
             setEditing(true)
           }}

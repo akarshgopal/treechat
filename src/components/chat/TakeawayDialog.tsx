@@ -32,7 +32,8 @@ export function TakeawayDialog({ thread, state, onClose, onConfirm }: {
         const forwarded = branchForwardedProps(snapshot.state, snapshot.thread.id)
         const summary = await requestAssistantText(
           `Summarize this TreeChat branch for its parent conversation. Capture the useful conclusion and any important uncertainty in two to four sentences, no preamble. Transcript:\n${compactTranscript(snapshot.thread)}`,
-          forwarded?.quote, forwarded?.context, abort.signal, { background: true },
+          forwarded?.quote, forwarded?.context, abort.signal,
+          { background: true, onText: (text) => { if (!abort.signal.aborted) setContent(text) } },
         )
         if (!abort.signal.aborted) {
           if (!summary) throw new Error('No takeaway was returned. Try again or write your own.')
@@ -55,18 +56,27 @@ export function TakeawayDialog({ thread, state, onClose, onConfirm }: {
           <DialogTitle>Takeaway</DialogTitle>
           <DialogDescription>To {destination}</DialogDescription>
         </DialogHeader>
-        {loading ? (
-          <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
-            <LoaderCircle className="animate-spin" size={17} /> Summarizing…
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-            <label htmlFor="takeaway-text" className="sr-only">Your takeaway</label>
-            <Textarea id="takeaway-text" value={content} onChange={(event) => setContent(event.target.value)} rows={5} className="mt-2 text-[15px] leading-relaxed" placeholder="Write a takeaway…" />
-            {error ? <button type="button" className="btn" onClick={() => setAttempt((value) => value + 1)}>Try again</button> : null}
-          </div>
-        )}
+        {/* The draft streams in here, read-only until it is done, then yours to edit. */}
+        <div className="space-y-2">
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          <label htmlFor="takeaway-text" className="sr-only">Your takeaway</label>
+          <Textarea
+            id="takeaway-text"
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            readOnly={loading}
+            aria-busy={loading}
+            rows={5}
+            className="mt-2 text-[15px] leading-relaxed"
+            placeholder={loading ? 'Drafting a takeaway…' : 'Write a takeaway…'}
+          />
+          {loading ? (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+              <LoaderCircle className="animate-spin" size={13} /> Drafting — you can edit it when it’s done.
+            </p>
+          ) : null}
+          {error ? <button type="button" className="btn" onClick={() => setAttempt((value) => value + 1)}>Try again</button> : null}
+        </div>
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
           <button type="button" className="btn btn-primary" data-testid="confirm-takeaway" onClick={() => onConfirm(content.trim())} disabled={loading || !content.trim() || !parent}>
