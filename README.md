@@ -21,7 +21,7 @@ Open the printed local URL (Vite defaults to http://localhost:5173).
 
 ```bash
 pnpm build      # production bundle → dist/
-pnpm preview    # serve the build (Vite plugin still handles /api/chat for mock / env fallbacks)
+pnpm preview    # serve the build
 ```
 
 ## Bring your own key (OpenRouter)
@@ -42,26 +42,13 @@ While waiting for the first visible token, the thread shows elapsed waiting time
 
 Requests in one chat share an OpenRouter `session_id` to support sticky provider routing. Prompt caching remains provider/model dependent and requires a matching prefix; this does not guarantee cache hits or a specific response time. See [OpenRouter prompt caching](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
 
-## Mock mode (no key)
+## Demo mode (no key)
 
-- **GitHub Pages:** the mock stream runs entirely in the browser. There is no `/api/chat`.
-- **Local `pnpm dev` / `pnpm preview`:** the Vite plugin still serves `/api/chat` (mock, or a live env-key fallback if you set one). If that plugin is absent, the same in-browser mock is used.
+Without a key, replies come from a demo stream generated in the page, locally and on GitHub Pages alike, so every feature can be tried and nothing is sent anywhere. There is no server: TreeChat is a static site, and the only way to real answers is your own OpenRouter key in Settings.
 
-## Environment variables
+## Configuration
 
-Copy `.env.example` to `.env`. Production BYOK is client-side; these keys are **optional local fallbacks** for `pnpm dev` / `pnpm preview` only. Leave every key blank to run in **mock** mode.
-
-| Variable | Purpose |
-| --- | --- |
-| `XAI_API_KEY` | SpaceXAI / xAI fallback. Server calls `https://api.x.ai/v1`. |
-| `XAI_MODEL` | Defaults to `grok-4.6`. |
-| `OPENAI_API_KEY` | Used if `XAI_API_KEY` is unset. |
-| `OPENAI_MODEL` | Defaults to `gpt-4.1-mini`. |
-| `OPENROUTER_API_KEY` | Used if neither xAI nor OpenAI is set. |
-| `OPENROUTER_MODEL` | Defaults to `openai/gpt-5.6-luna`. |
-| `VITE_BASE` | Public path. Defaults to `/` locally. In GitHub Actions, `GITHUB_REPOSITORY` (`akarshgopal/treechat`) sets `/treechat/`. Use `VITE_BASE=/` for a user/org site at the domain root. |
-
-Do not prefix provider keys with `VITE_`. A Settings OpenRouter key always wins over env.
+The only build setting is `VITE_BASE`, the public path (in `.env` or the environment). It defaults to `/` locally; in GitHub Actions, `GITHUB_REPOSITORY` (`akarshgopal/treechat`) sets `/treechat/`. Use `VITE_BASE=/` for a user or org site at the domain root.
 
 ## Deploy to GitHub Pages
 
@@ -107,7 +94,7 @@ Ask about your own files. Add PDFs, Markdown, or plain text from **Documents** i
 - **Indexing** runs in the browser: text is extracted (PDFs keep page numbers, Markdown keeps headings), split into ~800-character chunks with overlap, embedded, and stored in IndexedDB (`treechat-documents`).
 - **Embeddings** come from [`Xenova/all-MiniLM-L6-v2`](https://huggingface.co/Xenova/all-MiniLM-L6-v2) (quantized) running in a Web Worker via transformers.js. The first document downloads the model once (~23 MB from Hugging Face, plus the ~7 MB compressed ONNX runtime from jsDelivr); the browser caches both. If the model cannot load (offline on first use, no WebAssembly), documents fall back to keyword search and say so.
 - **Before each request** in a chat with documents, the latest question (plus a branch's quoted passage) is matched against the chunks. Up to five excerpts are added to the system prompt, numbered `[1]`…`[5]` with the file name and page or heading, and the model is asked to cite them. The reply stores those sources as citations. Demo replies list the matching excerpts instead.
-- **Privacy:** files, extracted text, and vectors never leave this browser. Only the retrieved excerpts are sent, with your question, to whichever model answers it (OpenRouter, or the local `/api/chat` in development).
+- **Privacy:** files, extracted text, and vectors never leave this browser. Only the retrieved excerpts are sent, with your question, to the model that answers it, through OpenRouter; in demo mode, nothing is sent.
 - Removing a document deletes it and its chunks and unchecks it in every chat. Citations already on replies stay.
 
 ## Browser verification
@@ -160,8 +147,8 @@ Without a key, replies are demo text generated in the page and nothing is sent a
 ## Stack
 
 - Vite + React + TypeScript
-- Tailwind CSS + shadcn/ui (Button, Textarea, Badge, Tooltip, Separator, AlertDialog, Dialog, ScrollArea)
-- TanStack AI: `@tanstack/ai`, `@tanstack/ai-react` (`useChat`), `@tanstack/ai-openai` (OpenAI-compatible local-dev fallbacks)
+- Tailwind CSS + shadcn/ui-style primitives on Radix (Dialog, AlertDialog, DropdownMenu, ScrollArea)
+- TanStack AI: `@tanstack/ai`, `@tanstack/ai-react` (`useChat`)
 - GitHub Pages (static) + in-browser OpenRouter BYOK
 
 ## License

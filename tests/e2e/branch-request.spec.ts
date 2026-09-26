@@ -10,7 +10,6 @@ test('a settings-key branch sends its question, quote and ancestor context and r
         'data: {"choices":[{"delta":{"content":"The branch request reached the provider."}}]}\n\ndata: [DONE]\n\n',
       })
     }
-    if (url.pathname === '/api/status') return route.fulfill({ status: 404, body: 'No local API' })
     if (url.hostname !== '127.0.0.1') return route.abort()
     return route.continue()
   })
@@ -66,7 +65,6 @@ test('a delayed branch shows progress, surfaces a stream error, and regenerates 
       }
       return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"choices":[{"delta":{"content":"Recovered reply"}}]}\n\ndata: [DONE]\n\n' })
     }
-    if (url.pathname === '/api/status') return route.fulfill({ status: 404, body: 'No local API' })
     if (url.hostname !== '127.0.0.1') return route.abort()
     return route.continue()
   })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import { type StreamChunk } from '@tanstack/ai'
 import { takeRunCitations } from '../citations.ts'
-import { resetLocalChatApiProbe, runChat } from '../client-chat.ts'
+import { runChat } from '../client-chat.ts'
 import { saveProviderConfig } from '../provider.ts'
 import { setEmbedder } from './active-embedder.ts'
 import { fakeEmbedder } from './embedder.ts'
@@ -14,7 +14,6 @@ const originalFetch = globalThis.fetch
 
 beforeEach(async () => {
   installLocalStorage()
-  resetLocalChatApiProbe()
   setEmbedder(fakeEmbedder)
   await indexFile(
     new File(['# Deploy\n\nThe site deploys to GitHub Pages from the main branch.\n\n# Cooking\n\nBoil pasta in salted water.'], 'handbook.md', { type: 'text/markdown' }),
@@ -24,7 +23,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  resetLocalChatApiProbe()
   setEmbedder(null)
 })
 

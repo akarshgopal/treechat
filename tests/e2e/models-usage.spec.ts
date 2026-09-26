@@ -10,7 +10,6 @@ async function mockOpenRouter(page: Page) {
   // Static-site mock only: never reach a real provider from UI tests.
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.pathname === '/api/status') return route.fulfill({ status: 404, body: 'Static mock' })
     if (url.href === 'https://openrouter.ai/api/v1/models') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MODELS) })
     if (url.hostname !== '127.0.0.1') return route.abort()
     return route.continue()

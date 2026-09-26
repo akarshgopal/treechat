@@ -38,7 +38,7 @@ export function mockSummary(plan: CompactionPlan): string {
 }
 
 async function summarize(plan: CompactionPlan, signal?: AbortSignal): Promise<string> {
-  if (await resolveChatBackend() === 'mock') return mockSummary(plan)
+  if (resolveChatBackend() === 'mock') return mockSummary(plan)
   return requestAssistantText(summaryPrompt(plan), undefined, undefined, signal, { background: true })
 }
 

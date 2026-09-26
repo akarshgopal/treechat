@@ -4,7 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import { resolveViteBase } from './vite-base.ts'
-import { treeChatApi } from './vite-plugin-api.ts'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -26,15 +25,13 @@ function dropUnusedOnnxWasm(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-  for (const [key, value] of Object.entries(env)) {
-    if (process.env[key] === undefined) process.env[key] = value
-  }
+  // `.env` may set VITE_BASE; the real environment wins.
+  const env = { ...loadEnv(mode, process.cwd(), 'VITE_'), ...process.env }
 
   return {
     cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
-    base: resolveViteBase(process.env),
-    plugins: [react(), tailwindcss(), treeChatApi(), dropUnusedOnnxWasm()],
+    base: resolveViteBase(env),
+    plugins: [react(), tailwindcss(), dropUnusedOnnxWasm()],
     worker: { plugins: () => [dropUnusedOnnxWasm()] },
     resolve: {
       alias: {

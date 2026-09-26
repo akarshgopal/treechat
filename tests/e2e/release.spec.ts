@@ -10,7 +10,6 @@ test.beforeEach(async ({ page }) => {
   // Static-site mock only: never reach a real provider from UI tests.
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.pathname === '/api/status') return route.fulfill({ status: 404, body: 'Static mock' })
     if (url.hostname !== '127.0.0.1') return route.abort()
     return route.continue()
   })
@@ -31,7 +30,6 @@ test('chats export to JSON and import into another browser', async ({ page, brow
   const other = await context.newPage()
   await other.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.pathname === '/api/status') return route.fulfill({ status: 404, body: 'Static mock' })
     return url.hostname === '127.0.0.1' ? route.continue() : route.abort()
   })
   await other.goto('/')

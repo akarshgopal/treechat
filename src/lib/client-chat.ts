@@ -1,9 +1,8 @@
-import { fetchServerSentEvents, type ConnectConnectionAdapter } from '@tanstack/ai-react'
+import type { ConnectConnectionAdapter } from '@tanstack/ai-react'
 import { EventType, type StreamChunk } from '@tanstack/ai'
 import {
   DEFAULT_OPENROUTER_MODEL,
   loadProviderConfig,
-  providerRequestHeaders,
   type ClientProviderConfig,
 } from './provider.ts'
 import { CITATIONS_EVENT, mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
@@ -20,7 +19,8 @@ import { prepareRequestMessages, type RequestImage } from './attachments/request
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
 
-export type ChatBackend = 'openrouter' | 'local-api' | 'mock'
+/** Replies come from OpenRouter with a saved key, else from the in-page demo. */
+export type ChatBackend = 'openrouter' | 'mock'
 
 export type OpenAIContentPart =
   | { type: 'text'; text: string }
@@ -43,36 +43,8 @@ type RunChatInput = {
   model?: string
 }
 
-const localChatConnection = fetchServerSentEvents('/api/chat', () => ({
-  headers: providerRequestHeaders(),
-}))
-
-let localApiProbe: Promise<boolean> | null = null
-
-export function resetLocalChatApiProbe() {
-  localApiProbe = null
-}
-
-export function hasLocalChatApi(): Promise<boolean> {
-  if (!localApiProbe) localApiProbe = probeLocalChatApi()
-  return localApiProbe
-}
-
-async function probeLocalChatApi(): Promise<boolean> {
-  try {
-    const response = await fetch('/api/status', { method: 'GET' })
-    return response.ok
-  } catch {
-    return false
-  }
-}
-
-export async function resolveChatBackend(
-  config: ClientProviderConfig | null = loadProviderConfig(),
-): Promise<ChatBackend> {
-  if (config?.apiKey) return 'openrouter'
-  if (await hasLocalChatApi()) return 'local-api'
-  return 'mock'
+export function resolveChatBackend(config: ClientProviderConfig | null = loadProviderConfig()): ChatBackend {
+  return config?.apiKey ? 'openrouter' : 'mock'
 }
 
 export function openRouterHeaders(
@@ -409,7 +381,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   })
   const { citations } = retrieved
   const { messages, forwardedProps } = applySummaryToRequest(input.messages, retrieved.forwardedProps)
-  const backend = await resolveChatBackend(config)
+  const backend = resolveChatBackend(config)
   // Attachments are resolved from IndexedDB last, per backend: only the
   // browser's OpenRouter path sends images; the others get them by name.
   const imagesInline = backend === 'openrouter'
@@ -429,20 +401,6 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
       runId: input.runId,
       signal: input.signal,
     })
-    return
-  }
-
-  if (backend === 'local-api') {
-    yield* localChatConnection.connect(
-      requestMessages as never,
-      forwardedProps,
-      input.signal,
-      {
-        threadId: input.threadId,
-        runId: input.runId,
-        forwardedProps,
-      },
-    )
     return
   }
 

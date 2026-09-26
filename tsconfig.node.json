@@ -19,8 +19,6 @@
   "include": [
     "vite.config.ts",
     "vite-base.ts",
-    "vite-plugin-api.ts",
-    "server/**/*.ts",
     "shared/**/*.ts"
   ]
 }

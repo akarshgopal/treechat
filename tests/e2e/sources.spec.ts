@@ -61,7 +61,6 @@ test.beforeEach(async ({ page }) => {
   // Static-site mock only: never reach a real provider or reader from UI tests.
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url())
-    if (url.pathname === '/api/status') return route.fulfill({ status: 404, body: 'Static mock' })
     if (url.hostname !== '127.0.0.1') return route.abort()
     return route.continue()
   })

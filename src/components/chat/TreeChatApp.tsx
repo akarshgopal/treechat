@@ -59,7 +59,6 @@ import {
   OPENROUTER_MODEL_OPTIONS,
   loadProviderConfig,
   patchProviderConfig,
-  providerRequestHeaders,
   shortModelName,
   type ClientProviderConfig,
 } from '@/lib/provider'
@@ -79,12 +78,6 @@ import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } f
 
 /** Unreferenced attachments younger than this survive a clean-up. */
 const ATTACHMENT_GRACE_MS = 24 * 60 * 60 * 1000
-
-const idleStatus: ProviderStatus = {
-  mode: 'mock',
-  provider: 'mock',
-  model: DEFAULT_OPENROUTER_MODEL,
-}
 
 type ChipState = {
   threadId: string
@@ -1293,23 +1286,12 @@ function useNarrow() {
   return narrow
 }
 
-function resolveStatus(
-  clientConfig: ClientProviderConfig | null,
-  serverStatus: ProviderStatus,
-): ProviderStatus {
-  if (clientConfig?.apiKey) {
-    return {
-      mode: 'live',
-      provider: 'openrouter',
-      model: clientConfig.model || DEFAULT_OPENROUTER_MODEL,
-    }
-  }
+/** Live with a saved OpenRouter key; otherwise replies are the in-page demo. */
+function resolveStatus(clientConfig: ClientProviderConfig | null): ProviderStatus {
   return {
-    mode: serverStatus.mode,
-    provider: serverStatus.provider,
-    model:
-      clientConfig?.model ||
-      (serverStatus.provider === 'mock' ? DEFAULT_OPENROUTER_MODEL : serverStatus.model),
+    mode: clientConfig?.apiKey ? 'live' : 'mock',
+    provider: clientConfig?.apiKey ? 'openrouter' : 'mock',
+    model: clientConfig?.model || DEFAULT_OPENROUTER_MODEL,
   }
 }
 
@@ -1358,8 +1340,7 @@ export function TreeChatApp() {
   const [clientConfig, setClientConfig] = useState<ClientProviderConfig | null>(
     () => loadProviderConfig(),
   )
-  const [serverStatus, setServerStatus] = useState<ProviderStatus>(idleStatus)
-  const status = resolveStatus(clientConfig, serverStatus)
+  const status = resolveStatus(clientConfig)
 
   const onSwitchModel = useCallback((model: string) => {
     setClientConfig(patchProviderConfig({ model }))
@@ -1396,25 +1377,6 @@ export function TreeChatApp() {
     restoreDemo()
     bumpEpoch()
   }, [activeSessionId, bumpEpoch, restoreDemo])
-
-  useEffect(() => {
-    if (clientConfig?.apiKey) return
-    let cancelled = false
-    fetch('/api/status', { headers: providerRequestHeaders() })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('no local api')
-        return (await response.json()) as ProviderStatus
-      })
-      .then((data) => {
-        if (!cancelled) setServerStatus(data)
-      })
-      .catch(() => {
-        if (!cancelled) setServerStatus(idleStatus)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [epoch, clientConfig])
 
   return (
     <>
