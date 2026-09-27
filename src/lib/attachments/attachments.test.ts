@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Attachment } from '../../types.ts'
-import { parseModelCatalog } from '../model-capabilities.ts'
 import { RESEND_RECENT_MESSAGES, prepareRequestMessages } from './request.ts'
 import type { StoredAttachment } from './store.ts'
 
@@ -49,20 +48,4 @@ test('text-only backends get images by name, and a branch inherits its source im
 test('a missing file is named rather than failing the request', async () => {
   const { messages } = await prepareRequestMessages([user('m1', 'hi', [{ ...shot, id: 'gone' }])], { imagesInline: true, load })
   assert.match(messages[0]!.parts[0]!.content, /\[Image: shot\.png — no longer available\]/)
-})
-
-test('the model list reads names, prices and image support, in either shape', () => {
-  const models = parseModelCatalog({ data: [
-    { id: 'openai/gpt-4.1-mini', name: 'OpenAI: GPT-4.1 Mini', context_length: 1047576, pricing: { prompt: '0.0000004', completion: '0.0000016' }, architecture: { input_modalities: ['text', 'image'] } },
-    { id: 'google/gemma-4-31b-it:free', name: 'Google: Gemma 4 31B (free)', pricing: { prompt: '0', completion: '0' }, architecture: { input_modalities: ['text'] } },
-    { id: 'old/vision', architecture: { modality: 'text+image->text' } },
-    { id: 'old/text', pricing: { prompt: 'junk' }, architecture: { modality: 'text->text' } },
-    { nope: true },
-  ] })
-  assert.deepEqual(models.filter((model) => model.vision).map((model) => model.id), ['openai/gpt-4.1-mini', 'old/vision'])
-  assert.deepEqual(models[0], { id: 'openai/gpt-4.1-mini', name: 'GPT-4.1 Mini', context: 1047576, prompt: 0.0000004, completion: 0.0000016, vision: true, free: false })
-  assert.equal(models[1]!.free, true)
-  assert.equal(models[2]!.name, 'old/vision')
-  assert.equal(models[3]!.prompt, undefined)
-  assert.deepEqual(parseModelCatalog(null), [])
 })

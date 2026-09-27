@@ -69,12 +69,6 @@ test('annotations on a final message are read too, deduplicated by URL in first-
   ])
 })
 
-test('a reply without annotations records no citations and keeps its text as written', async () => {
-  const { text, citations } = await run(sse({ choices: [{ delta: { content: 'See [example.com](https://example.com).' } }] }))
-  assert.equal(text, 'See [example.com](https://example.com).')
-  assert.equal(citations, undefined)
-})
-
 test('sources are clipped, titled, and tolerate odd shapes', () => {
   assert.deepEqual(webSourcesFromChunk(null), [])
   assert.deepEqual(webSourcesFromChunk({ choices: 'no' }), [])

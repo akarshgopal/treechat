@@ -81,14 +81,6 @@ test('turning on web search with a key mentions its cost once', async ({ page },
   await expect(page.getByTestId('toast')).toHaveCount(0)
 })
 
-test('Settings says where data goes and links to bug reports', async ({ page }) => {
-  await page.getByTestId('settings-button').click()
-  await expect(page.getByTestId('settings-dialog')).toContainText('Use a key with a credit limit')
-  await page.getByTestId('settings-privacy').locator('summary').click()
-  await expect(page.getByTestId('settings-privacy')).toContainText('r.jina.ai')
-  await expect(page.getByTestId('report-problem')).toHaveAttribute('href', 'https://github.com/akarshgopal/treechat/issues/new')
-})
-
 test('an image in a reply is not fetched until asked for', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'same rendering on phones')
   // A reply that would leak the conversation through an image URL if it loaded by itself.

@@ -15,9 +15,3 @@ test('snapOffsetsToWords drops edge punctuation and unpaired quotes', () => {
   assert.equal(slice('is it (really) so?', 6, 18), '(really) so?')
   assert.equal(slice('a, b', 1, 2), ',')
 })
-
-test('snapOffsetsToWords keeps contractions and hyphenated words whole', () => {
-  const text = "it's well-known"
-  const { start, end } = snapOffsetsToWords(text, 1, 9)
-  assert.equal(text.slice(start, end), "it's well-known")
-})

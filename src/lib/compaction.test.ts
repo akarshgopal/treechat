@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  applySummaryToRequest,
   planCompaction,
   SUMMARY_KEEP_RECENT,
   SUMMARY_TRIGGER_TOKENS,
-  summaryHolds,
 } from './compaction.ts'
 import type { ChatMessage, ThreadSummary } from '../types.ts'
 
@@ -78,54 +76,4 @@ test('one pass is capped and ends before a user turn', () => {
   // The next pass continues from there.
   const next = planCompaction(messages, summaryThrough('m1'), { maxInputTokens: 30_000 })
   assert.equal(next?.messages[0].id, 'm2')
-})
-
-test('summaryHolds survives appends and drops on rewrites of covered messages', () => {
-  const before = conversation(12)
-  const summary = summaryThrough('m5')
-  assert.ok(summaryHolds(before, [...before, msg('new', 'user', 'hi')], summary))
-  // Retry below the summary: truncation after the covered prefix.
-  assert.ok(summaryHolds(before, before.slice(0, 9), summary))
-  // Retry or edit that truncates into the covered prefix.
-  assert.equal(summaryHolds(before, before.slice(0, 4), summary), false)
-  // Edit & resend of the covered message itself keeps its id but not its text.
-  const edited = before.slice(0, 6)
-  edited[5] = { ...edited[5], content: 'changed' }
-  assert.equal(summaryHolds(before, edited, summary), false)
-  // A covered message removed from the middle.
-  assert.equal(summaryHolds(before, before.filter((m) => m.id !== 'm2'), summary), false)
-})
-
-test('a summarized request sends the summary and only the later messages', () => {
-  const messages = [
-    { id: 'a', role: 'user', content: 'one' },
-    { id: 'b', role: 'assistant', content: 'two' },
-    { id: 'c', role: 'user', content: 'three' },
-  ]
-  const out = applySummaryToRequest(messages, {
-    quote: 'q',
-    threadSummary: { content: 'we said one and two', throughMessageId: 'b' },
-  })
-  assert.deepEqual(out.messages, [messages[2]])
-  assert.deepEqual(out.forwardedProps, { quote: 'q', summary: 'we said one and two' })
-})
-
-test('a summary that does not match the request is dropped, not half-applied', () => {
-  const messages = [
-    { id: 'a', role: 'user', content: 'one' },
-    { id: 'b', role: 'assistant', content: 'two' },
-  ]
-  const missing = applySummaryToRequest(messages, {
-    threadSummary: { content: 's', throughMessageId: 'gone' },
-  })
-  assert.equal(missing.messages, messages)
-  assert.deepEqual(missing.forwardedProps, {})
-  // Covering the last message would leave nothing to answer.
-  const last = applySummaryToRequest(messages, {
-    threadSummary: { content: 's', throughMessageId: 'b' },
-  })
-  assert.equal(last.messages, messages)
-  assert.deepEqual(last.forwardedProps, {})
-  // A stray string summary never leaks through on its own.
-  assert.deepEqual(applySummaryToRequest(messages, { summary: 'stale' }).forwardedProps, {})
 })

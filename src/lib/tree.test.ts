@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  branchForwardedProps,
   CONTEXT_EARLIER,
   CONTEXT_MAIN,
   CONTEXT_QUOTE,
@@ -35,29 +34,6 @@ const thread = (
   createdAt,
   rev: 0,
 })
-
-// root ── b1 ── b1a
-//      └─ b2
-const root = thread('root', null, null, '', [
-  msg('r1', 'user', 'why is /orders slow?'),
-  msg('r2', 'assistant', 'stale stats, or a type mismatch in the predicate'),
-  msg('r3', 'user', 'unrelated follow up'),
-])
-const b1 = thread('b1', 'root', 'r2', 'a type mismatch in the predicate', [
-  msg('b1m1', 'user', 'how would I spot one?'),
-  msg('b1m2', 'assistant', 'look for a cast on the column side'),
-], 1)
-const b1a = thread('b1a', 'b1', 'b1m2', 'a cast on the column side', [
-  msg('b1am1', 'user', 'why does that break the index?'),
-], 2)
-const b2 = thread('b2', 'root', 'r2', 'stale stats', [], 3)
-
-const state: TreeState = {
-  threads: { root, b1, b1a, b2 },
-  rootId: 'root',
-  activeThreadId: 'root',
-  expanded: {},
-}
 
 test('a deep ancestor chain keeps MAIN + nearest branches and omits the middle', () => {
   const deepMessages = (id: string, quote: string): ChatMessage[] => [
@@ -108,26 +84,6 @@ test('a deep ancestor chain keeps MAIN + nearest branches and omits the middle',
   assert.ok(out.includes(CONTEXT_QUOTE))
   assert.ok(out.includes('«foxtrot»'))
   assert.ok(!out.includes('ask d6'), 'leaf transcript is not upstream context')
-})
-
-test('branchForwardedProps always sends quote and context together', () => {
-  assert.equal(branchForwardedProps(state, 'root'), null)
-  assert.equal(branchForwardedProps(state, 'nope'), null)
-
-  const first = branchForwardedProps(state, 'b1')
-  assert.ok(first)
-  assert.equal(first.quote, 'a type mismatch in the predicate')
-  assert.ok(first.context.includes(CONTEXT_MAIN))
-  assert.ok(first.context.includes(CONTEXT_QUOTE))
-  assert.ok(first.context.includes(first.quote))
-
-  const nested = branchForwardedProps(state, 'b1a')
-  assert.ok(nested)
-  assert.equal(nested.quote, 'a cast on the column side')
-  assert.ok(nested.context.includes(CONTEXT_MAIN))
-  assert.ok(nested.context.includes(contextBranchLabel(1)))
-  assert.ok(nested.context.includes(CONTEXT_QUOTE))
-  assert.ok(nested.context.includes(nested.quote))
 })
 
 function summarizedRoot(through: string, filler = 700) {

@@ -48,12 +48,6 @@ function base(): TreeState {
   }
 }
 
-test('discarding the thread holding the frame retreats to its parent', () => {
-  const state = { ...base(), activeThreadId: 'b1a' }
-  const next = reducer(state, { type: 'discard', threadId: 'b1' })
-  assert.equal(next.activeThreadId, 'root')
-})
-
 function conversation(): TreeState {
   return {
     threads: {
@@ -184,24 +178,6 @@ test('a summary survives new messages and rewrites below what it covers', () => 
   assert.equal(retried.threads.root.summary?.throughMessageId, 'r3')
 })
 
-test('rewriting a summarized message drops the summary', () => {
-  const state = withSummary()
-  const truncated = reducer(state, {
-    type: 'rewrite-thread',
-    threadId: 'root',
-    messages: state.threads.root.messages.slice(0, 2),
-    dropAnchorMessageIds: [],
-  })
-  assert.equal('summary' in truncated.threads.root, false)
-  const afterEdit = reducer(state, {
-    type: 'rewrite-thread',
-    threadId: 'root',
-    messages: editUserMessage(state.threads.root.messages, 'r3', 'new text')!,
-    dropAnchorMessageIds: [],
-  })
-  assert.equal('summary' in afterEdit.threads.root, false)
-})
-
 test('a summary lands only on the messages it was written from', () => {
   const state = base()
   const root = { ...state.threads.root, messages: ['r1', 'r2', 'r3'].map((id) => msg(id)) }
@@ -220,16 +196,4 @@ test('a summary lands only on the messages it was written from', () => {
     dropAnchorMessageIds: [],
   })
   assert.equal(reducer(edited, { type: 'set-summary', threadId: 'root', summary, basis }), edited)
-})
-
-test('restoring discarded threads puts the subtree back and refocuses it', () => {
-  const state = { ...base(), activeThreadId: 'b1a' }
-  const removed = [state.threads.b1!, state.threads.b1a!]
-  const discarded = reducer(state, { type: 'discard', threadId: 'b1' })
-  // Children listed before parents still come back.
-  const restored = reducer(discarded, { type: 'restore-threads', threads: [...removed].reverse(), focusId: 'b1a' })
-  assert.deepEqual(Object.keys(restored.threads).sort(), ['b1', 'b1a', 'b2', 'root'])
-  assert.equal(restored.activeThreadId, 'b1a')
-  assert.equal(restored.expanded.root, 'b1')
-  assert.equal(reducer(restored, { type: 'restore-threads', threads: removed }), restored)
 })

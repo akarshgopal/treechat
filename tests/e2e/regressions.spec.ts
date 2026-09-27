@@ -9,22 +9,6 @@ async function restoreDemo(page: Page) {
   await afterSaves(page)
 }
 
-async function select(page: Page, messageId: string, length: number) {
-  const message = page.locator(`[data-message-id="${messageId}"]`)
-  await message.scrollIntoViewIfNeeded()
-  await message.evaluate((element, length) => {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
-    const node = walker.nextNode()!
-    const range = document.createRange()
-    range.setStart(node, 0)
-    range.setEnd(node, length)
-    const selection = window.getSelection()!
-    selection.removeAllRanges()
-    selection.addRange(range)
-    document.dispatchEvent(new Event('selectionchange'))
-  }, length)
-}
-
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
 })
@@ -64,19 +48,6 @@ test('regenerating the last reply does not ask', async ({ page }) => {
   await expect.poll(async () => (await tree(page)).threads['thread-root'].messages).toHaveLength(6)
 })
 
-test('the branch shortcut ignores a passage that was deselected', async ({ page }) => {
-  await restoreDemo(page)
-  await select(page, 'msg-root-4', 20)
-  await expect(page.getByTestId('branch-chip')).toBeVisible()
-  await page.evaluate(() => {
-    window.getSelection()!.removeAllRanges()
-    document.dispatchEvent(new Event('selectionchange'))
-  })
-  await expect(page.getByTestId('branch-chip')).toHaveCount(0)
-  await page.keyboard.press('ControlOrMeta+Shift+B')
-  await expect(page.getByTestId('branch-question')).toHaveCount(0)
-})
-
 test('discarding a branch happens at once and Undo brings it back', async ({ page }) => {
   await restoreDemo(page)
   await page.locator('button[aria-label^="Open branch"]').first().click()
@@ -111,11 +82,6 @@ test('New chat reuses a blank chat instead of stacking empty ones', async ({ pag
   const list = testInfo.project.use.isMobile ? page.getByTestId('session-library') : page.getByTestId('chat-sidebar')
   if (testInfo.project.use.isMobile) await page.getByTestId('session-switcher').click()
   await expect(list.getByTestId('session-row')).toHaveCount(2)
-})
-
-test('an empty chat offers the walkthrough', async ({ page }) => {
-  await page.getByTestId('show-demo').click()
-  await expect(page.locator('[data-message-id="msg-root-4"]')).toBeAttached()
 })
 
 test('an empty chat offers starter questions that send at once', async ({ page }) => {

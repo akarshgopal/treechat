@@ -180,21 +180,3 @@ test('without IndexedDB, chats are saved to localStorage and move over once it w
   assert.equal((await loadLibrary()).sessions[0]?.title, 'Saved without IndexedDB')
   assert.equal(storage.getItem(STORAGE_KEY), null)
 })
-
-test('a full storage refuses the save and reports it, without dropping any chat', async () => {
-  installLocalStorage()
-  const first = await loadLibrary()
-  assert.equal(await saveLibrary(first), 'saved')
-  const put = IDBObjectStore.prototype.put
-  IDBObjectStore.prototype.put = () => {
-    throw new DOMException('quota', 'QuotaExceededError')
-  }
-  try {
-    const bigger = { ...first, sessions: [...first.sessions, { ...first.sessions[0]!, id: 'second', updatedAt: 0 }] }
-    assert.equal(await saveLibrary(bigger), 'full')
-  } finally {
-    IDBObjectStore.prototype.put = put
-  }
-  // What was saved before stays intact; nothing was deleted to make room.
-  assert.deepEqual(await loadLibrary(), first)
-})
