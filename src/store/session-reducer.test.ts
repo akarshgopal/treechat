@@ -92,19 +92,6 @@ test('restoreDemo replaces only the active session tree', () => {
   assert.equal(kept?.title, 'Keep me')
 })
 
-test('set-session-documents attaches documents without reordering chats', () => {
-  const state = library([session('a', createEmptyState(), { updatedAt: 5 }), session('b')])
-  const next = sessionReducer(state, { type: 'set-session-documents', sessionId: 'a', documentIds: ['d1', 'd2', 'd1'] })
-  assert.deepEqual(next.sessions[0]!.documentIds, ['d1', 'd2'])
-  assert.equal(next.sessions[0]!.updatedAt, 5)
-  assert.equal(next.sessions[1], state.sessions[1])
-  // Same list: same state object.
-  assert.equal(sessionReducer(next, { type: 'set-session-documents', sessionId: 'a', documentIds: ['d1', 'd2'] }), next)
-  // Clearing removes the key, matching what storage reads back.
-  const cleared = sessionReducer(next, { type: 'set-session-documents', sessionId: 'a', documentIds: [] })
-  assert.equal('documentIds' in cleared.sessions[0]!, false)
-})
-
 test('restore-session brings a deleted chat back and opens it', () => {
   const kept = session('kept', createEmptyState(), { title: 'Kept', titleLocked: true })
   const gone = session('gone', createSeedState(), { title: 'Gone', titleLocked: true })

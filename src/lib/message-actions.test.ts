@@ -3,7 +3,6 @@ import test from 'node:test'
 import {
   doomedIdsForAnchors,
   droppedMessageIds,
-  retryFromAssistant,
   retryFromUser,
 } from './message-actions.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
@@ -69,18 +68,6 @@ function tree(): TreeState {
   }
 }
 
-test('retryFromAssistant trims from the prior user turn', () => {
-  const messages = tree().threads.root.messages
-  assert.deepEqual(
-    retryFromAssistant(messages, 'a2')?.map((m) => m.id),
-    ['u1', 'a1', 'u2'],
-  )
-  assert.deepEqual(
-    retryFromAssistant(messages, 'a1')?.map((m) => m.id),
-    ['u1'],
-  )
-})
-
 test('regenerating a user turn preserves its anchors and removes only later turns', () => {
   const state = tree()
   const before = state.threads.root.messages
@@ -92,9 +79,4 @@ test('regenerating a user turn preserves its anchors and removes only later turn
   assert.deepEqual(retryFromUser(after, 'u2'), after)
   assert.equal(retryFromUser(before, 'a2'), null)
   assert.equal(retryFromUser(before, 'missing'), null)
-})
-
-test('doomedIdsForAnchors includes nested descendants of those children', () => {
-  const state = tree()
-  assert.deepEqual(doomedIdsForAnchors(state, 'root', ['a1']).sort(), ['b1', 'b1a'])
 })

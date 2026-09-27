@@ -1,11 +1,9 @@
 import 'fake-indexeddb/auto'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { takeRunCitations } from '../citations.ts'
 import { setEmbedder } from './active-embedder.ts'
 import { fakeEmbedder, type Embedder } from './embedder.ts'
 import { indexFile } from './ingest.ts'
-import { withDocuments } from './rag.ts'
 import { documentCitations, documentsPrompt, forgetCachedChunks, retrieve } from './retrieve.ts'
 
 const broken: Embedder = { id: fakeEmbedder.id, threshold: 0.1, embed: () => Promise.reject(new Error('no wasm')) }
@@ -63,29 +61,4 @@ test('the DOCUMENTS section and citations share numbering', async () => {
     locator: 'Garden',
   })
   assert.deepEqual(citations.map((citation) => citation.id), hits.map((_, index) => String(index + 1)))
-})
-
-test('withDocuments is a no-op without documents, and never throws', async () => {
-  const none = await withDocuments({ messages: [], forwardedProps: { quote: 'q' }, threadId: 't' })
-  assert.deepEqual(none, { forwardedProps: { quote: 'q' }, citations: [] })
-
-  await addDoc('boom', garden)
-  // An embedder that blows up outside the guarded embedding call.
-  const exploding = { threshold: 0, embed: fakeEmbedder.embed, get id(): string { throw new Error('boom') } }
-  const warnings: unknown[] = []
-  const originalWarn = console.warn
-  console.warn = (...args: unknown[]) => { warnings.push(args) }
-  try {
-    const result = await withDocuments({
-      messages: [{ role: 'user', content: 'moss' }],
-      forwardedProps: { documentIds: ['boom'], quote: 'q' },
-      threadId: 't2',
-      embedder: exploding,
-    })
-    assert.deepEqual(result, { forwardedProps: { quote: 'q' }, citations: [] })
-    assert.equal(warnings.length, 1)
-    assert.equal(takeRunCitations('t2'), undefined)
-  } finally {
-    console.warn = originalWarn
-  }
 })

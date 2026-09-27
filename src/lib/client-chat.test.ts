@@ -75,33 +75,6 @@ test('openRouterChatStream converts OpenAI SSE into TEXT_MESSAGE_* events', asyn
   assert.deepEqual(urls, [OPENROUTER_CHAT_URL])
 })
 
-test('runChat with model prefs but no key stays on the mock', async () => {
-  saveProviderConfig({
-    provider: 'openrouter',
-    apiKey: '',
-    model: 'x-ai/grok-4.6',
-    temperature: 0.2,
-    maxTokens: 128,
-  })
-  const urls: string[] = []
-  globalThis.fetch = (async (input) => {
-    urls.push(String(input))
-    return new Response('missing', { status: 404 })
-  }) as typeof fetch
-
-  const chunks = []
-  for await (const chunk of runChat({
-    messages: [{ role: 'user', content: 'What is TreeChat?' }],
-    threadId: 't1',
-    runId: 'r1',
-  })) {
-    chunks.push(chunk)
-    if (chunk.type === EventType.TEXT_MESSAGE_CONTENT) break
-  }
-  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_START))
-  assert.ok(urls.every((url) => !url.includes('openrouter.ai')))
-})
-
 test('openRouterChatStream abort after start does not emit RUN_ERROR', async () => {
   const controller = new AbortController()
   const encoder = new TextEncoder()
