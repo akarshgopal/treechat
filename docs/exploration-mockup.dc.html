@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TreeChat exploration mockup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=Libre+Franklin:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#15171a;font-family:'Libre Franklin',system-ui,sans-serif;color:#e8eae7}
+*{box-sizing:border-box}
+sc-for,sc-if{display:contents}
+a{color:inherit}a:hover{color:inherit}
+button{font-family:inherit}
+.scroll{overflow-y:auto}
+.scroll::-webkit-scrollbar{width:10px}
+.scroll::-webkit-scrollbar-thumb{background:#2c3035;border-radius:5px;border:3px solid transparent;background-clip:padding-box}
+.lbl{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#858c87}
+.meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#858c87}
+.btn{font-size:13px;color:#e8eae7;background:transparent;border:1px solid #2c3035;border-radius:7px;height:32px;padding:0 12px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#24282c}
+.btn-primary{background:#52ad8c;border-color:#52ad8c;color:#0d1814;font-weight:600}
+.btn-primary:hover{background:#63bb9b}
+.btn[disabled]{opacity:.45;cursor:default}
+.btn.ghost{border-color:transparent}
+.btn.icon{width:32px;padding:0;justify-content:center}
+.mini{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;border:0;border-radius:6px;background:none;color:#a3a9a4;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.mini:hover{background:#24282c;color:#e8eae7}
+.badge{font-size:11px;font-weight:600;background:#52ad8c;color:#0d1814;border-radius:9px;padding:1px 7px}
+.row{display:flex;align-items:center;gap:9px;width:100%;min-height:30px;padding:4px 10px;border:0;border-radius:6px;background:none;color:#c9cdc9;font-size:13.5px;text-align:left;cursor:pointer}
+.row:hover{background:#1b1e21}
+.row.on{background:#23272b;color:#e8eae7}
+.row.unread{color:#e8eae7;font-weight:600}
+.row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#52ad8c}
+.dot.read{background:#6b726d}
+.dot.none{visibility:hidden}
+.pass{text-decoration:underline dotted #6b726d;text-underline-offset:4px;text-decoration-thickness:1px;border-radius:3px;cursor:text}
+.pass:hover{background:rgba(82,173,140,.12)}
+.pass.has{text-decoration:underline solid rgba(82,173,140,.75);text-decoration-thickness:1.5px}
+.pass.on{background:rgba(82,173,140,.3);text-decoration:none}
+.chip{display:inline-flex;align-items:center;margin-left:6px;vertical-align:1px;height:24px;padding:0 10px;border-radius:12px;border:0;background:#52ad8c;color:#0d1814;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.mark{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:3px;vertical-align:-2px;border:1px solid #2c3035;border-radius:9px;background:#1d2023;cursor:pointer;padding:0}
+.mark:hover{border-color:#52ad8c}
+.bubble{background:#23272b;border-radius:14px;padding:10px 14px;font-size:15px;line-height:1.55}
+.bubble.on{box-shadow:0 0 0 2px #52ad8c}
+.region{position:absolute;border:2px dashed rgba(255,255,255,.85);background:rgba(255,255,255,.1);border-radius:4px;cursor:crosshair;padding:0}
+.region.on{border:2px solid #52ad8c;background:rgba(82,173,140,.35)}
+.lh{height:52px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 12px 0 20px;border-bottom:1px solid #2a2e33}
+.quote{margin:0 0 16px 0;padding:10px 14px;border-radius:8px;background:#15171a;border:1px solid #2c3035;font-size:14.5px;line-height:1.55;color:#d4d8d4}
+.match{display:flex;align-items:center;gap:10px;border:1px solid #33463f;background:#18221f;border-radius:10px;padding:8px 8px 8px 12px;margin-bottom:10px;font-size:13.5px}
+.match .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.match .sub{color:#a3a9a4;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.field{width:100%;resize:none;background:#15171a;border:1px solid #2c3035;border-radius:8px;color:#e8eae7;font-family:inherit;font-size:14.5px;line-height:1.55;padding:10px 12px;outline:none}
+.field:focus{border-color:#52ad8c}
+.bare{flex:1;resize:none;background:none;border:0;outline:none;color:#e8eae7;font-family:inherit;font-size:14.5px;line-height:1.5;padding:4px 0}
+.bare::placeholder,.field::placeholder{color:#7d847f}
+.composer{display:flex;gap:8px;align-items:flex-end;border:1px solid #2c3035;border-radius:12px;padding:8px 8px 8px 14px}
+.card{display:flex;flex-direction:column;gap:8px;width:250px;padding:14px;border:1px solid #2c3035;border-radius:10px;background:#1d2023;color:#e8eae7;text-align:left;cursor:pointer;font-size:13px}
+.card:hover{border-color:#4a5057}
+.card.cur{border-color:#52ad8c}
+.card .q{color:#a3a9a4;font-style:italic;line-height:1.45}
+.card .take{border-top:1px solid #2c3035;padding-top:8px;line-height:1.5;color:#d4d8d4}
+.kids{margin-left:14px;padding:12px 0 0 14px;border-left:1px solid #2c3035;display:flex;flex-direction:column;gap:12px}
+.kids .card{width:230px}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.55);border:0;cursor:default;padding:0}
+.note{border:1px solid #2c3035;border-radius:10px;padding:12px 14px;margin-bottom:18px;background:#191b1e;font-size:14px;line-height:1.55}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; display: flex; background: #15171a; color: #e8eae7; font-family: 'Libre Franklin', system-ui, sans-serif; font-size: 15px; overflow: hidden">
+
+<aside style="width: 256px; flex-shrink: 0; height: 900px; background: #111315; border-right: 1px solid #23272b; display: flex; flex-direction: column; gap: 20px; padding: 12px 10px">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 0 2px 0 10px; height: 34px">
+<div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px"><span style="color: #52ad8c; display: flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg></span>TreeChat</div>
+<button class="btn ghost icon" aria-label="New chat" onClick="{{newChat}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5v14"></path></svg></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div class="lbl" style="padding: 0 10px 6px 10px">Chats</div>
+<button class="{{rootRowCls}}" onClick="{{openRoot}}"><span class="t">Why is the sky blue?</span></button>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<button class="{{r.cls}}" style="padding-left: {{r.pad}}px" onClick="{{r.open}}"><span class="{{r.dot}}"></span><span class="t">{{r.title}}</span></button>
+</sc-for>
+<button class="row" style="margin-top: 8px" onClick="{{otherChat}}"><span class="t">How do we see colour?</span></button>
+<button class="row" onClick="{{otherChat}}"><span class="t">Tides and the moon</span></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div class="lbl" style="padding: 0 10px 6px 10px">Documents</div>
+<button class="{{docRowCls}}" onClick="{{openDoc}}"><span class="t">atmosphere-notes.pdf</span></button>
+</div>
+</aside>
+
+<main style="flex-grow: 1; min-width: 0; height: 900px; display: flex; flex-direction: column">
+<div class="lh" style="padding-left: 28px">
+<div style="flex-grow: 1; min-width: 0; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Why is the sky blue?</div>
+<button class="btn" onClick="{{openMap}}">Map<sc-if value="{{hasNew}}" hint-placeholder-val="{{ true }}"><span class="badge">{{newCount}} new</span></sc-if></button>
+<button class="btn" onClick="{{openLearn}}">What did I learn?</button>
+<button class="btn icon" aria-label="Share as HTML" title="Share as HTML" onClick="{{share}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg></button>
+</div>
+
+<div class="scroll" style="flex-grow: 1; padding: 20px 28px 24px 28px">
+<div style="max-width: 660px; margin: 0 auto">
+<div class="meta" style="margin-bottom: 22px">Mockup: dotted text stands in for any selection. The image and the PDF can be branched from too.</div>
+
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-bottom: 26px">
+<div style="position: relative; width: 400px; height: 140px; border-radius: 10px; overflow: hidden; border: 1px solid #2c3035; background: linear-gradient(90deg, #5b3cc4 0%, #3d63d9 18%, #2fa7c9 33%, #4cb35a 48%, #d9cf3a 63%, #e8902e 80%, #cf3b2f 100%)">
+<svg width="400" height="140" viewBox="0 0 400 140" style="position: absolute; left: 0; top: 0" aria-hidden="true"><path d="M0 118 C 40 88, 70 46, 118 36 S 200 38, 258 58 S 356 94, 400 106" stroke="#ffffff" stroke-width="2.5" fill="none" opacity="0.92"></path></svg>
+<div style="position: absolute; left: 10px; right: 10px; bottom: 6px; display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #ffffff; text-shadow: 0 1px 2px rgba(0,0,0,.6)"><span>400 nm</span><span>500</span><span>600</span><span>700</span></div>
+<sc-if value="{{regionOn}}" hint-placeholder-val="{{ false }}"><button class="{{regionCls}}" style="left: 6px; top: 8px; width: 74px; height: 106px" onClick="{{pickRegion}}" aria-label="Select the 400 to 450 nm region"></button></sc-if>
+<div style="position: absolute; right: 8px; top: 8px; display: flex"><sc-for list="{{imgMarks}}" as="k" hint-placeholder-count="0"><button class="mark" onClick="{{k.open}}" aria-label="Open branch {{k.title}}" title="{{k.title}}"><span class="{{k.dot}}"></span></button></sc-for></div>
+</div>
+<div style="display: flex; align-items: center; gap: 4px">
+<button class="mini" onClick="{{toggleRegion}}">{{regionLabel}}</button>
+<sc-if value="{{imgChip}}" hint-placeholder-val="{{ false }}"><button class="chip" onClick="{{startBranch}}">Branch</button></sc-if>
+</div>
+<div class="{{qCls}}" style="max-width: 440px">{{qText}}<sc-for list="{{qMarks}}" as="k" hint-placeholder-count="0"><button class="mark" onClick="{{k.open}}" aria-label="Open branch {{k.title}}" title="{{k.title}}"><span class="{{k.dot}}"></span></button></sc-for></div>
+<div style="display: flex; align-items: center; gap: 4px">
+<button class="mini" onClick="{{pickQuestion}}">Branch from this question</button>
+<sc-if value="{{qChip}}" hint-placeholder-val="{{ false }}"><button class="chip" onClick="{{startBranch}}">Branch</button></sc-if>
+</div>
+</div>
+
+<div style="font-size: 15.5px; line-height: 1.7; color: #dfe2df">
+<sc-for list="{{mainParas}}" as="p" hint-placeholder-count="3"><div style="margin-bottom: 14px"><sc-for list="{{p.segs}}" as="s" hint-placeholder-count="3"><sc-if value="{{s.plain}}" hint-placeholder-val="{{ true }}"><span>{{s.t}}</span></sc-if><sc-if value="{{s.selectable}}" hint-placeholder-val="{{ false }}"><a href="#passage" class="pass {{s.cls}}" onClick="{{s.pick}}">{{s.t}}</a></sc-if><sc-for list="{{s.marks}}" as="k" hint-placeholder-count="0"><button class="mark" onClick="{{k.open}}" aria-label="Open branch {{k.title}}" title="{{k.title}}"><span class="{{k.dot}}"></span></button></sc-for><sc-if value="{{s.chip}}" hint-placeholder-val="{{ false }}"><button class="chip" onClick="{{s.go}}">Branch</button></sc-if></sc-for></div></sc-for>
+</div>
+</div>
+</div>
+
+<div style="flex-shrink: 0; padding: 0 28px 20px 28px">
+<div style="max-width: 660px; margin: 0 auto">
+<sc-for list="{{mainMatches}}" as="m" hint-placeholder-count="0">
+<div class="match"><span class="txt"><span>Explored before: <b>{{m.title}}</b> <span class="meta">{{m.where}}</span></span><sc-if value="{{m.hasTake}}" hint-placeholder-val="{{ true }}"><span class="sub">{{m.takeaway}}</span></sc-if></span><button class="btn" onClick="{{m.open}}">Open</button><button class="btn ghost icon" aria-label="Dismiss" onClick="{{m.dismiss}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></div>
+</sc-for>
+<div class="composer" style="background: #1d2023">
+<textarea class="bare" rows="2" aria-label="Message to Main conversation" placeholder="Ask a follow-up…" value="{{mainDraft}}" onChange="{{onMainDraft}}"></textarea>
+<button class="btn btn-primary icon" aria-label="Send" onClick="{{sendMain}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+</div>
+</div>
+</div>
+</main>
+
+<sc-if value="{{showLane}}" hint-placeholder-val="{{ false }}">
+<section style="width: 560px; flex-shrink: 0; height: 900px; background: #1d2023; border-left: 1px solid #23272b; position: relative">
+
+<sc-if value="{{laneCompose}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column">
+<div class="lh">
+<span style="font-weight: 600; font-size: 15px; flex-grow: 1">New branch</span>
+<button class="btn ghost icon" aria-label="Cancel branch" onClick="{{cancelCompose}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+<div class="scroll" style="flex-grow: 1; padding: 22px 24px">
+<div class="lbl" style="margin-bottom: 8px">{{selLabel}}</div>
+<sc-if value="{{selIsImage}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px"><div style="width: 72px; height: 72px; border-radius: 8px; border: 2px solid #52ad8c; background: linear-gradient(90deg, #5b3cc4, #3d63d9)"></div><span style="font-size: 14px; color: #d4d8d4">{{selQuote}}</span></div></sc-if>
+<sc-if value="{{selNotImage}}" hint-placeholder-val="{{ true }}"><div class="quote">{{selQuote}}</div></sc-if>
+<sc-for list="{{composeMatches}}" as="m" hint-placeholder-count="0">
+<div class="match"><span class="txt"><span>Explored before: <b>{{m.title}}</b> <span class="meta">{{m.where}}</span></span><sc-if value="{{m.hasTake}}" hint-placeholder-val="{{ true }}"><span class="sub">{{m.takeaway}}</span></sc-if></span><button class="btn" onClick="{{m.open}}">Open</button><button class="btn ghost icon" aria-label="Dismiss" onClick="{{m.dismiss}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></div>
+</sc-for>
+<textarea class="field" rows="4" aria-label="Your branch question" placeholder="Ask about this…" value="{{draft}}" onChange="{{onDraft}}"></textarea>
+<div style="margin-top: 12px"><button class="btn btn-primary" disabled="{{askDisabled}}" onClick="{{ask}}">Ask</button></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{laneBranch}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column">
+<div class="lh" style="padding-left: 12px">
+<button class="btn ghost icon" aria-label="Back to {{b.parentTitle}}" title="Back to {{b.parentTitle}}" onClick="{{b.back}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg></button>
+<span style="flex-grow: 1; min-width: 0; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.title}}</span>
+<button class="mini" onClick="{{editTake}}">{{takeLabel}}</button>
+</div>
+<div class="scroll" style="flex-grow: 1; padding: 20px 24px">
+<div class="lbl" style="margin-bottom: 8px">{{b.label}}</div>
+<sc-if value="{{b.isImage}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px"><div style="width: 72px; height: 72px; border-radius: 8px; border: 2px solid #52ad8c; background: linear-gradient(90deg, #5b3cc4, #3d63d9)"></div><span style="font-size: 14px; color: #d4d8d4">{{b.quote}}</span></div></sc-if>
+<sc-if value="{{b.notImage}}" hint-placeholder-val="{{ true }}"><div class="quote">{{b.quote}}</div></sc-if>
+
+<sc-if value="{{editing}}" hint-placeholder-val="{{ false }}"><div class="note"><div class="lbl" style="margin-bottom: 8px">Takeaway</div><textarea class="field" rows="3" aria-label="Takeaway" value="{{editText}}" onChange="{{onEdit}}"></textarea><div style="display: flex; gap: 8px; margin-top: 10px"><button class="btn btn-primary" onClick="{{saveEdit}}">Save</button><button class="btn ghost" onClick="{{cancelEdit}}">Cancel</button></div></div></sc-if>
+<sc-if value="{{b.showTake}}" hint-placeholder-val="{{ false }}"><div class="note"><div class="lbl" style="margin-bottom: 6px">Takeaway</div>{{b.take}}</div></sc-if>
+
+<sc-for list="{{b.msgs}}" as="m" hint-placeholder-count="2">
+<sc-if value="{{m.isUser}}" hint-placeholder-val="{{ true }}"><div style="display: flex; justify-content: flex-end; margin-bottom: 18px"><div class="bubble" style="max-width: 400px">{{m.text}}</div></div></sc-if>
+<sc-if value="{{m.isAsst}}" hint-placeholder-val="{{ false }}"><div style="margin-bottom: 22px; font-size: 15px; line-height: 1.7; color: #dfe2df">
+<sc-for list="{{m.paras}}" as="p" hint-placeholder-count="1"><div style="margin-bottom: 10px"><sc-for list="{{p.segs}}" as="s" hint-placeholder-count="3"><sc-if value="{{s.plain}}" hint-placeholder-val="{{ true }}"><span>{{s.t}}</span></sc-if><sc-if value="{{s.selectable}}" hint-placeholder-val="{{ false }}"><a href="#passage" class="pass {{s.cls}}" onClick="{{s.pick}}">{{s.t}}</a></sc-if><sc-for list="{{s.marks}}" as="k" hint-placeholder-count="0"><button class="mark" onClick="{{k.open}}" aria-label="Open branch {{k.title}}" title="{{k.title}}"><span class="{{k.dot}}"></span></button></sc-for><sc-if value="{{s.chip}}" hint-placeholder-val="{{ false }}"><button class="chip" onClick="{{s.go}}">Branch</button></sc-if></sc-for></div></sc-for>
+<div style="display: flex; align-items: center; gap: 2px; margin-left: -9px">
+<sc-if value="{{m.hasAlts}}" hint-placeholder-val="{{ false }}"><button class="mini" style="padding: 0 7px" aria-label="Previous answer" onClick="{{m.prevAlt}}">‹</button><span class="meta">{{m.altLabel}} · {{m.model}}</span><button class="mini" style="padding: 0 7px" aria-label="Next answer" onClick="{{m.nextAlt}}">›</button></sc-if>
+<button class="mini" onClick="{{m.another}}">Try another model</button>
+</div>
+</div></sc-if>
+</sc-for>
+</div>
+<div style="flex-shrink: 0; padding: 0 20px 20px 20px">
+<div class="composer" style="background: #15171a">
+<textarea class="bare" rows="2" aria-label="Reply in this branch" placeholder="Reply…" value="{{replyDraft}}" onChange="{{onReply}}"></textarea>
+<button class="btn btn-primary icon" aria-label="Send" onClick="{{sendReply}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7M12 19V5"></path></svg></button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{laneDoc}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; display: flex; flex-direction: column">
+<div class="lh">
+<span style="font-weight: 600; font-size: 14.5px">atmosphere-notes.pdf</span>
+<span class="meta" style="flex-grow: 1">p. 3</span>
+<button class="btn ghost icon" aria-label="Close document" onClick="{{closeLane}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+<div class="scroll" style="flex-grow: 1; padding: 28px 34px; font-size: 15px; line-height: 1.75; color: #d4d8d4">
+<sc-for list="{{docParas}}" as="p" hint-placeholder-count="3"><div style="margin-bottom: 16px"><sc-for list="{{p.segs}}" as="s" hint-placeholder-count="3"><sc-if value="{{s.plain}}" hint-placeholder-val="{{ true }}"><span>{{s.t}}</span></sc-if><sc-if value="{{s.selectable}}" hint-placeholder-val="{{ false }}"><a href="#passage" class="pass {{s.cls}}" onClick="{{s.pick}}">{{s.t}}</a></sc-if><sc-for list="{{s.marks}}" as="k" hint-placeholder-count="0"><button class="mark" onClick="{{k.open}}" aria-label="Open branch {{k.title}}" title="{{k.title}}"><span class="{{k.dot}}"></span></button></sc-for><sc-if value="{{s.chip}}" hint-placeholder-val="{{ false }}"><button class="chip" onClick="{{s.go}}">Branch</button></sc-if></sc-for></div></sc-for>
+</div>
+</div>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{showMap}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; background: #111315; z-index: 20; display: flex; flex-direction: column">
+<div class="lh" style="padding-left: 28px; gap: 14px">
+<span style="font-weight: 600; font-size: 15px">Map</span>
+<span class="meta" style="flex-grow: 1">{{mapCounts}}</span>
+<button class="btn ghost icon" aria-label="Close map" onClick="{{closeOverlay}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+<div class="scroll" style="flex-grow: 1; padding: 36px 40px 48px 40px; display: flex; flex-direction: column; align-items: center">
+<button class="{{rootCardCls}}" style="width: 360px" onClick="{{openRoot}}"><span style="font-weight: 600; font-size: 16px">Why is the sky blue?</span><span class="q" style="font-style: normal">Air molecules scatter short wavelengths far more than long ones, so blue fills the sky.</span></button>
+<div style="width: 1px; height: 28px; background: #2c3035"></div>
+<div style="display: flex; gap: 20px; align-items: flex-start; justify-content: center; padding-top: 16px; border-top: 1px solid #2c3035">
+<sc-for list="{{mapKids}}" as="c" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column">
+<button class="{{c.cls}}" onClick="{{c.open}}">
+<span style="display: flex; align-items: center; gap: 8px"><span class="{{c.dot}}"></span><span style="font-weight: 600; font-size: 14px">{{c.title}}</span></span>
+<span class="q">“{{c.quote}}”</span>
+<sc-if value="{{c.hasTake}}" hint-placeholder-val="{{ false }}"><span class="take">{{c.takeaway}}</span></sc-if>
+</button>
+<sc-if value="{{c.hasKids}}" hint-placeholder-val="{{ false }}"><div class="kids"><sc-for list="{{c.kids}}" as="d" hint-placeholder-count="1"><div style="display: flex; flex-direction: column">
+<button class="{{d.cls}}" onClick="{{d.open}}">
+<span style="display: flex; align-items: center; gap: 8px"><span class="{{d.dot}}"></span><span style="font-weight: 600; font-size: 14px">{{d.title}}</span></span>
+<span class="q">“{{d.quote}}”</span>
+<sc-if value="{{d.hasTake}}" hint-placeholder-val="{{ false }}"><span class="take">{{d.takeaway}}</span></sc-if>
+</button>
+<sc-if value="{{d.hasKids}}" hint-placeholder-val="{{ false }}"><div class="kids"><sc-for list="{{d.kids}}" as="e" hint-placeholder-count="1">
+<button class="{{e.cls}}" onClick="{{e.open}}">
+<span style="display: flex; align-items: center; gap: 8px"><span class="{{e.dot}}"></span><span style="font-weight: 600; font-size: 14px">{{e.title}}</span></span>
+<span class="q">“{{e.quote}}”</span>
+<sc-if value="{{e.hasTake}}" hint-placeholder-val="{{ false }}"><span class="take">{{e.takeaway}}</span></sc-if>
+</button>
+</sc-for></div></sc-if>
+</div></sc-for></div></sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{showLearn}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; inset: 0; z-index: 30">
+<button class="scrim" aria-label="Close" onClick="{{closeOverlay}}"></button>
+<div style="position: absolute; top: 0; right: 0; bottom: 0; width: 620px; background: #1d2023; border-left: 1px solid #2c3035; display: flex; flex-direction: column">
+<div class="lh" style="padding-left: 24px">
+<span style="font-weight: 600; font-size: 15px; flex-grow: 1">What did I learn?</span>
+<button class="btn ghost icon" aria-label="Close" onClick="{{closeOverlay}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+<div style="flex-grow: 1; padding: 20px 24px; display: flex; flex-direction: column">
+<sc-if value="{{learnBusy}}" hint-placeholder-val="{{ false }}"><div class="field" style="flex-grow: 1; overflow: hidden; white-space: pre-wrap; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.65">{{learnVisible}}</div></sc-if>
+<sc-if value="{{learnDone}}" hint-placeholder-val="{{ true }}"><textarea class="field" aria-label="Your summary" style="flex-grow: 1; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.65" value="{{learnText}}" onChange="{{onLearn}}"></textarea></sc-if>
+</div>
+<div style="flex-shrink: 0; display: flex; gap: 8px; padding: 0 24px 20px 24px">
+<button class="btn" onClick="{{copyLearn}}">Copy</button>
+<button class="btn" onClick="{{downloadLearn}}">Download .md</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}"><div role="status" style="position: absolute; left: 50%; top: 62px; transform: translateX(-50%); z-index: 50; background: #e8eae7; color: #15171a; font-size: 13.5px; font-weight: 500; padding: 10px 16px; border-radius: 9px; box-shadow: 0 8px 30px rgba(0,0,0,.4); white-space: nowrap">{{toast}}</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      threads: this.seed(), activeId: 'root', lane: 'none', prevLane: 'none',
+      sel: null, draft: '', hideMatch: false, mainDraft: '', hideMainMatch: false, replyDraft: '',
+      overlay: null, learnText: '', learnShown: -1, regionOn: false,
+      editing: false, editText: '', toast: '', counter: 0
+    };
+  }
+
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.toastTimer); }
+
+  seed() {
+    const u = (t) => ({ role: 'user', paras: [[{ t: t }]] });
+    const a = (paras) => ({ role: 'assistant', paras: paras });
+    return [
+      { id: 'root', parent: null, title: 'Main', unread: false, anchor: null, kind: null, quote: '', label: '', keywords: [],
+        messages: [
+          u('Why is the sky blue? And why does the chart I attached peak where it does?'),
+          a([
+            [{ t: 'Sunlight is a mix of every visible colour. Crossing the atmosphere, it meets nitrogen and oxygen molecules far smaller than its wavelength, and ' }, { id: 's-l4', t: 'shorter wavelengths scatter far more strongly, roughly as 1/λ⁴' }, { t: '. Blue light gets bounced all over the sky while red mostly passes straight through.' }],
+            [{ id: 's-violet', t: 'Violet scatters even more than blue, yet the sky doesn’t look violet' }, { t: ': the sun emits less of it, and our eyes weigh it weakly. ' }, { id: 's-sunset', t: 'At sunset the light crosses far more air' }, { t: ', so most of the blue is scattered away before it reaches you.' }],
+            [{ t: 'Clouds are different: their ' }, { id: 's-mie', t: 'droplets are big enough to scatter all colours about equally' }, { t: ', which is why they look white. Your chart peaks near 500 nm because that is roughly ' }, { id: 's-peak', t: 'where sunlight itself is brightest' }, { t: '.' }]
+          ])
+        ] },
+      { id: 'b1', parent: 'root', title: 'Why not violet?', unread: false, anchor: 's-violet', kind: 'passage', quote: 'Violet scatters even more than blue, yet the sky doesn’t look violet', label: 'From the answer', keywords: ['violet', 'purple'],
+        takeaway: 'The sun emits less violet, some is absorbed high up, and our eyes respond weakly to it, so scattered skylight reads as blue.',
+        messages: [u('So why isn’t the sky violet?'), a([[{ t: 'Three things stack up. The sun emits less violet than blue to begin with, and some of it is absorbed high in the atmosphere. ' }, { id: 's-cones', t: 'Our cones respond weakly to violet' }, { t: ', so the scattered mix of violet, blue and a little green reads as sky blue.' }]])] },
+      { id: 'b2', parent: 'root', title: 'Where does the 1/λ⁴ come from?', unread: false, anchor: 's-l4', kind: 'passage', quote: 'shorter wavelengths scatter far more strongly, roughly as 1/λ⁴', label: 'From the answer', keywords: ['fourth power', '1/λ', 'λ⁴'],
+        messages: [u('Where does the fourth power come from?'), { role: 'assistant', altIdx: 0, alts: [
+          { model: 'GPT-5.6 Luna', paras: [[{ t: 'Light’s electric field shakes each molecule’s electrons, turning it into a tiny antenna. ' }, { id: 's-dipole', t: 'An oscillating dipole radiates power in proportion to the fourth power of its frequency' }, { t: '. Frequency is inversely proportional to wavelength, so halving the wavelength gives sixteen times the scattering.' }]] },
+          { model: 'Claude Sonnet 5', paras: [[{ t: 'Treat each molecule as a small spring the light keeps shaking. ' }, { id: 's-accel', t: 'Radiated power grows with the square of the charge’s acceleration' }, { t: ', and the acceleration grows with the square of the frequency. Square times square gives the fourth power.' }]] }
+        ] }] },
+      { id: 'b2a', parent: 'b2', title: 'Dipole radiation, intuitively', unread: true, anchor: 's-dipole', kind: 'passage', quote: 'An oscillating dipole radiates power in proportion to the fourth power of its frequency', label: 'From “Where does the 1/λ⁴ come from?”', keywords: ['dipole', 'antenna'],
+        messages: [u('Can you give me an intuition for dipole radiation?'), a([[{ t: 'Picture a charge bobbing up and down. Every bob sends a ripple outward, strongest sideways and zero straight along the bob. ' }, { id: 's-bob', t: 'Bob it twice as fast and each ripple is both more frequent and more violent' }, { t: ', so the energy climbs steeply.' }]])] },
+      { id: 'b3', parent: 'root', title: 'Sunsets and dust', unread: true, anchor: 's-sunset', kind: 'passage', quote: 'At sunset the light crosses far more air', label: 'From the answer', keywords: ['sunset', 'dusk', 'redder'],
+        messages: [u('Why are some sunsets so much redder than others?'), a([[{ t: 'Dust, smoke and other aerosols. ' }, { id: 's-aero', t: 'Particles from fires, volcanoes or pollution scatter and absorb even more blue and green' }, { t: ', leaving deeper reds. Very clean air tends to give paler, yellower sunsets.' }]])] },
+      { id: 'b4', parent: 'root', title: 'Is this Mie scattering?', unread: false, anchor: 's-mie', kind: 'passage', quote: 'droplets are big enough to scatter all colours about equally', label: 'From the answer', keywords: ['mie', 'cloud', 'droplet'],
+        messages: [u('Is that Mie scattering? How is it different?'), a([[{ t: 'Yes. Mie scattering covers particles about as large as the wavelength or larger, like cloud droplets. It depends only weakly on colour, which is why clouds and haze look white or grey rather than blue.' }]])] }
+    ];
+  }
+
+  external() {
+    return [{ id: 'x1', chat: 'How do we see colour?', title: 'Why cones overlap',
+      takeaway: 'Our three cone types overlap heavily and blue cones are few, so light rich in violet still reads as blue.',
+      keywords: ['cone', 'eye', 'colour vision', 'color vision', 'perceive'] }];
+  }
+
+  docParas() {
+    return [
+      [{ t: 'Clear-sky colour depends on the path of the light as much as on the air itself. ' }, { id: 'd-ozone', t: 'Near twilight, ozone absorbs part of the orange and red light' }, { t: ', which helps keep the zenith blue after the sun has set.' }],
+      [{ t: 'Polarisation is another clue: ' }, { id: 'd-polar', t: 'skylight 90° from the sun is strongly polarised' }, { t: ', a direct signature of scattering by molecules that are small compared with the wavelength.' }],
+      [{ t: 'At altitude the sky darkens toward ' }, { id: 'd-alt', t: 'a deep navy, because there is less air above you to scatter light' }, { t: '. From orbit, the daytime sky is black.' }]
+    ];
+  }
+
+  byId(id) { return this.state.threads.find((t) => t.id === id); }
+  kids(id) { return this.state.threads.filter((t) => t.parent === id); }
+  stop(e) { if (e && e.preventDefault) e.preventDefault(); if (e && e.stopPropagation) e.stopPropagation(); }
+  plain(m) { const p = m.alts ? m.alts[m.altIdx || 0].paras : m.paras; return p.map((x) => x.map((g) => g.t).join('')).join(' '); }
+
+  patch(id, fields) {
+    this.setState((s) => ({ threads: s.threads.map((t) => (t.id === id ? Object.assign({}, t, fields) : t)) }));
+  }
+
+  patchMessage(tid, mi, fn) {
+    this.setState((s) => ({ threads: s.threads.map((t) => (t.id !== tid ? t : Object.assign({}, t, { messages: t.messages.map((m, j) => (j === mi ? fn(m) : m)) }))) }));
+  }
+
+  say(text) {
+    clearTimeout(this.toastTimer);
+    this.setState({ toast: text });
+    this.toastTimer = setTimeout(() => this.setState({ toast: '' }), 2600);
+  }
+
+  open(id) {
+    if (id === 'root') { this.setState({ activeId: 'root', lane: 'none', overlay: null, sel: null, editing: false }); return; }
+    const t = this.byId(id);
+    if (!t) return;
+    if (t.unread) this.patch(id, { unread: false });
+    this.setState({ activeId: id, lane: 'branch', overlay: null, sel: null, editing: false, replyDraft: '' });
+  }
+
+  select(sel) {
+    const s = this.state;
+    if (s.lane === 'compose') { this.setState({ sel: sel, hideMatch: false }); return; }
+    this.setState({ sel: s.sel && s.sel.id === sel.id ? null : sel, hideMatch: false });
+  }
+
+  startBranch() {
+    this.setState((s) => ({ lane: 'compose', prevLane: s.lane === 'compose' ? s.prevLane : s.lane, draft: '', hideMatch: false }));
+  }
+
+  ask() {
+    const s = this.state;
+    const sel = s.sel;
+    const q = s.draft.trim();
+    if (!sel || !q) return;
+    const id = 'n' + (s.counter + 1);
+    const t = { id: id, parent: sel.from, title: q.length > 44 ? q.slice(0, 42).trim() + '…' : q, unread: false,
+      anchor: sel.id, kind: sel.kind, quote: sel.quote, label: sel.label, keywords: [],
+      messages: [
+        { role: 'user', paras: [[{ t: q }]] },
+        { role: 'assistant', paras: [[{ t: 'Mock answer. In TreeChat this streams from your model. ' }, { id: id + '-p', t: 'Any sentence here can be branched again' }, { t: '.' }]] }
+      ] };
+    this.setState({ threads: s.threads.concat([t]), counter: s.counter + 1, sel: null, draft: '', activeId: id, lane: 'branch', editing: false });
+  }
+
+  matches(text, anchorId) {
+    const low = (text || '').toLowerCase();
+    const hit = (words) => low.length > 2 && words.some((k) => low.indexOf(k) >= 0);
+    const out = [];
+    this.state.threads.forEach((t) => {
+      if (t.id !== 'root' && ((anchorId && t.anchor === anchorId) || hit(t.keywords))) {
+        out.push({ title: t.title, where: 'this chat', takeaway: t.takeaway || '', hasTake: !!t.takeaway, open: () => this.open(t.id) });
+      }
+    });
+    this.external().forEach((x) => {
+      if (hit(x.keywords)) out.push({ title: x.title, where: 'in “' + x.chat + '”', takeaway: x.takeaway, hasTake: true, open: () => this.say('Would open “' + x.chat + '” › ' + x.title) });
+    });
+    return out.slice(0, 2);
+  }
+
+  marksFor(id) {
+    return this.state.threads.filter((t) => t.anchor === id).map((t) => ({ dot: 'dot' + (t.unread ? '' : ' read'), title: t.title, open: (e) => { this.stop(e); this.open(t.id); } }));
+  }
+
+  segs(list, from, kind, label) {
+    const s = this.state;
+    return list.map((g) => {
+      const on = !!(s.sel && g.id && s.sel.id === g.id);
+      const marks = g.id ? this.marksFor(g.id) : [];
+      return { t: g.t, plain: !g.id, selectable: !!g.id, cls: (on ? 'on' : '') + (marks.length ? ' has' : ''), chip: on && s.lane !== 'compose', marks: marks,
+        go: () => this.startBranch(),
+        pick: (e) => { this.stop(e); this.select({ id: g.id, kind: kind, quote: g.t, from: from, label: label }); } };
+    });
+  }
+
+  msgs(t) {
+    const label = t.id === 'root' ? 'From the answer' : 'From “' + t.title + '”';
+    return t.messages.map((m, i) => {
+      const idx = m.altIdx || 0;
+      const paras = m.alts ? m.alts[idx].paras : m.paras;
+      return { isUser: m.role === 'user', isAsst: m.role === 'assistant', text: this.plain(m),
+        paras: paras.map((p) => ({ segs: this.segs(p, t.id, 'passage', label) })),
+        hasAlts: !!m.alts, altLabel: m.alts ? (idx + 1) + ' of ' + m.alts.length : '', model: m.alts ? m.alts[idx].model : '',
+        prevAlt: () => this.patchMessage(t.id, i, (x) => Object.assign({}, x, { altIdx: ((x.altIdx || 0) - 1 + x.alts.length) % x.alts.length })),
+        nextAlt: () => this.patchMessage(t.id, i, (x) => Object.assign({}, x, { altIdx: ((x.altIdx || 0) + 1) % x.alts.length })),
+        another: () => this.another(t.id, i) };
+    });
+  }
+
+  another(tid, mi) {
+    const m = this.byId(tid).messages[mi];
+    if (m.alts) { this.say('Mock: would add another model’s answer.'); return; }
+    this.patchMessage(tid, mi, (x) => ({ role: 'assistant', altIdx: 1, alts: [
+      { model: 'GPT-5.6 Luna', paras: x.paras },
+      { model: 'Claude Sonnet 5', paras: [[{ t: 'A second answer from a different model, kept beside the first. Flip between them with the arrows.' }]] }
+    ] }));
+  }
+
+  synth() {
+    const s = this.state;
+    const cur = s.activeId !== 'root' ? this.byId(s.activeId) : null;
+    let list = s.threads.filter((t) => t.id !== 'root');
+    let title = 'Why is the sky blue?';
+    let lead = 'Blue skies come from air molecules scattering short wavelengths far more than long ones, roughly as 1/λ⁴. Violet loses out on supply and on our eyes, and sunsets redden because the light crosses far more air.';
+    if (cur) {
+      const ids = {};
+      const walk = (id) => { ids[id] = true; this.kids(id).forEach((k) => walk(k.id)); };
+      walk(cur.id);
+      list = list.filter((t) => ids[t.id] && t.id !== cur.id);
+      title = cur.title;
+      lead = this.plain(cur.messages[cur.messages.length - 1]);
+    }
+    const take = list.filter((t) => !!t.takeaway);
+    const rest = list.filter((t) => !t.takeaway);
+    let md = '# ' + title + '\n\n' + lead + '\n';
+    if (take.length) md += '\n## Takeaways\n' + take.map((t) => '- **' + t.title + '** ' + t.takeaway).join('\n') + '\n';
+    if (rest.length) md += '\n## Also explored\n' + rest.map((t) => '- ' + t.title).join('\n') + '\n';
+    return md;
+  }
+
+  openLearn() {
+    clearInterval(this.timer);
+    this.setState({ overlay: 'learn', learnText: this.synth(), learnShown: 0 });
+    this.timer = setInterval(() => {
+      const next = this.state.learnShown + 9;
+      if (this.state.learnShown < 0 || next >= this.state.learnText.length) { clearInterval(this.timer); this.setState({ learnShown: -1 }); }
+      else this.setState({ learnShown: next });
+    }, 16);
+  }
+
+  node(t, depth) {
+    const kids = this.kids(t.id);
+    return { title: t.title, quote: t.quote, takeaway: t.takeaway || '', hasTake: !!t.takeaway, dot: 'dot' + (t.unread ? '' : ' none'),
+      cls: 'card' + (this.state.activeId === t.id ? ' cur' : ''), open: () => this.open(t.id),
+      kids: depth < 3 ? kids.map((k) => this.node(k, depth + 1)) : [], hasKids: depth < 3 && kids.length > 0 };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const root = this.byId('root');
+    const branches = s.threads.filter((t) => t.id !== 'root');
+    const newCount = branches.filter((t) => t.unread).length;
+    const cur = s.activeId !== 'root' ? this.byId(s.activeId) : null;
+    const sel = s.sel;
+    const dismiss = (key) => () => { const p = {}; p[key] = true; this.setState(p); };
+    const withDismiss = (list, key) => list.map((m) => Object.assign({}, m, { dismiss: dismiss(key) }));
+
+    const rows = [];
+    const walk = (pid, depth) => this.kids(pid).forEach((t) => {
+      rows.push({ title: t.title, dot: 'dot' + (t.unread ? '' : ' none'), pad: 18 + depth * 14,
+        cls: 'row' + (s.activeId === t.id && s.lane === 'branch' ? ' on' : '') + (t.unread ? ' unread' : ''), open: () => this.open(t.id) });
+      walk(t.id, depth + 1);
+    });
+    walk('root', 0);
+
+    let b = { msgs: [] };
+    if (cur) {
+      const parent = this.byId(cur.parent);
+      b = { title: cur.title, label: cur.label, quote: cur.quote, isImage: cur.kind === 'image', notImage: cur.kind !== 'image',
+        parentTitle: parent.id === 'root' ? 'Main' : parent.title, back: () => this.open(parent.id),
+        msgs: this.msgs(cur), showTake: !!cur.takeaway && !s.editing, take: cur.takeaway || '' };
+    }
+
+    const qText = root.messages[0].paras[0][0].t;
+
+    return {
+      rows: rows, newCount: newCount, hasNew: newCount > 0,
+      rootRowCls: 'row' + (s.activeId === 'root' && s.lane !== 'doc' ? ' on' : ''), docRowCls: 'row' + (s.lane === 'doc' ? ' on' : ''),
+      openRoot: () => this.open('root'),
+      openDoc: () => this.setState({ lane: 'doc', sel: null, overlay: null }),
+      closeLane: () => this.setState({ lane: cur ? 'branch' : 'none', sel: null }),
+      newChat: () => this.say('Mock: would start a blank chat.'),
+      otherChat: () => this.say('Mock: other chats aren’t part of this demo.'),
+
+      qText: qText, qCls: 'bubble' + (sel && sel.id === 'q-root' ? ' on' : ''), qMarks: this.marksFor('q-root'),
+      qChip: !!(sel && sel.id === 'q-root' && s.lane !== 'compose'),
+      pickQuestion: () => this.select({ id: 'q-root', kind: 'question', quote: qText, from: 'root', label: 'From your question' }),
+      regionOn: s.regionOn, regionCls: 'region' + (sel && sel.id === 'img' ? ' on' : ''), regionLabel: s.regionOn ? 'Done' : 'Select a region',
+      toggleRegion: () => this.setState({ regionOn: !s.regionOn, sel: sel && sel.id === 'img' ? null : sel }),
+      pickRegion: () => this.select({ id: 'img', kind: 'image', quote: 'spectrum.png, the 400–450 nm band', from: 'root', label: 'From spectrum.png' }),
+      imgMarks: this.marksFor('img'), imgChip: !!(sel && sel.id === 'img' && s.lane !== 'compose'),
+      mainParas: this.msgs(root)[1].paras,
+      docParas: this.docParas().map((p) => ({ segs: this.segs(p, 'root', 'doc', 'From atmosphere-notes.pdf') })),
+      startBranch: () => this.startBranch(),
+
+      mainDraft: s.mainDraft, onMainDraft: (e) => this.setState({ mainDraft: e.target.value, hideMainMatch: false }),
+      mainMatches: s.hideMainMatch ? [] : withDismiss(this.matches(s.mainDraft, null), 'hideMainMatch'),
+      sendMain: () => { if (s.mainDraft.trim()) { this.setState({ mainDraft: '' }); this.say('Mock: follow-ups continue Main as usual.'); } },
+
+      showLane: s.lane !== 'none', laneCompose: s.lane === 'compose' && !!sel, laneBranch: s.lane === 'branch' && !!cur, laneDoc: s.lane === 'doc',
+      cancelCompose: () => this.setState({ lane: s.prevLane, sel: null, draft: '' }),
+      selLabel: sel ? sel.label : '', selQuote: sel ? sel.quote : '', selIsImage: !!(sel && sel.kind === 'image'), selNotImage: !(sel && sel.kind === 'image'),
+      composeMatches: s.lane === 'compose' && sel && !s.hideMatch ? withDismiss(this.matches(s.draft, sel.id), 'hideMatch') : [],
+      draft: s.draft, onDraft: (e) => this.setState({ draft: e.target.value }),
+      askDisabled: !s.draft.trim(), ask: () => this.ask(),
+
+      b: b,
+      takeLabel: cur && cur.takeaway ? 'Edit takeaway' : 'Add takeaway',
+      editTake: () => {
+        if (!cur) return;
+        const first = this.plain(cur.messages[cur.messages.length - 1]).split('. ')[0];
+        this.setState({ editing: true, editText: cur.takeaway || (first.slice(-1) === '.' ? first : first + '.') });
+      },
+      editing: s.editing, editText: s.editText,
+      onEdit: (e) => this.setState({ editText: e.target.value }),
+      saveEdit: () => { if (cur) this.patch(cur.id, { takeaway: s.editText.trim() }); this.setState({ editing: false }); },
+      cancelEdit: () => this.setState({ editing: false }),
+      replyDraft: s.replyDraft, onReply: (e) => this.setState({ replyDraft: e.target.value }),
+      sendReply: () => { if (s.replyDraft.trim()) { this.setState({ replyDraft: '' }); this.say('Mock: replies continue this branch as usual.'); } },
+
+      showMap: s.overlay === 'map', openMap: () => this.setState({ overlay: 'map' }),
+      mapKids: this.kids('root').map((k) => this.node(k, 1)),
+      mapCounts: branches.length + ' branches' + (newCount ? ' · ' + newCount + ' new' : ''),
+      rootCardCls: 'card' + (s.activeId === 'root' ? ' cur' : ''),
+      closeOverlay: () => { clearInterval(this.timer); this.setState({ overlay: null, learnShown: -1 }); },
+
+      showLearn: s.overlay === 'learn', openLearn: () => this.openLearn(),
+      learnBusy: s.learnShown >= 0, learnDone: s.learnShown < 0,
+      learnVisible: s.learnShown >= 0 ? s.learnText.slice(0, s.learnShown) : s.learnText,
+      learnText: s.learnText, onLearn: (e) => this.setState({ learnText: e.target.value }),
+      copyLearn: () => { try { navigator.clipboard.writeText(s.learnText); } catch (err) { } this.say('Copied as Markdown.'); },
+      downloadLearn: () => this.say('Mock: would save the summary as .md'),
+
+      share: () => this.say('Mock: would save why-is-the-sky-blue.html, a read-only copy of the whole tree.'),
+      hasToast: !!s.toast, toast: s.toast
+    };
+  }
+}
+</script>
+</body>
+</html>
