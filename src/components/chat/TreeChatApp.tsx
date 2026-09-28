@@ -33,6 +33,7 @@ import { pruneAttachments } from '@/lib/attachments/store'
 import { createId } from '@/lib/ids'
 import {
   DEFAULT_OPENROUTER_MODEL,
+  isLiveConfig,
   loadProviderConfig,
   patchProviderConfig,
   type ClientProviderConfig,
@@ -221,7 +222,8 @@ function TreeChatShell({
    * is switched on in this browser; the switch's tooltip says it after that.
    */
   const onWebSearchOn = useCallback(() => {
-    if (status.mode !== 'live') return
+    // The fee is OpenRouter's search plugin; other servers do not search.
+    if (status.mode !== 'live' || status.provider !== 'openrouter') return
     try {
       if (localStorage.getItem(WEB_SEARCH_COST_KEY)) return
       localStorage.setItem(WEB_SEARCH_COST_KEY, '1')
@@ -233,15 +235,15 @@ function TreeChatShell({
       text: 'Web search is on: each search adds a small fee on your OpenRouter key.',
       actions: [{ label: 'Got it', onClick: () => undefined }],
     })
-  }, [onToast, status.mode])
+  }, [onToast, status.mode, status.provider])
 
   const { onExport, onImport, importInput } = useChatTransfer(sessions, importSessions, onToast)
 
   const onLens = useCallback((passage: ChipState, lens: Lens) => {
     // "Source?" wants evidence, so that branch searches the web from the start.
     if (lens.id === 'source') onWebSearchOn()
-    startBranch(passage, lensQuestion(lens, passage.quote), { webSearch: lens.id === 'source', focusComposer: false })
-  }, [onWebSearchOn, startBranch])
+    startBranch(passage, lensQuestion(lens, passage.quote), { webSearch: lens.id === 'source' && status.provider !== 'openai-compatible', focusComposer: false })
+  }, [onWebSearchOn, startBranch, status.provider])
 
   const onAskMessage = useCallback((threadId: string, messageId: string) => {
     const element = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"][data-thread-id="${CSS.escape(threadId)}"]`)
@@ -631,7 +633,7 @@ function TreeChatShell({
       type="button"
       data-testid="provider-mode"
       onClick={() => setSettingsOpen(true)}
-      title="Replies are demo text. Add an OpenRouter key for real answers."
+      title="Replies are demo text. Add an API key or server for real answers."
       className="btn h-7 shrink-0 px-2 text-xs"
     >
       Demo · Add key
@@ -807,7 +809,7 @@ function TreeChatShell({
             onSwitchChat={onSelectSession}
             onFocusThread={focus}
             onNewChat={onNewChat}
-            onToggleWebSearch={() => {
+            onToggleWebSearch={status.provider === 'openai-compatible' ? undefined : () => {
               if (!activeThread.webSearch) onWebSearchOn()
               setWebSearch(activeThread.id, !activeThread.webSearch)
             }}
@@ -921,11 +923,12 @@ function useNarrow() {
   return narrow
 }
 
-/** Live with a saved OpenRouter key; otherwise replies are the in-page demo. */
+/** Live with a configured provider (an OpenRouter key or a custom server); otherwise replies are the in-page demo. */
 function resolveStatus(clientConfig: ClientProviderConfig | null): ProviderStatus {
+  const live = isLiveConfig(clientConfig)
   return {
-    mode: clientConfig?.apiKey ? 'live' : 'mock',
-    provider: clientConfig?.apiKey ? 'openrouter' : 'mock',
+    mode: live ? 'live' : 'mock',
+    provider: live ? clientConfig.provider : 'mock',
     model: clientConfig?.model || DEFAULT_OPENROUTER_MODEL,
   }
 }

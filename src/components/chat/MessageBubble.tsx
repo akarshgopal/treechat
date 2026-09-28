@@ -3,7 +3,7 @@ import { ArrowUpRight, ChevronLeft, ChevronRight, GitBranch, Pencil, RotateCw, S
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { answerModel, answersOf, currentIndex } from '@/lib/alternates'
-import { isModelId, OPENROUTER_MODEL_OPTIONS } from '@/lib/provider'
+import { isModelIdFor, isOpenRouter, loadProviderConfig, modelSuggestions } from '@/lib/provider'
 import { SourcesList } from '@/components/chat/Citations'
 import { MessageAttachments, type ImageRegions } from '@/components/chat/Attachments'
 import { isTextAnchor } from '@/lib/anchors'
@@ -345,11 +345,12 @@ function MessageActions({
 /** "GPT-4.1 Mini · 1.2k tokens · $0.0031": what this reply cost, from OpenRouter. */
 function UsageLabel({ usage }: { usage: MessageUsage }) {
   // The model's display name comes from OpenRouter's public list (cached a day).
+  const listed = isOpenRouter(loadProviderConfig())
   const catalog = useModelCatalog()
   useEffect(() => {
-    if (!catalog && usage.model) void loadModelCapabilities()
-  }, [catalog, usage.model])
-  const model = usage.model ? (modelInfo(usage.model)?.name ?? usage.model.replace(/^[^/]+\//, '')) : undefined
+    if (listed && !catalog && usage.model) void loadModelCapabilities()
+  }, [catalog, listed, usage.model])
+  const model = usage.model ? ((listed ? modelInfo(usage.model)?.name : undefined) ?? usage.model.replace(/^[^/]+\//, '')) : undefined
   const total = usage.promptTokens + usage.completionTokens
   const parts = [model, `${formatTokens(total)} tokens`, usage.cost !== undefined ? formatCost(usage.cost) : undefined].filter(Boolean)
   const detail = `${usage.promptTokens.toLocaleString()} in · ${usage.completionTokens.toLocaleString()} out${usage.cost !== undefined ? ` · $${usage.cost.toFixed(6)}` : ''}${usage.model ? ` · ${usage.model}` : ''}`
@@ -365,8 +366,9 @@ const ModelPicker = lazy(() => import('@/components/chat/ModelPicker').then((mod
 
 /** A model's short display name: the preset's label, else OpenRouter's name, else the id. */
 function modelLabel(model: string): string {
-  return OPENROUTER_MODEL_OPTIONS.find((option) => option.id === model)?.label
-    ?? modelInfo(model)?.name
+  const config = loadProviderConfig()
+  return modelSuggestions(config).find((option) => option.id === model)?.label
+    ?? (isOpenRouter(config) ? modelInfo(model)?.name : undefined)
     ?? model.replace(/^[^/]+\//, '')
 }
 
@@ -396,7 +398,7 @@ function AnswerPager({ message, blocked, onShow }: {
 function TryAnotherModel({ currentModel, onPick }: { currentModel?: string; onPick: (model: string) => void }) {
   const [other, setOther] = useState(false)
   const [picked, setPicked] = useState('')
-  const options = OPENROUTER_MODEL_OPTIONS.filter((option) => option.id !== currentModel)
+  const options = modelSuggestions(loadProviderConfig()).filter((option) => option.id !== currentModel)
   return (
     <>
       <DropdownMenu.Root modal={false}>
@@ -442,7 +444,7 @@ function TryAnotherModel({ currentModel, onPick }: { currentModel?: string; onPi
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!isModelId(picked)}
+                disabled={!isModelIdFor(loadProviderConfig()?.provider, picked)}
                 onClick={() => {
                   setOther(false)
                   onPick(picked.trim())

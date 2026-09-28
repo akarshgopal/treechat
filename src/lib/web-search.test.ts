@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { collectAssistantText, openRouterChatStream } from './client-chat.ts'
+import { collectAssistantText, providerChatStream } from './client-chat.ts'
 import { clearRunCitations, takeRunCitations } from './citations.ts'
 import { createWebCitationCollector, webSourcesFromChunk } from './web-search.ts'
 
@@ -27,7 +27,7 @@ async function run(body: string, forwardedProps: Record<string, unknown> = { web
     return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
   }) as typeof fetch
   clearRunCitations('web-thread')
-  const text = await collectAssistantText(openRouterChatStream({
+  const text = await collectAssistantText(providerChatStream({
     messages: [{ role: 'user', content: 'Source?' }],
     config,
     forwardedProps,
