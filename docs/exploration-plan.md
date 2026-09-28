@@ -170,11 +170,24 @@ Choices worth knowing:
 - Unread follows what is actually on screen: full lanes only (not folded
   strips, not ancestors hidden on a phone), and nothing while the tab is
   hidden.
-- A regenerate that fails or is stopped before any text puts the replaced
-  reply back with all its answers; Try again regenerates it again. Reloading
-  the page while a regenerate is still streaming loses the earlier answers.
-- What did I learn? follows the plan's scope (the open branch when one is
-  open, even from the main header) and names the scope in its header.
+- A regenerate saves the replaced reply's answers on the thread
+  (`pendingAnswers`) until its run ends. A failure, or a stop before any
+  text, puts the reply back with all its answers; a page closed mid-reply is
+  settled the same way when chats next load.
+- What did I learn? in the main header covers the whole chat; a branch's ⋯
+  menu has its own, for that branch and its subtree. On phones (one lane) it
+  covers the lane being read. The drawer names its scope.
+- Sources and cost of a reply are recorded per chat and thread, like every
+  other hand-off from a run: all chats' main threads share an id.
+- Anchors in a source keep their offsets in `anchor.source.start/end`, and
+  region anchors use 0–0, so the message offsets are 0–0 for both.
+- Rolling back: main (`1492b80`) loads this branch's saved chats and exports.
+  Every branch survives; new fields are dropped. Page, document and region
+  anchors have 0–0 offsets there, so nothing is underlined wrongly. A reply
+  keeps only its current answer.
+- Real devices: region dragging uses pointer events with `touch-action: none`
+  and suppresses the iOS long-press menu. It is tested with synthetic touch in
+  the emulated phone profile, not on a real iPhone or Android device.
 - On phones, Map sits in the app bar and What did I learn? and Share in its
   ⋯ menu.
 

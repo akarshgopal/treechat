@@ -180,13 +180,20 @@ function RegionPicker({ onPick }: { onPick: (region: { x: number; y: number; w: 
   const shown = drag ? regionFromDrag(drag.from, drag.to, drag.bounds) : null
   return (
     <span
-      className="absolute inset-0 cursor-crosshair touch-none rounded-md bg-black/25 outline outline-2 -outline-offset-2 outline-dashed outline-white/80"
+      // Touch: no scrolling, no text selection and no iOS long-press menu while dragging.
+      className="absolute inset-0 cursor-crosshair touch-none select-none rounded-md bg-black/25 outline outline-2 -outline-offset-2 outline-dashed outline-white/80 [-webkit-touch-callout:none] [-webkit-user-select:none]"
+      onContextMenu={(event) => event.preventDefault()}
       data-testid="region-picker"
       aria-label="Drag over the image to select a region"
       role="application"
       onPointerDown={(event) => {
         event.preventDefault()
-        event.currentTarget.setPointerCapture(event.pointerId)
+        // Some mobile browsers refuse capture for a pointer they already let go of.
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId)
+        } catch {
+          // The drag still works while the finger stays over the image.
+        }
         setDrag({ from: point(event), to: point(event), bounds: event.currentTarget.getBoundingClientRect() })
       }}
       onPointerMove={(event) => {
@@ -201,6 +208,7 @@ function RegionPicker({ onPick }: { onPick: (region: { x: number; y: number; w: 
         onPick(region, new DOMRect(rect.left + region.x * rect.width, rect.top + region.y * rect.height, region.w * rect.width, region.h * rect.height))
       }}
       onPointerCancel={() => setDrag(null)}
+      onLostPointerCapture={() => setDrag(null)}
     >
       {shown ? (
         <span

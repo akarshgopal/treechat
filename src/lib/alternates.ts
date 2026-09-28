@@ -1,4 +1,4 @@
-import type { AnswerAlternate, ChatMessage } from '@/types'
+import type { AnswerAlternate, ChatMessage, PendingAnswers } from '@/types'
 import { parseCitations, sameCitations } from './citations.ts'
 import { parseUsage, sameUsage } from './usage.ts'
 
@@ -90,37 +90,40 @@ export function sameAlternates(a: ChatMessage, b: ChatMessage): boolean {
   })
 }
 
-/*
- * Per-run hand-offs, keyed by chat and thread (`runKeyOf`): every chat's main
- * thread has the same id, so the thread alone is not enough.
- */
-export const runKeyOf = (sessionId: string, threadId: string) => `${sessionId}\u0000${threadId}`
+export { runKeyOf } from './run-key.ts'
 
-/** A regenerated reply's answers, and which of them was showing. */
-export type EarlierAnswers = { answers: AnswerAlternate[]; index: number }
+/** A reply's answers, as a regenerate saves them on the thread. */
+export function pendingAnswersOf(message: ChatMessage): PendingAnswers {
+  return { answers: answersOf(message), index: currentIndex(message) }
+}
+
+/** Saved answers, validated; undefined when unusable. */
+export function parsePendingAnswers(value: unknown): PendingAnswers | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  const { alternates } = parseAlternates(record.answers, undefined)
+  if (!alternates) return undefined
+  const index = typeof record.index === 'number' && Number.isInteger(record.index) && record.index >= 0 && record.index < alternates.length ? record.index : alternates.length - 1
+  return { answers: alternates, index }
+}
 
 /**
- * The runner attaches a regenerate's earlier answers to the reply that
- * replaces them, or puts them back as they were if no new reply comes.
+ * Where a regenerate that never finished (the page was closed mid-reply)
+ * leaves a thread: a reply that got some text keeps it, beside the earlier
+ * answers; with no text, the replaced reply comes back as it was.
  */
-const pending = new Map<string, EarlierAnswers>()
-
-export function queueEarlierAnswers(key: string, message: ChatMessage) {
-  pending.set(key, { answers: answersOf(message), index: currentIndex(message) })
-}
-
-export function takeEarlierAnswers(key: string): EarlierAnswers | undefined {
-  const earlier = pending.get(key)
-  pending.delete(key)
-  return earlier
-}
-
-export function dropEarlierAnswers(key: string) {
-  pending.delete(key)
+export function settleInterrupted(messages: ChatMessage[], pending: PendingAnswers, newId: string): ChatMessage[] {
+  const last = messages.at(-1)
+  if (last?.role === 'assistant' && last.kind !== 'drop-summary' && last.content.trim()) {
+    const { answerIndex: _index, ...rest } = last
+    return [...messages.slice(0, -1), { ...rest, alternates: [...pending.answers, ...(last.alternates ?? [])] }]
+  }
+  const kept = last?.role === 'assistant' && !last.content.trim() ? messages.slice(0, -1) : messages
+  return [...kept, restoredReply(pending, newId)]
 }
 
 /** The reply a failed regenerate replaced, back as it was (under a new id). */
-export function restoredReply(earlier: EarlierAnswers, id: string): ChatMessage {
+export function restoredReply(earlier: PendingAnswers, id: string): ChatMessage {
   const current = earlier.answers[earlier.index] ?? earlier.answers.at(-1)!
   const others = earlier.answers.filter((answer) => answer !== current)
   return {

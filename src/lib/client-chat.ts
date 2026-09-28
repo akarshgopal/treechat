@@ -15,7 +15,8 @@ import { withDocumentNote, withDocuments } from './documents/rag.ts'
 import { describeImagesInBackground } from './attachments/describe.ts'
 import { parseAttachments } from './attachments/parse.ts'
 import { prepareRequestMessages, type RequestImage } from './attachments/request.ts'
-import { claimNextModel, runKeyOf } from './alternates.ts'
+import { claimNextModel } from './alternates.ts'
+import { runKeyForRequest } from './run-key.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
@@ -249,6 +250,7 @@ export async function* openRouterChatStream(input: {
   signal?: AbortSignal
 }): AsyncGenerator<StreamChunk> {
   const { config, threadId, runId, signal } = input
+  const key = runKeyForRequest(threadId, input.forwardedProps)
   const messageId = crypto.randomUUID()
   const openaiMessages = buildOpenRouterMessages(
     input.messages,
@@ -313,9 +315,9 @@ export async function* openRouterChatStream(input: {
         yield { type: EventType.RUN_ERROR, message: event.error ? errorMessageFromOpenRouter(response.status, payload) : 'The provider stopped with an error. Try regenerating.', code: 'provider', timestamp: now() }
         return
       }
-      if (webCitations.add(event)) recordRunCitations(threadId, webCitations.citations())
+      if (webCitations.add(event)) recordRunCitations(key, webCitations.citations())
       const usage = usageFromOpenRouterChunk(event)
-      if (usage) recordRunUsage(threadId, usage)
+      if (usage) recordRunUsage(key, usage)
       const delta = contentDeltaFromOpenAIData(payload)
       if (!delta) continue
       receivedText = true
@@ -355,14 +357,15 @@ export async function* openRouterChatStream(input: {
 }
 
 export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
-  clearRunCitations(input.threadId)
-  clearRunUsage(input.threadId)
+  const key = runKeyForRequest(input.threadId, input.forwardedProps)
+  clearRunCitations(key)
+  clearRunUsage(key)
   // Sources arrive as a CUSTOM event (mock, local API); they belong to the
   // thread's run, not to the chat engine's message stream.
   for await (const chunk of routeChat(input)) {
     if (chunk.type === EventType.CUSTOM && chunk.name === CITATIONS_EVENT) {
       const citations = parseCitations(chunk.value)
-      if (citations) recordRunCitations(input.threadId, citations)
+      if (citations) recordRunCitations(key, citations)
       continue
     }
     yield chunk
@@ -372,8 +375,8 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
 async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   const config = loadProviderConfig()
   // "Try another model" asks for one reply from a model other than Settings'.
-  const sessionId = typeof input.forwardedProps?.cacheSessionId === 'string' ? input.forwardedProps.cacheSessionId : ''
-  const model = input.model ?? claimNextModel(runKeyOf(sessionId, input.threadId))
+  const key = runKeyForRequest(input.threadId, input.forwardedProps)
+  const model = input.model ?? claimNextModel(key)
   // Documents attached to the chat add an excerpts section and citations.
   // Retrieval reads the full transcript; compaction then trims what is sent.
   // Both happen here so every backend below gets the same request, while the
@@ -382,6 +385,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
     messages: input.messages,
     forwardedProps: mergeForwarded(input.data, input.forwardedProps),
     threadId: input.threadId,
+    runKey: key,
   })
   const { citations } = retrieved
   const { messages, forwardedProps } = applySummaryToRequest(input.messages, retrieved.forwardedProps)

@@ -7,7 +7,7 @@ import { refreshSummary } from '@/lib/summarize'
 import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { hasQuestion, parseKey, publishChat, runKey, setBusy, takeQuestion, useRunningKeys } from '@/lib/thread-run-registry'
 import { takeRunUsage } from '@/lib/usage'
-import { restoredReply, takeEarlierAnswers, takeRunModel } from '@/lib/alternates'
+import { restoredReply, takeRunModel } from '@/lib/alternates'
 import { createId } from '@/lib/ids'
 import { isThreadVisible } from '@/lib/unread'
 import { useTree } from '@/store/tree-store'
@@ -39,7 +39,7 @@ export function ThreadRunners({ epoch }: { epoch: number }) {
 }
 
 function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: string }) {
-  const { sessions, replaceMessages, setSummary, markUnread } = useTree()
+  const { sessions, replaceMessages, setSummary, markUnread, settleAnswers } = useTree()
   const session = sessions.find((entry) => entry.id === sessionId)
   const state = session?.treeState
   const thread = state?.threads[threadId]
@@ -115,12 +115,13 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
     if (finished) {
       if (!chat.error && textOf(chat.messages.at(-1)).trim() && !isThreadVisible(sessionId, threadId)) markUnread(threadId, sessionId)
       if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis, sessionId))
-      const citations = takeRunCitations(threadId)
-      const usage = takeRunUsage(threadId)
+      const citations = takeRunCitations(key)
+      const usage = takeRunUsage(key)
       const model = takeRunModel(key)
       const last = chat.messages.at(-1)
       const answered = !chat.error && last?.role === 'assistant' && Boolean(textOf(last).trim())
-      const earlier = takeEarlierAnswers(key)
+      // A regenerate saved the answers it replaced on the thread.
+      const earlier = thread?.pendingAnswers
       let messages = chat.messages
       if (!answered && earlier) {
         // No new reply: put back the one the regenerate replaced, answers and all.
@@ -144,13 +145,12 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
           }
         })
       }
-      if (messages !== chat.messages) {
-        setMessages(messages)
-        replaceMessages(threadId, fromUIMessages(messages), sessionId)
-      }
+      if (messages !== chat.messages) setMessages(messages)
+      if (earlier) settleAnswers(threadId, fromUIMessages(messages), sessionId)
+      else if (messages !== chat.messages) replaceMessages(threadId, fromUIMessages(messages), sessionId)
     }
     setBusy(key, chat.isLoading || sending.current)
-  }, [chat.error, chat.isLoading, chat.messages, key, markUnread, replaceMessages, sessionId, setMessages, setSummary, summary, threadId])
+  }, [chat.error, chat.isLoading, chat.messages, key, markUnread, replaceMessages, sessionId, setMessages, setSummary, settleAnswers, summary, thread?.pendingAnswers, threadId])
 
   useEffect(() => () => setBusy(key, false), [key])
 

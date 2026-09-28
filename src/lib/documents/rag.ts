@@ -35,6 +35,8 @@ export async function withDocuments(input: {
   messages: unknown[]
   forwardedProps: Record<string, unknown>
   threadId: string
+  /** Where the run's citations are recorded; the thread when not given. */
+  runKey?: string
   embedder?: Embedder
 }): Promise<{ forwardedProps: Record<string, unknown>; citations: Citation[] }> {
   // The ids are for this step only; providers never need them.
@@ -48,7 +50,7 @@ export async function withDocuments(input: {
     const hits = await retrieve(query, ids, { embedder: input.embedder ?? getEmbedder() })
     if (hits.length === 0) return unchanged
     const citations = documentCitations(hits)
-    recordRunCitations(input.threadId, citations)
+    recordRunCitations(input.runKey ?? input.threadId, citations)
     return { forwardedProps: { ...rest, documents: documentsPrompt(hits) }, citations }
   } catch (error) {
     console.warn('TreeChat: document retrieval failed; answering without documents', error)

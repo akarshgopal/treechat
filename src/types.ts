@@ -99,7 +99,8 @@ export type ThreadSummary = {
 
 /**
  * Where a thread is pinned inside its parent's message. `start` / `end` count
- * characters of the message's text, or, with `source`, of that source's text.
+ * characters of the message's text; they are 0 when the anchor is in a source
+ * or an image (see `source` / `region`), so older versions underline nothing.
  */
 export type Anchor = {
   messageId: string
@@ -116,6 +117,9 @@ export type Anchor = {
 export type AnchorSource = {
   kind: 'web' | 'document'
   title: string
+  /** The passage in the source's text, in characters. */
+  start: number
+  end: number
   url?: string
   documentId?: string
   /** Where in the source, e.g. "p. 4". */
@@ -166,7 +170,15 @@ export type Thread = {
   webSearch?: boolean
   /** A reply finished here while it was out of sight. Set only when true. */
   unread?: true
+  /**
+   * While a regenerate runs: the answers of the reply it replaced, saved so
+   * that a failure, or a reload, puts them back rather than losing them.
+   */
+  pendingAnswers?: PendingAnswers
 }
+
+/** A replaced reply's answers, in order, and which one was showing. */
+export type PendingAnswers = { answers: AnswerAlternate[]; index: number }
 
 export type TreeState = {
   threads: Record<string, Thread>

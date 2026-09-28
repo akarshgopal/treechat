@@ -197,8 +197,9 @@ function TreeChatShell({
       if (!mounted.current) return
       const id = createThread(passage.threadId, {
         messageId: passage.messageId,
-        start: passage.start,
-        end: passage.end,
+        // In a source, the offsets live with it: none point into the message.
+        start: source ? 0 : passage.start,
+        end: source ? 0 : passage.end,
         quote: passage.quote,
         ...(source ? { source } : {}),
         ...(region ? { region } : {}),
@@ -417,7 +418,7 @@ function TreeChatShell({
     }
   }, [activeSessionId, markRead])
   const onOpenMap = useCallback(() => setMapOpen(true), [])
-  const onOpenLearn = useCallback(() => setLearning(learnScope(state, state.activeThreadId, activeSession.title)), [activeSession.title, state])
+  const onOpenLearn = useCallback((threadId?: string) => setLearning(learnScope(state, threadId ?? state.activeThreadId, activeSession.title)), [activeSession.title, state])
   const onShare = useCallback(() => {
     void import('@/lib/share-html').then(({ shareFileName, shareHtml }) => {
       const name = shareFileName(activeSession.title)
@@ -664,7 +665,7 @@ function TreeChatShell({
                 label="Chat actions"
                 testId="chat-menu"
                 items={[
-                  { label: 'What did I learn?', icon: <Lightbulb size={14} />, onSelect: onOpenLearn, testId: 'open-learn' },
+                  { label: 'What did I learn?', icon: <Lightbulb size={14} />, onSelect: () => onOpenLearn(), testId: 'open-learn' },
                   { label: 'Share as HTML', icon: <Share size={14} />, onSelect: onShare, testId: 'share-html' },
                 ]}
               />

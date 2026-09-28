@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { anchorLabel, anchorSourceKey, cropBox, isTextAnchor, regionFromDrag, surroundingText } from './anchors.ts'
+import { anchorLabel, anchorSourceKey, anchorSpan, cropBox, isTextAnchor, regionFromDrag, surroundingText } from './anchors.ts'
 import { exploredMatches } from './explored.ts'
 import { createSeedState } from './seed.ts'
 import { parseSession } from './storage.ts'
@@ -11,8 +11,10 @@ import type { Anchor, ChatSession, Thread } from '../types.ts'
 const text: Anchor = { messageId: 'm', start: 0, end: 4, quote: 'Clear' }
 const fromPage: Anchor = {
   ...text,
+  start: 0,
+  end: 0,
   quote: 'ozone absorbs part of the orange and red light',
-  source: { kind: 'document', title: 'atmosphere-notes.pdf', documentId: 'doc-1', locator: 'p. 3', context: 'Near twilight, ozone absorbs part of the orange and red light, which keeps the zenith blue.' },
+  source: { kind: 'document', title: 'atmosphere-notes.pdf', start: 15, end: 61, documentId: 'doc-1', locator: 'p. 3', context: 'Near twilight, ozone absorbs part of the orange and red light, which keeps the zenith blue.' },
 }
 const crop = { id: 'crop-1', kind: 'image' as const, name: 'Region of chart.png', mime: 'image/png', size: 10 }
 const fromImage: Anchor = { ...text, start: 0, end: 0, quote: 'A region of chart.png', region: { attachmentId: 'img-1', name: 'chart.png', x: 0.1, y: 0.2, w: 0.3, h: 0.4, crop } }
@@ -21,6 +23,8 @@ test('what an anchor counts in, and how it is labelled', () => {
   assert.equal(anchorSourceKey(text), '')
   assert.equal(anchorSourceKey(fromPage), 'document:doc-1')
   assert.equal(anchorSourceKey({ source: { kind: 'web', title: 'T', url: 'https://example.com' } }), 'web:https://example.com')
+  assert.deepEqual(anchorSpan(fromPage), { start: 15, end: 61 })
+  assert.deepEqual(anchorSpan(text), { start: 0, end: 4 })
   assert.equal(anchorSourceKey(fromImage), 'image:img-1')
   assert.ok(isTextAnchor(text) && !isTextAnchor(fromPage) && !isTextAnchor(fromImage))
   assert.equal(anchorLabel(fromPage), 'From atmosphere-notes.pdf')
@@ -61,7 +65,7 @@ test('source and region anchors are saved and read back; broken ones become plai
   }
   const broken = JSON.parse(JSON.stringify(sessionWith(fromImage)))
   broken.treeState.threads.b.anchor.region.w = 3
-  broken.treeState.threads.b.anchor.source = { kind: 'ftp', title: 'x' }
+  broken.treeState.threads.b.anchor.source = { kind: 'ftp', title: 'x', start: 0, end: 1 }
   assert.deepEqual(parseSession(broken)!.treeState.threads.b!.anchor, { messageId: 'msg-root-2', start: 0, end: 0, quote: 'A region of chart.png' })
 })
 
@@ -74,7 +78,7 @@ test('an export carries a region crop; the branch context names the source and q
 })
 
 test('a passage matches branches anchored over it only within the same text', () => {
-  const session = sessionWith({ ...fromPage, start: 10, end: 40 })
+  const session = sessionWith({ ...fromPage, source: { ...fromPage.source!, start: 10, end: 40 } })
   const passage = { sessionId: 's', threadId: 'thread-root', messageId: 'msg-root-2', start: 20, end: 30 }
   assert.deepEqual(exploredMatches([session], { passage, sessionId: 's' }), [])
   assert.equal(exploredMatches([session], { passage: { ...passage, sourceKey: 'document:doc-1' }, sessionId: 's' })[0]?.threadId, 'b')

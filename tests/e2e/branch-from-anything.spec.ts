@@ -59,6 +59,9 @@ test('a passage of a cited page branches like message text, with the page around
   const grown = (await branchWith(page, (thread) => thread.anchor?.quote === 'easier to follow when they sit beside their source'))!
   expect(grown.anchor!.source).toMatchObject({ kind: 'web', title: 'Branching conversations keep tangents in place', url: 'https://example.com/branching-conversations', citationId: '1' })
   expect(grown.anchor!.source!.context).toContain('Tangents that wander off are easier to follow')
+  // The offsets are the page's; none point into the citing message.
+  expect([grown.anchor!.start, grown.anchor!.end]).toEqual([0, 0])
+  expect(grown.anchor!.source!.end - grown.anchor!.source!.start).toBe('easier to follow when they sit beside their source'.length)
   expect(grown.anchor!.source!.context!.length).toBeLessThan(1400)
   const cited = (await tree(page)).threads[grown.parentId!]!
   expect(cited.messages.some((message) => message.id === grown.anchor!.messageId && message.citations?.length)).toBe(true)

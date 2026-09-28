@@ -1,6 +1,6 @@
 import type { ChatSession, Thread } from '@/types'
 import { branchTakeaway, firstQuestion, threadTitle } from './tree.ts'
-import { anchorSourceKey } from './anchors.ts'
+import { anchorSourceKey, anchorSpan } from './anchors.ts'
 
 /**
  * "Explored before": branches, in any chat, about what the person is about to
@@ -125,8 +125,8 @@ export function exploredMatches(sessions: ChatSession[], query: ExploredQuery): 
         && passage!.threadId === thread.parentId
         && passage!.messageId === thread.anchor.messageId
         && anchorSourceKey(thread.anchor) === (passage!.sourceKey ?? '')
-        && thread.anchor.start < passage!.end
-        && passage!.start < thread.anchor.end
+        && anchorSpan(thread.anchor).start < passage!.end
+        && passage!.start < anchorSpan(thread.anchor).end
       let score = 0
       if (overlaps) score = 2
       else if (asked.size > 0) {

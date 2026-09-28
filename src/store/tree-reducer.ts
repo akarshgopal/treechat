@@ -2,7 +2,7 @@ import { prefixFingerprint, summaryHolds } from '../lib/compaction.ts'
 import { doomedIdsForAnchors } from '../lib/message-actions.ts'
 import { createEmptyState, createSeedState } from '../lib/seed.ts'
 import { descendantIds, expansionToReveal } from '../lib/tree.ts'
-import type { ChatMessage, Thread, ThreadSummary, TreeState } from '@/types'
+import type { ChatMessage, PendingAnswers, Thread, ThreadSummary, TreeState } from '@/types'
 
 export type Action =
   | { type: 'replace-messages'; threadId: string; messages: ChatMessage[] }
@@ -13,7 +13,11 @@ export type Action =
       threadId: string
       messages: ChatMessage[]
       dropAnchorMessageIds: string[]
+      /** Save a regenerate's replaced answers (or `null` to forget any). */
+      pendingAnswers?: PendingAnswers | null
     }
+  /** A regenerate's run ended: its messages, with the saved answers resolved into them. */
+  | { type: 'settle-answers'; threadId: string; messages: ChatMessage[] }
   /** `basis` fingerprints the messages the summary was written from. */
   | { type: 'set-summary'; threadId: string; summary: ThreadSummary; basis: string }
   | { type: 'create-thread'; thread: Thread }
@@ -102,11 +106,21 @@ export function reducer(state: TreeState, action: Action): TreeState {
       if (!thread) return state
       // No rev bump: the live engine already holds this transcript and will
       // reload from it. Remounting would drop that in-flight generate.
-      const next = withThread(state, withMessages(thread, action.messages))
+      const rewritten = withMessages(thread, action.messages)
+      if (action.pendingAnswers) rewritten.pendingAnswers = action.pendingAnswers
+      else if (action.pendingAnswers === null) delete rewritten.pendingAnswers
+      const next = withThread(state, rewritten)
       const doomed = new Set(
         doomedIdsForAnchors(next, action.threadId, action.dropAnchorMessageIds),
       )
       return removeThreads(next, doomed, action.threadId)
+    }
+    case 'settle-answers': {
+      const thread = state.threads[action.threadId]
+      if (!thread) return state
+      const settled = withMessages(thread, action.messages)
+      delete settled.pendingAnswers
+      return withThread(state, settled)
     }
     case 'set-summary': {
       const thread = state.threads[action.threadId]

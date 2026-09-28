@@ -71,17 +71,35 @@ test('What did I learn? streams a summary of the chat, then it can be edited, co
   await expect(drawer).toHaveCount(0)
 })
 
-test('in a branch, What did I learn? covers that branch and what grew from it', async ({ page }, testInfo) => {
-  test.skip(Boolean(testInfo.project.use.isMobile), 'scope is the same on phones')
+test('the main header summarizes the whole chat even with a branch open; a branch’s menu, just that branch', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'phones have one lane, so one scope: the open one')
   await restoreDemo(page)
   await page.getByTestId('tree-rail').locator('[data-thread-id="thread-branch-1"]').click()
+  await expect(page.getByTestId('branch-lane')).toBeVisible()
   await page.getByTestId('open-learn').click()
-  const text = page.getByTestId('learn-drawer').getByTestId('learn-text')
-  await expect(text).toHaveJSProperty('readOnly', false, { timeout: 15_000 })
-  const summary = await text.inputValue()
+  const drawer = page.getByTestId('learn-drawer')
+  await expect(drawer.getByTestId('learn-scope')).toHaveText('What is TreeChat?')
+  await expect(drawer.getByTestId('learn-text')).toHaveJSProperty('readOnly', false, { timeout: 15_000 })
+  expect(await drawer.getByTestId('learn-text').inputValue()).toContain('and its 2 branches.')
+  await page.keyboard.press('Escape')
+
+  await page.getByTestId('branch-lane').getByTestId('branch-menu').click()
+  await page.getByTestId('branch-learn').click()
+  await expect(drawer.getByTestId('learn-scope')).toHaveText(/^If I keep talking on the main thread/)
+  await expect(drawer.getByTestId('learn-text')).toHaveJSProperty('readOnly', false, { timeout: 15_000 })
+  const summary = await drawer.getByTestId('learn-text').inputValue()
   expect(summary).toMatch(/^# If I keep talking on the main thread/)
   expect(summary).toContain('and its 1 branch.')
   expect(summary).toContain('- So how deep does this actually go?')
+})
+
+test('on a phone, What did I learn? covers the lane being read', async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.use.isMobile, 'phones only')
+  await restoreDemo(page)
+  await page.getByTestId('session-switcher').click()
+  await page.getByTestId('tree-rail').locator('[data-thread-id="thread-branch-1"]').click()
+  await chatAction(page, true, 'open-learn')
+  await expect(page.getByTestId('learn-drawer').getByTestId('learn-scope')).toHaveText('If I keep talking on the main thread, does this branch lose its…')
 })
 
 test('a failed summary says why and can be tried again', async ({ page }, testInfo) => {

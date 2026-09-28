@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { answerModel, answersOf, claimNextModel, currentIndex, parseAlternates, queueEarlierAnswers, restoredReply, runKeyOf, setNextModel, switchAnswer, takeEarlierAnswers, takeRunModel } from './alternates.ts'
+import { answerModel, answersOf, claimNextModel, currentIndex, parseAlternates, parsePendingAnswers, pendingAnswersOf, restoredReply, runKeyOf, setNextModel, settleInterrupted, switchAnswer, takeRunModel } from './alternates.ts'
 import { fromUIMessages, sameTranscript, toUIMessages } from './messages.ts'
 import { parseSession } from './storage.ts'
 import { createSeedState } from './seed.ts'
@@ -77,14 +77,36 @@ test('another model answers one request of one thread in one chat, and the run r
 })
 
 test('a failed regenerate puts the reply back as it was, every answer included', () => {
-  const key = runKeyOf('chat-a', 'thread-root')
   const shown = switchAnswer(reply, 1)
-  queueEarlierAnswers(key, shown)
-  assert.equal(takeEarlierAnswers(runKeyOf('chat-b', 'thread-root')), undefined)
-  const earlier = takeEarlierAnswers(key)!
-  assert.equal(takeEarlierAnswers(key), undefined)
-  const back = restoredReply(earlier, 'restored')
+  const back = restoredReply(pendingAnswersOf(shown), 'restored')
   assert.deepEqual({ ...back, createdAt: 0 }, { ...shown, id: 'restored', createdAt: 0 })
   const single = restoredReply({ answers: [{ content: 'Only', createdAt: 5 }], index: 0 }, 'r')
   assert.deepEqual(single, { id: 'r', role: 'assistant', content: 'Only', createdAt: 5 })
+})
+
+test('a regenerate cut short by closing the page loses no answer when the chat loads again', () => {
+  const question: ChatMessage = { id: 'q', role: 'user', content: 'Why?', createdAt: 0 }
+  const pending = pendingAnswersOf(switchAnswer(reply, 0))
+  // No text yet: the replaced reply is back, showing what it showed.
+  const restored = settleInterrupted([question], pending, 'new')
+  assert.equal(restored.length, 2)
+  assert.equal(restored[1]!.content, 'First answer')
+  assert.equal(answersOf(restored[1]!).length, 3)
+  const empty = settleInterrupted([question, { id: 'a', role: 'assistant', content: ' ', createdAt: 1 }], pending, 'new')
+  assert.deepEqual(empty.map((message) => message.id), ['q', 'new'])
+  // Some text arrived: it stays current, the earlier answers beside it.
+  const partial = settleInterrupted([question, { id: 'a', role: 'assistant', content: 'Half an ans', createdAt: 1 }], pending, 'new')
+  assert.equal(partial[1]!.content, 'Half an ans')
+  assert.deepEqual(answersOf(partial[1]!).map((answer) => answer.content), ['First answer', 'Second answer', 'Third answer', 'Half an ans'])
+
+  // Through a real load: the saved thread is settled as it is read.
+  const session = { id: 's', title: 'T', createdAt: 1, updatedAt: 1, titleLocked: true, treeState: createSeedState() }
+  const root = session.treeState.threads['thread-root']!
+  root.messages = root.messages.slice(0, 5)
+  root.pendingAnswers = pending
+  const loaded = parseSession(JSON.parse(JSON.stringify(session)))!.treeState.threads['thread-root']!
+  assert.equal(loaded.pendingAnswers, undefined)
+  assert.equal(loaded.messages.length, 6)
+  assert.equal(answersOf(loaded.messages[5]!).length, 3)
+  assert.deepEqual(parsePendingAnswers({ answers: 'x' }), undefined)
 })

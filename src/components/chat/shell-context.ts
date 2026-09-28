@@ -63,7 +63,8 @@ export type ShellValue = {
   /** Web search was just switched on somewhere: mention its cost once. */
   onWebSearchOn: () => void
   onOpenMap: () => void
-  onOpenLearn: () => void
+  /** A summary from this thread down: the root means the whole chat. Default: the open thread. */
+  onOpenLearn: (threadId?: string) => void
   onShare: () => void
   /** Ask about a region dragged out on an image. */
   onAskRegion: (passage: ChipState) => void

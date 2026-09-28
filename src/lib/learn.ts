@@ -23,8 +23,9 @@ export type LearnScope = {
   threadIds: string[]
 }
 
-export function learnScope(state: TreeState, activeThreadId: string, chatTitle: string): LearnScope {
-  const start = state.threads[activeThreadId]?.parentId ? activeThreadId : state.rootId
+/** From `threadId` down: the main thread (or an unknown id) means the whole chat. */
+export function learnScope(state: TreeState, threadId: string, chatTitle: string): LearnScope {
+  const start = state.threads[threadId]?.parentId ? threadId : state.rootId
   const thread = state.threads[start]
   const threadIds: string[] = []
   const walk = (id: string) => {

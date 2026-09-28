@@ -18,7 +18,7 @@ export function isTextAnchor(anchor: Anchor | null | undefined): anchor is Ancho
  * What an anchor's offsets count in: '' for the message itself, else the
  * source or image. Two anchors overlap only within the same one.
  */
-export function anchorSourceKey(anchor: Pick<Anchor, 'source' | 'region'> | null | undefined): string {
+export function anchorSourceKey(anchor: { source?: Pick<AnchorSource, 'kind' | 'title' | 'url' | 'documentId'>; region?: Pick<AnchorRegion, 'attachmentId'> } | null | undefined): string {
   if (anchor?.region) return `image:${anchor.region.attachmentId}`
   const source = anchor?.source
   if (!source) return ''
@@ -41,6 +41,11 @@ export function surroundingText(text: string, start: number, end: number, chars 
   return `${from > 0 ? '…' : ''}${body}${to < text.length ? '…' : ''}`
 }
 
+/** Where the passage sits in the text it was selected in: the message, or the source. */
+export function anchorSpan(anchor: Anchor): { start: number; end: number } {
+  return anchor.source ? { start: anchor.source.start, end: anchor.source.end } : { start: anchor.start, end: anchor.end }
+}
+
 /** "From atmosphere-notes.pdf" above a branch's anchor; null for message text. */
 export function anchorLabel(anchor: Anchor | null | undefined): string | null {
   if (anchor?.source) return `From ${anchor.source.title}`
@@ -55,8 +60,9 @@ function parseSource(value: unknown): AnchorSource | undefined {
   const record = value as Record<string, unknown>
   if (record.kind !== 'web' && record.kind !== 'document') return undefined
   if (typeof record.title !== 'string') return undefined
+  if (typeof record.start !== 'number' || typeof record.end !== 'number' || !(record.start <= record.end)) return undefined
   const text = (key: string) => (typeof record[key] === 'string' && record[key] ? { [key]: record[key] as string } : {})
-  return { kind: record.kind, title: record.title, ...text('url'), ...text('documentId'), ...text('locator'), ...text('citationId'), ...text('context'), ...text('throughMessageId') }
+  return { kind: record.kind, title: record.title, start: record.start, end: record.end, ...text('url'), ...text('documentId'), ...text('locator'), ...text('citationId'), ...text('context'), ...text('throughMessageId') }
 }
 
 function parseRegion(value: unknown): AnchorRegion | undefined {

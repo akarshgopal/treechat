@@ -116,6 +116,8 @@ function sourceOf(el: HTMLElement, start: number, end: number): AnchorSource {
   return {
     kind: data.sourceKind === 'web' ? 'web' : 'document',
     title: data.sourceTitle ?? 'Source',
+    start,
+    end,
     ...optional('url', data.sourceUrl),
     ...optional('documentId', data.sourceDocumentId),
     ...optional('locator', data.sourceLocator),

@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import type { useChat } from '@tanstack/ai-react'
+import { runKeyOf } from './run-key.ts'
 
 /**
  * Which threads have a live conversation, and their chat engines, shared by
@@ -8,7 +9,8 @@ import type { useChat } from '@tanstack/ai-react'
 
 export type ThreadChat = ReturnType<typeof useChat>
 
-export const runKey = (sessionId: string, threadId: string) => `${sessionId}\u0000${threadId}`
+/** The same key the transport records a run's sources and cost under. */
+export const runKey = runKeyOf
 export const parseKey = (key: string) => {
   const [sessionId = '', threadId = ''] = key.split('\u0000')
   return { sessionId, threadId }

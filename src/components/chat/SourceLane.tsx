@@ -78,12 +78,12 @@ export function SourceLane({ laneId, citation, leadOffset, narrow, onClose, pass
   }, [state, citation.snippet])
 
   // Underline the passages branches grew from, like marks in a message.
-  const anchorKey = branches.map((branch) => `${branch.id}:${branch.anchor?.start}-${branch.anchor?.end}`).join(',')
+  const anchorKey = branches.map((branch) => `${branch.id}:${branch.anchor?.source?.start}-${branch.anchor?.source?.end}`).join(',')
   useEffect(() => {
     const body = bodyRef.current
     const supported = typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined'
     if (state.status !== 'loaded' || !body || !supported || !anchorKey) return
-    const ranges = branches.flatMap((branch) => branch.anchor ? [offsetRange(body, branch.anchor.start, branch.anchor.end)] : []).filter((range): range is Range => Boolean(range))
+    const ranges = branches.flatMap((branch) => branch.anchor?.source ? [offsetRange(body, branch.anchor.source.start, branch.anchor.source.end)] : []).filter((range): range is Range => Boolean(range))
     CSS.highlights.set(ANCHORS, new Highlight(...ranges))
     return () => {
       CSS.highlights.delete(ANCHORS)

@@ -172,3 +172,17 @@ test('a failed regenerate keeps every answer, and Try again adds the new one bes
   await page.reload()
   await expect(page.getByTestId('answer-position')).toHaveText('3 of 3')
 })
+
+test('reloading while a regenerate streams keeps the earlier answer', async ({ page }) => {
+  await restoreDemo(page)
+  await page.getByTestId('message-retry').last().click({ force: true })
+  // Saved with the thread the moment the regenerate starts.
+  await expect.poll(async () => (await tree(page)).threads['thread-root']!.pendingAnswers?.answers.length).toBe(1)
+  await page.reload()
+  // Back as it was, or beside whatever of the new reply had arrived.
+  await expect(page.locator('[data-thread-id="thread-root"][data-message-id]').last()).toBeVisible()
+  const saved = (await rootMessages(page)).at(-1)!
+  expect(saved.role).toBe('assistant')
+  expect([saved.content, ...(saved.alternates ?? []).map((answer) => answer.content)].some((content) => content.includes(ORIGINAL))).toBe(true)
+  expect((await tree(page)).threads['thread-root']!.pendingAnswers).toBeUndefined()
+})

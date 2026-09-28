@@ -34,7 +34,8 @@ import {
 import { fromUIMessages, toUIMessages } from '@/lib/messages'
 import { pathTo } from '@/lib/tree'
 import { unreadCount } from '@/lib/unread'
-import { dropEarlierAnswers, dropNextModel, queueEarlierAnswers, runKeyOf, setNextModel, switchAnswer } from '@/lib/alternates'
+import { dropNextModel, pendingAnswersOf, runKeyOf, setNextModel, switchAnswer } from '@/lib/alternates'
+import type { PendingAnswers } from '@/types'
 import {
   OPENROUTER_MODEL_OPTIONS,
   shortModelName,
@@ -131,8 +132,6 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     const text = shell.draftFor(threadId).trim()
     const attachments = shell.attachmentsFor(threadId)
     if (!text && attachments.length === 0) return
-    // Answers waiting on a failed regenerate belong to that reply, not this one.
-    dropEarlierAnswers(runKey)
     shell.setDraft(threadId, '')
     shell.setAttachments(threadId, () => [])
     setAttachProblem(null)
@@ -173,6 +172,8 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     anchorIds: string[],
     replacedId: string | undefined,
     verb: string,
+    /** Answers of the reply a regenerate replaces, kept on the thread until it ends. */
+    pendingAnswers: PendingAnswers | null = null,
   ): Promise<boolean> => {
     if (!next) return Promise.resolve(false)
     const dropped = droppedMessageIds(before, next)
@@ -181,7 +182,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     const apply = () => {
       if (chat.isLoading) chat.stop()
       chat.setMessages(toUIMessages(next))
-      rewriteThread(threadId, next, anchorIds)
+      rewriteThread(threadId, next, anchorIds, pendingAnswers)
       void chat.reload()
     }
     if (lostMessages === 0 && lostBranches === 0) {
@@ -208,12 +209,9 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     const before = snapshot()
     const next = retryFromAssistant(before, messageId)
     const replaced = before.find((message) => message.id === messageId)
-    if (next && replaced) queueEarlierAnswers(runKey, replaced)
     if (next && model) setNextModel(runKey, model)
-    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate').then((applied) => {
-      if (applied) return
-      dropEarlierAnswers(runKey)
-      dropNextModel(runKey)
+    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate', replaced ? pendingAnswersOf(replaced) : null).then((applied) => {
+      if (!applied) dropNextModel(runKey)
     })
   }
 
@@ -230,14 +228,12 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
   }
 
   const editUser = (messageId: string, content: string) => {
-    dropEarlierAnswers(runKey)
     const before = snapshot()
     const next = editUserMessage(before, messageId, content)
     return rewrite(next, before, next ? dropAnchorIdsForEdit(before, next, messageId) : [], replyAfter(before, messageId), 'Edit & resend')
   }
 
   const regenerateUser = (messageId: string) => {
-    dropEarlierAnswers(runKey)
     const before = snapshot()
     const next = retryFromUser(before, messageId)
     void rewrite(next, before, next ? droppedMessageIds(before, next) : [], replyAfter(before, messageId), 'Regenerate')
@@ -279,6 +275,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
           onMerge={() => shell.onMerge(threadId)}
           onDiscard={() => shell.onDiscard(threadId)}
           onReturn={() => shell.onReturn(threadId)}
+          onLearn={() => shell.onOpenLearn(threadId)}
           onCollapse={frame.onCollapse}
           summarized={Object.values(state.threads).some((entry) => entry.messages.some((message) => message.sourceThreadId === threadId))}
         />
@@ -289,7 +286,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
           onRename={shell.onRenameChat}
           onDelete={shell.onDeleteChat}
           onCollapse={frame.onCollapse}
-          overview={thread.messages.length > 0 ? { newCount: unreadCount(state), onMap: shell.onOpenMap, onLearn: shell.onOpenLearn, onShare: shell.onShare } : undefined}
+          overview={thread.messages.length > 0 ? { newCount: unreadCount(state), onMap: shell.onOpenMap, onLearn: () => shell.onOpenLearn(threadId), onShare: shell.onShare } : undefined}
         />
       )}
       draft={shell.draftFor(threadId)}

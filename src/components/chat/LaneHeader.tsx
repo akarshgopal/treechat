@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowUpLeft, Check, FoldHorizontal, Pencil, Share, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowUpLeft, Check, FoldHorizontal, Lightbulb, Pencil, Share, Trash2 } from 'lucide-react'
 import { Menu, type MenuItem } from '@/components/ui/menu'
 import { threadTitle } from '@/lib/tree'
 import type { Thread } from '@/types'
@@ -19,11 +19,13 @@ const collapseItem = (onCollapse: () => void): MenuItem => ({
   testId: 'collapse-lane',
 })
 
-export function BranchHeader({ thread, onMerge, onDiscard, onReturn, onCollapse, summarized }: {
+export function BranchHeader({ thread, onMerge, onDiscard, onReturn, onLearn, onCollapse, summarized }: {
   thread: Thread
   onMerge: () => void
   onDiscard: () => void
   onReturn: () => void
+  /** What this branch and what grew from it found. */
+  onLearn?: () => void
   onCollapse: (() => void) | null
   summarized?: boolean
 }) {
@@ -52,6 +54,7 @@ export function BranchHeader({ thread, onMerge, onDiscard, onReturn, onCollapse,
         label="Branch actions"
         testId="branch-menu"
         items={[
+          ...(onLearn && answered ? [{ label: 'What did I learn?', icon: <Lightbulb size={14} />, onSelect: onLearn, testId: 'branch-learn' }] : []),
           ...(onCollapse ? [collapseItem(onCollapse)] : []),
           { label: 'Discard branch', icon: <Trash2 size={14} />, onSelect: onDiscard, destructive: true, testId: 'discard-branch' },
         ]}

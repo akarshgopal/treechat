@@ -15,7 +15,8 @@ import type {
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
 import { parseCitations } from './citations.ts'
 import { parseUsage } from './usage.ts'
-import { parseAlternates } from './alternates.ts'
+import { parseAlternates, parsePendingAnswers, settleInterrupted } from './alternates.ts'
+import { createId } from './ids.ts'
 import { parseAnchorExtras } from './anchors.ts'
 import { parseAttachments } from './attachments/parse.ts'
 import { idbDatabase, idbDone as done, idbRequest as request } from './idb.ts'
@@ -91,7 +92,10 @@ function parseThread(value: unknown): Thread | null {
   const anchor = parseAnchor(record.anchor)
   // A non-root thread without a usable anchor has nowhere to attach.
   if (parentId !== null && !anchor) return null
-  const messages = parseMessages(record.messages)
+  const pending = parsePendingAnswers(record.pendingAnswers)
+  // Nothing is running as chats load: a regenerate cut short by closing the
+  // page is settled now, without losing an answer.
+  const messages = pending ? settleInterrupted(parseMessages(record.messages), pending, createId('msg')) : parseMessages(record.messages)
   const summary = parseSummary(record.summary)
   return {
     id: record.id,
