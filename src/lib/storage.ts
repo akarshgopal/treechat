@@ -15,6 +15,7 @@ import type {
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
 import { parseCitations } from './citations.ts'
 import { parseUsage } from './usage.ts'
+import { parseAlternates } from './alternates.ts'
 import { parseAttachments } from './attachments/parse.ts'
 import { idbDatabase, idbDone as done, idbRequest as request } from './idb.ts'
 
@@ -42,6 +43,8 @@ function parseMessage(value: unknown): ChatMessage | null {
     ...(citations ? { citations } : {}),
     ...(attachments ? { attachments } : {}),
     ...(usage ? { usage } : {}),
+    ...(typeof record.model === 'string' && record.model ? { model: record.model } : {}),
+    ...(record.role === 'assistant' ? parseAlternates(record.alternates, record.answerIndex) : {}),
   }
 }
 

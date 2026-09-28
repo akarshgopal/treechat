@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUpRight, GitBranch, Pencil, RotateCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { ArrowUpRight, ChevronLeft, ChevronRight, GitBranch, Pencil, RotateCw, Shuffle } from 'lucide-react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ModelPicker } from '@/components/chat/ModelPicker'
+import { answerModel, answersOf, currentIndex } from '@/lib/alternates'
+import { isModelId, OPENROUTER_MODEL_OPTIONS } from '@/lib/provider'
 import { SourcesList } from '@/components/chat/Citations'
 import { MessageAttachments } from '@/components/chat/Attachments'
 import { MessageMarkdown } from '@/components/chat/MessageMarkdown'
@@ -35,6 +40,13 @@ type MessageBubbleProps = {
   /** The citation of this message whose source lane is open. */
   openCitationId?: string | null
   onOpenCitation?: (messageId: string, citationId: string) => void
+  /** Answer again with another model (the latest reply only). */
+  onTryModel?: (model: string) => void
+  currentModel?: string
+  /** Show another of this reply's answers. */
+  onShowAnswer?: (index: number) => void
+  /** Why the pager can't switch right now, if it can't. */
+  switchBlocked?: string
 }
 
 const actionBtn = 'icon-button icon-button-sm'
@@ -59,6 +71,10 @@ export function MessageBubble({
   latest = false,
   openCitationId = null,
   onOpenCitation,
+  onTryModel,
+  currentModel,
+  onShowAnswer,
+  switchBlocked,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const [editing, setEditing] = useState(false)
@@ -209,8 +225,12 @@ export function MessageBubble({
       unanswered={unanswered}
       latest={latest}
       usage={isUser ? undefined : message.usage}
+      tryModel={onTryModel ? <TryAnotherModel currentModel={currentModel} onPick={onTryModel} /> : null}
     />
   ) : null
+  const pager = !editing && !isUser && message.alternates?.length && onShowAnswer
+    ? <AnswerPager message={message} blocked={switchBlocked} onShow={onShowAnswer} />
+    : null
 
   if (isUser) {
     // An image-only message has no text bubble, just its attachments.
@@ -240,6 +260,7 @@ export function MessageBubble({
       {labels ? <span className="eyebrow text-muted-foreground">treechat</span> : null}
       <div className={cn('text-foreground', size)}>{body}</div>
       {sources}
+      {pager}
       {actions}
     </article>
   )
@@ -254,7 +275,9 @@ function MessageActions({
   unanswered,
   latest,
   usage,
+  tryModel,
 }: {
+  tryModel?: ReactNode
   isUser: boolean
   onRetry?: () => void
   onEdit?: () => void
@@ -264,7 +287,7 @@ function MessageActions({
   latest: boolean
   usage?: MessageUsage
 }) {
-  if (!onRetry && !onEdit && !onAsk && !usage) return null
+  if (!onRetry && !onEdit && !onAsk && !usage && !tryModel) return null
   return (
     // Hangs in the gap below the message, so it never takes space of its own.
     // Invisible until hover or focus, but reachable: moving onto a button
@@ -298,6 +321,7 @@ function MessageActions({
           <RotateCw size={14} />
         </button>
       ) : null}
+      {tryModel}
       {usage ? <UsageLabel usage={usage} /> : null}
     </div>
   )
@@ -318,5 +342,98 @@ function UsageLabel({ usage }: { usage: MessageUsage }) {
     <span className="ml-1.5 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground" title={detail} data-testid="message-usage">
       {parts.join(' · ')}
     </span>
+  )
+}
+
+/** A model's short display name: the preset's label, else OpenRouter's name, else the id. */
+function modelLabel(model: string): string {
+  return OPENROUTER_MODEL_OPTIONS.find((option) => option.id === model)?.label
+    ?? modelInfo(model)?.name
+    ?? model.replace(/^[^/]+\//, '')
+}
+
+/** "‹ 2 of 3 · Claude Sonnet 5 ›" under a reply with more than one answer. */
+function AnswerPager({ message, blocked, onShow }: {
+  message: ChatMessage
+  blocked?: string
+  onShow: (index: number) => void
+}) {
+  const answers = answersOf(message)
+  const index = currentIndex(message)
+  const model = answerModel(answers[index]!)
+  return (
+    <div className="-ml-1.5 flex items-center gap-0.5 text-[11px] tabular-nums text-muted-foreground" data-testid="answer-pager" title={blocked}>
+      <button type="button" className="icon-button icon-button-sm" onClick={() => onShow(index - 1)} disabled={Boolean(blocked) || index === 0} aria-label="Previous answer">
+        <ChevronLeft size={14} />
+      </button>
+      <span data-testid="answer-position">{index + 1} of {answers.length}{model ? ` · ${modelLabel(model)}` : ''}</span>
+      <button type="button" className="icon-button icon-button-sm" onClick={() => onShow(index + 1)} disabled={Boolean(blocked) || index === answers.length - 1} aria-label="Next answer">
+        <ChevronRight size={14} />
+      </button>
+    </div>
+  )
+}
+
+/** The preset models other than the current one, and any other by name. */
+function TryAnotherModel({ currentModel, onPick }: { currentModel?: string; onPick: (model: string) => void }) {
+  const [other, setOther] = useState(false)
+  const [picked, setPicked] = useState('')
+  const options = OPENROUTER_MODEL_OPTIONS.filter((option) => option.id !== currentModel)
+  return (
+    <>
+      <DropdownMenu.Root modal={false}>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className={actionBtn} aria-label="Try another model" title="Try another model" data-testid="try-model">
+            <Shuffle size={14} />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content align="start" sideOffset={4} className="z-50 min-w-48 rounded-lg border border-border bg-paper p-1 shadow-xl">
+            <DropdownMenu.Label className="px-2 py-1 text-[11px] text-muted-foreground">Answer again with</DropdownMenu.Label>
+            {options.map((option) => (
+              <DropdownMenu.Item
+                key={option.id}
+                onSelect={() => onPick(option.id)}
+                className="flex h-8 cursor-pointer items-center rounded-md px-2 text-[13px] text-foreground outline-none data-[highlighted]:bg-secondary"
+              >
+                {option.label}
+              </DropdownMenu.Item>
+            ))}
+            <DropdownMenu.Separator className="my-1 h-px bg-border" />
+            <DropdownMenu.Item
+              onSelect={() => setOther(true)}
+              className="flex h-8 cursor-pointer items-center rounded-md px-2 text-[13px] text-foreground outline-none data-[highlighted]:bg-secondary"
+            >
+              Other…
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+      {other ? (
+        <Dialog open onOpenChange={(open) => { if (!open) setOther(false) }}>
+          <DialogContent className="max-w-md" data-testid="try-model-other">
+            <DialogHeader>
+              <DialogTitle>Try another model</DialogTitle>
+              <DialogDescription>For this answer only; Settings stay as they are.</DialogDescription>
+            </DialogHeader>
+            <ModelPicker id="try-model-picker" label="Model" value={picked} onChange={setPicked} suggestions={options} testId="try-model-picker" />
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn" onClick={() => setOther(false)}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!isModelId(picked)}
+                onClick={() => {
+                  setOther(false)
+                  onPick(picked.trim())
+                }}
+              >
+                Answer
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
   )
 }

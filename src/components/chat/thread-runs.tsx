@@ -7,6 +7,7 @@ import { refreshSummary } from '@/lib/summarize'
 import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { hasQuestion, parseKey, publishChat, runKey, setBusy, takeQuestion, useRunningKeys } from '@/lib/thread-run-registry'
 import { takeRunUsage } from '@/lib/usage'
+import { takeEarlierAnswers, takeRunModel } from '@/lib/alternates'
 import { useTree } from '@/store/tree-store'
 
 /**
@@ -107,13 +108,28 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
       if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis, sessionId))
       const citations = takeRunCitations(threadId)
       const usage = takeRunUsage(threadId)
+      const model = takeRunModel(threadId)
       const last = chat.messages.at(-1)
-      if ((citations || usage) && last?.role === 'assistant') {
-        const messages = chat.messages.map((message) =>
-          message === last
-            ? { ...message, metadata: { ...(message.metadata ?? {}), ...(citations ? { citations } : {}), ...(usage ? { usage } : {}) } }
-            : message,
-        )
+      const answered = !chat.error && last?.role === 'assistant' && Boolean(textOf(last).trim())
+      // A regenerated reply keeps the answers it replaces. A failed one leaves
+      // them waiting for the retry.
+      const earlier = answered ? takeEarlierAnswers(threadId) : []
+      if ((citations || usage || model || earlier.length > 0) && last?.role === 'assistant') {
+        const messages = chat.messages.map((message) => {
+          if (message !== last) return message
+          const { answerIndex: _index, ...metadata } = message.metadata ?? {}
+          const own = Array.isArray(metadata.alternates) ? metadata.alternates : []
+          return {
+            ...message,
+            metadata: {
+              ...metadata,
+              ...(citations ? { citations } : {}),
+              ...(usage ? { usage } : {}),
+              ...(model ? { model } : {}),
+              ...(earlier.length > 0 ? { alternates: [...earlier, ...own] } : {}),
+            },
+          }
+        })
         setMessages(messages)
         replaceMessages(threadId, fromUIMessages(messages), sessionId)
       }

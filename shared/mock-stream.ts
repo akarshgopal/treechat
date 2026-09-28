@@ -10,6 +10,8 @@ type MockInput = {
   pace?: boolean
   /** Pretend the reply was researched: cite two fake web sources. */
   webSearch?: boolean
+  /** A model asked for by name ("Try another model"): the demo says so. */
+  model?: string
 }
 
 /**
@@ -248,7 +250,8 @@ function tokensOf(reply: string): string[] {
 export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamChunk> {
   const { threadId, runId, signal } = input
   const messageId = crypto.randomUUID()
-  const reply = input.webSearch ? MOCK_SEARCH_REPLY : craftReply(lastUserText(input.messages), input.quote)
+  const answer = input.webSearch ? MOCK_SEARCH_REPLY : craftReply(lastUserText(input.messages), input.quote)
+  const reply = input.model ? `Demo answer standing in for ${input.model}. ${answer}` : answer
   const now = () => Date.now()
   const paced = input.pace ?? !inNodeTest()
 

@@ -37,6 +37,12 @@ type ThreadViewProps = {
   composerWebSearch?: ComposerWebSearch
   emptyLabel?: string
   onRetryAssistant?: (messageId: string) => void
+  /** Answer the latest reply again with another model, just this once. */
+  onTryModel?: (messageId: string, model: string) => void
+  /** Show another of a reply's answers. */
+  onShowAnswer?: (messageId: string, index: number) => void
+  /** The Settings model, left out of Try another model's list. */
+  currentModel?: string
   onRegenerateUser?: (messageId: string) => void
   /** Resolves false when the edit was not applied, so the editor stays open. */
   onEditUser?: (messageId: string, content: string) => Promise<boolean>
@@ -98,6 +104,9 @@ export function ThreadView({
   composerWebSearch,
   emptyLabel,
   onRetryAssistant,
+  onTryModel,
+  onShowAnswer,
+  currentModel,
   onRegenerateUser,
   onEditUser,
   onAskMessage,
@@ -190,6 +199,15 @@ export function ThreadView({
 
       {thread.messages.map((message, index) => {
         const children = childThreadsForMessage(state, thread.id, message.id)
+        const last = index === thread.messages.length - 1
+        const reply = message.role === 'assistant' && message.kind !== 'drop-summary'
+        const blocked = !last
+          ? 'Only the latest reply can switch answers'
+          : isLoading
+            ? 'Wait for the reply to finish'
+            : children.length > 0
+              ? 'This answer has branches, so it stays'
+              : undefined
         return (
           <MessageRow key={message.id} branches={children} openChildId={openChildId} onOpenChild={(childId) => onOpenChild(thread.id, childId)}>
             {thread.summary && thread.messages[index - 1]?.id === thread.summary.throughMessageId ? <SummaryDivider summary={thread.summary} /> : null}
@@ -215,6 +233,10 @@ export function ThreadView({
                   : message.role === 'user' ? onRegenerateUser : undefined
               }
               onEdit={message.role === 'user' ? onEditUser : undefined}
+              onTryModel={reply && last && !isLoading && onTryModel ? (model) => onTryModel(message.id, model) : undefined}
+              currentModel={currentModel}
+              onShowAnswer={reply && onShowAnswer ? (answer) => onShowAnswer(message.id, answer) : undefined}
+              switchBlocked={blocked}
               openCitationId={openCitation?.messageId === message.id ? openCitation.citationId : null}
               onOpenCitation={onOpenCitation ? (messageId, citationId) => onOpenCitation(thread.id, messageId, citationId) : undefined}
             />

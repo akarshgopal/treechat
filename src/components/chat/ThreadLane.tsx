@@ -34,6 +34,7 @@ import {
 import { fromUIMessages, toUIMessages } from '@/lib/messages'
 import { pathTo } from '@/lib/tree'
 import { unreadCount } from '@/lib/unread'
+import { answersOf, dropEarlierAnswers, dropNextModel, queueEarlierAnswers, setNextModel, switchAnswer } from '@/lib/alternates'
 import {
   OPENROUTER_MODEL_OPTIONS,
   shortModelName,
@@ -196,19 +197,44 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     return reply?.role === 'assistant' && reply.kind !== 'drop-summary' ? reply.id : undefined
   }
 
-  const retryAssistant = (messageId: string) => {
+  /**
+   * A new answer to the reply: its current and earlier answers stay beside
+   * it, and `model` (Try another model) answers just this once.
+   */
+  const retryAssistant = (messageId: string, model?: string) => {
     const before = snapshot()
     const next = retryFromAssistant(before, messageId)
-    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate')
+    const replaced = before.find((message) => message.id === messageId)
+    if (next && replaced) queueEarlierAnswers(threadId, answersOf(replaced))
+    if (next && model) setNextModel(threadId, model)
+    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate').then((applied) => {
+      if (applied) return
+      dropEarlierAnswers(threadId)
+      dropNextModel(threadId)
+    })
+  }
+
+  /** Show another of a reply's answers. Only the latest reply, and never away from one with branches. */
+  const showAnswer = (messageId: string, index: number) => {
+    const before = snapshot()
+    const at = before.findIndex((message) => message.id === messageId)
+    if (at !== before.length - 1 || chat.isLoading) return
+    const next = [...before]
+    next[at] = switchAnswer(before[at]!, index)
+    if (next[at] === before[at]) return
+    chat.setMessages(toUIMessages(next))
+    rewriteThread(threadId, next, [])
   }
 
   const editUser = (messageId: string, content: string) => {
+    dropEarlierAnswers(threadId)
     const before = snapshot()
     const next = editUserMessage(before, messageId, content)
     return rewrite(next, before, next ? dropAnchorIdsForEdit(before, next, messageId) : [], replyAfter(before, messageId), 'Edit & resend')
   }
 
   const regenerateUser = (messageId: string) => {
+    dropEarlierAnswers(threadId)
     const before = snapshot()
     const next = retryFromUser(before, messageId)
     void rewrite(next, before, next ? droppedMessageIds(before, next) : [], replyAfter(before, messageId), 'Regenerate')
@@ -288,6 +314,9 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
       onOpenChild={shell.onOpenChild}
       onFocusChild={shell.onFocus}
       onRetryAssistant={retryAssistant}
+      onTryModel={(messageId, model) => retryAssistant(messageId, model)}
+      onShowAnswer={showAnswer}
+      currentModel={shell.status.model}
       onRegenerateUser={regenerateUser}
       onEditUser={editUser}
       composerRef={(el) => shell.registerComposer(threadId, el)}

@@ -55,6 +55,25 @@ export type ChatMessage = {
   attachments?: Attachment[]
   /** What a reply cost, as OpenRouter reported it. */
   usage?: MessageUsage
+  /** The model asked for when it was not the one in Settings ("Try another model"). */
+  model?: string
+  /**
+   * A reply's other answers (regenerated, or from another model), oldest
+   * first. `content` and the fields above are always the current answer, the
+   * only one context, takeaways and summaries see.
+   */
+  alternates?: AnswerAlternate[]
+  /** Where the current answer sits among all of them; its index when absent is last. */
+  answerIndex?: number
+}
+
+/** An answer kept beside the current one on the same reply. */
+export type AnswerAlternate = {
+  content: string
+  createdAt: number
+  citations?: Citation[]
+  usage?: MessageUsage
+  model?: string
 }
 
 /** Tokens and cost of one reply; `cost` is USD (OpenRouter credits). */
