@@ -7,7 +7,10 @@ import { MessageBubble } from '@/components/chat/MessageBubble'
 import { ReplyProgress } from '@/components/chat/ReplyProgress'
 import { SummaryDivider } from '@/components/chat/SummaryDivider'
 import { childThreadsForMessage, threadTitle } from '@/lib/tree'
+import { anchorLabel } from '@/lib/anchors'
+import { AttachmentThumbnail } from '@/components/chat/Attachments'
 import type { Thread, TreeState } from '@/types'
+import type { ChipState } from '@/components/chat/shell-context'
 
 type ThreadViewProps = {
   thread: Thread
@@ -43,6 +46,7 @@ type ThreadViewProps = {
   onShowAnswer?: (messageId: string, index: number) => void
   /** The Settings model, left out of Try another model's list. */
   currentModel?: string
+  onAskRegion?: (passage: ChipState) => void
   onRegenerateUser?: (messageId: string) => void
   /** Resolves false when the edit was not applied, so the editor stays open. */
   onEditUser?: (messageId: string, content: string) => Promise<boolean>
@@ -107,6 +111,7 @@ export function ThreadView({
   onTryModel,
   onShowAnswer,
   currentModel,
+  onAskRegion,
   onRegenerateUser,
   onEditUser,
   onAskMessage,
@@ -209,7 +214,7 @@ export function ThreadView({
               ? 'This answer has branches, so it stays'
               : undefined
         return (
-          <MessageRow key={message.id} branches={children} openChildId={openChildId} onOpenChild={(childId) => onOpenChild(thread.id, childId)}>
+          <MessageRow key={message.id} branches={children.filter((child) => !child.anchor?.region && (!child.anchor?.source || child.anchor.source.citationId))} openChildId={openChildId} onOpenChild={(childId) => onOpenChild(thread.id, childId)}>
             {thread.summary && thread.messages[index - 1]?.id === thread.summary.throughMessageId ? <SummaryDivider summary={thread.summary} /> : null}
             <MessageBubble
               message={message}
@@ -237,6 +242,7 @@ export function ThreadView({
               currentModel={currentModel}
               onShowAnswer={reply && onShowAnswer ? (answer) => onShowAnswer(message.id, answer) : undefined}
               switchBlocked={blocked}
+              onAskRegion={onAskRegion}
               openCitationId={openCitation?.messageId === message.id ? openCitation.citationId : null}
               onOpenCitation={onOpenCitation ? (messageId, citationId) => onOpenCitation(thread.id, messageId, citationId) : undefined}
             />
@@ -275,14 +281,24 @@ export function ThreadView({
           {thread.anchor ? (
             <>
               <div aria-hidden className="lane-lead" style={{ height: leadOffset }} />
-              <blockquote
-                data-lane-anchor
-                data-testid="branch-anchor"
-                title={thread.anchor.quote}
-                className="mb-5 line-clamp-3 border-l-2 border-branch pl-3 text-[13px] italic leading-snug text-muted-foreground"
-              >
-                {thread.anchor.quote}
-              </blockquote>
+              {thread.anchor.region ? (
+                <div data-lane-anchor data-testid="branch-anchor" className="mb-5 flex items-center gap-3" title={anchorLabel(thread.anchor) ?? undefined}>
+                  {thread.anchor.region.crop ? (
+                    <AttachmentThumbnail attachment={thread.anchor.region.crop} className="size-16 shrink-0 border-2 border-branch" />
+                  ) : null}
+                  <span className="text-[13px] text-muted-foreground" data-testid="anchor-label">{anchorLabel(thread.anchor)}</span>
+                </div>
+              ) : (
+                <blockquote
+                  data-lane-anchor
+                  data-testid="branch-anchor"
+                  title={thread.anchor.quote}
+                  className="mb-5 border-l-2 border-branch pl-3 text-[13px] leading-snug text-muted-foreground"
+                >
+                  {thread.anchor.source ? <span className="mb-0.5 block text-xs not-italic" data-testid="anchor-label">{anchorLabel(thread.anchor)}</span> : null}
+                  <span className="line-clamp-3 italic">{thread.anchor.quote}</span>
+                </blockquote>
+              )}
             </>
           ) : null}
           {transcript}

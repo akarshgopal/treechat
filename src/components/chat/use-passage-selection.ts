@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChipState } from '@/components/chat/shell-context'
-import { offsetsInRoot, selectableMessageFromRange, selectionClientRect, snapRangeToWords } from '@/lib/selection'
+import { offsetsInRoot, plainTextSkippingIgnore, selectableMessageFromRange, selectionClientRect, snapRangeToWords } from '@/lib/selection'
+import { surroundingText } from '@/lib/anchors'
+import type { AnchorSource } from '@/types'
 
 /**
  * The passage selected in a message, snapped to whole words, as the lens bar
@@ -38,8 +40,8 @@ export function usePassageSelection() {
       return
     }
     const threadId = el.dataset.threadId
-    const messageId = el.dataset.messageId
-    if (!threadId || !messageId) return
+    const messageId = el.dataset.messageId ?? el.dataset.anchorMessageId
+    if (!threadId || messageId === undefined) return
     const host = el.getBoundingClientRect()
     const rect = selectionClientRect(range) ?? {
       top: host.top,
@@ -56,6 +58,7 @@ export function usePassageSelection() {
       left: rect.left,
       bottom: rect.bottom,
       range,
+      ...(el.dataset.sourcePassage !== undefined ? { source: sourceOf(el, offsets.start, offsets.end) } : {}),
     }
     lastRangeRef.current = next
     setChip(next)
@@ -104,4 +107,19 @@ export function usePassageSelection() {
   }, [syncChipFromSelection])
 
   return { chip, lastPassage, clearSelection, forget, hold, onSelectMessage }
+}
+
+/** The page or document a source lane shows, from its data attributes, with text around the passage. */
+function sourceOf(el: HTMLElement, start: number, end: number): AnchorSource {
+  const data = el.dataset
+  const optional = (key: 'url' | 'documentId' | 'locator' | 'citationId', value: string | undefined) => (value ? { [key]: value } : {})
+  return {
+    kind: data.sourceKind === 'web' ? 'web' : 'document',
+    title: data.sourceTitle ?? 'Source',
+    ...optional('url', data.sourceUrl),
+    ...optional('documentId', data.sourceDocumentId),
+    ...optional('locator', data.sourceLocator),
+    ...optional('citationId', data.sourceCitationId),
+    context: surroundingText(plainTextSkippingIgnore(el), start, end),
+  }
 }

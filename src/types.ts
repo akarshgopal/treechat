@@ -97,12 +97,45 @@ export type ThreadSummary = {
   createdAt: number
 }
 
-/** Where a thread is pinned inside its parent's message. */
+/**
+ * Where a thread is pinned inside its parent's message. `start` / `end` count
+ * characters of the message's text, or, with `source`, of that source's text.
+ */
 export type Anchor = {
   messageId: string
   start: number
   end: number
   quote: string
+  /** Branched from a cited page or a document rather than the message itself. */
+  source?: AnchorSource
+  /** Branched from a region of an image attached to the message. */
+  region?: AnchorRegion
+}
+
+/** The page or document a passage was selected in. */
+export type AnchorSource = {
+  kind: 'web' | 'document'
+  title: string
+  url?: string
+  documentId?: string
+  /** Where in the source, e.g. "p. 4". */
+  locator?: string
+  /** The citation of the anchor message it was opened from, if any. */
+  citationId?: string
+  /** A bounded stretch of the source around the passage, sent as context. */
+  context?: string
+}
+
+/** A rectangle of an image, in fractions of its width and height. */
+export type AnchorRegion = {
+  attachmentId: string
+  name: string
+  x: number
+  y: number
+  w: number
+  h: number
+  /** The cropped region, stored as its own image and sent with the branch. */
+  crop?: Attachment
 }
 
 /**

@@ -1,5 +1,6 @@
 import { getAttachment, putAttachment, type StoredAttachment } from './attachments/store.ts'
 import { parseSession } from './storage.ts'
+import { anchorAttachmentIds } from './anchors.ts'
 import type { ChatSession } from '@/types'
 
 /** Marks a TreeChat export, so an unrelated JSON file is refused clearly. */
@@ -17,11 +18,12 @@ export type ExportFile = {
 
 export type ImportedChats = { sessions: ChatSession[]; attachments: StoredAttachment[] }
 
-function attachmentIds(sessions: ChatSession[]): string[] {
+export function attachmentIds(sessions: ChatSession[]): string[] {
   const ids = new Set<string>()
   for (const session of sessions) {
     for (const thread of Object.values(session.treeState.threads)) {
       for (const message of thread.messages) for (const file of message.attachments ?? []) ids.add(file.id)
+      for (const id of anchorAttachmentIds(thread.anchor)) ids.add(id)
     }
   }
   return [...ids]

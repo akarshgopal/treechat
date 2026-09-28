@@ -6,7 +6,8 @@ import { ModelPicker } from '@/components/chat/ModelPicker'
 import { answerModel, answersOf, currentIndex } from '@/lib/alternates'
 import { isModelId, OPENROUTER_MODEL_OPTIONS } from '@/lib/provider'
 import { SourcesList } from '@/components/chat/Citations'
-import { MessageAttachments } from '@/components/chat/Attachments'
+import { MessageAttachments, type ImageRegions } from '@/components/chat/Attachments'
+import { isTextAnchor } from '@/lib/anchors'
 import { MessageMarkdown } from '@/components/chat/MessageMarkdown'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -47,6 +48,8 @@ type MessageBubbleProps = {
   onShowAnswer?: (index: number) => void
   /** Why the pager can't switch right now, if it can't. */
   switchBlocked?: string
+  /** Branch from a region of one of this message's images. */
+  onAskRegion?: ImageRegions['onAsk']
 }
 
 const actionBtn = 'icon-button icon-button-sm'
@@ -75,6 +78,7 @@ export function MessageBubble({
   currentModel,
   onShowAnswer,
   switchBlocked,
+  onAskRegion,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const [editing, setEditing] = useState(false)
@@ -93,7 +97,7 @@ export function MessageBubble({
   const marks = useMemo(
     () =>
       childThreads.flatMap((thread) =>
-        thread.anchor
+        isTextAnchor(thread.anchor)
           ? [
               {
                 id: thread.id,
@@ -238,7 +242,19 @@ export function MessageBubble({
     return (
       <article className="group relative flex flex-col items-end gap-1.5 outline-none" tabIndex={-1}>
         {labels ? <span className="eyebrow text-muted-foreground">you</span> : null}
-        {message.attachments ? <MessageAttachments attachments={message.attachments} alignEnd /> : null}
+        {message.attachments ? (
+          <MessageAttachments
+            attachments={message.attachments}
+            alignEnd
+            regions={onAskRegion && onOpenBranch ? {
+              threadId,
+              messageId: message.id,
+              branches: childThreads,
+              onOpenBranch: (id) => onOpenBranch(id === openChildId ? null : id),
+              onAsk: onAskRegion,
+            } : undefined}
+          />
+        ) : null}
         {bubble ? (
           <div
             className={cn(

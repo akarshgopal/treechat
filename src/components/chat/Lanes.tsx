@@ -36,7 +36,7 @@ export type TrailingLane = {
   testId: string
   /** The lane it opens from. */
   ownerId: string
-  /** Where in the owner lane its connector starts. */
+  /** Where in the owner lane its connector starts; empty for no connector. */
   selector: string
   render: (frame: LaneFrame) => ReactNode
 }
@@ -172,7 +172,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds =
         `[data-message-id="${CSS.escape(child.anchor?.messageId ?? '')}"]`,
       ],
     }))
-    if (trailing) out.push({ from: trailing.ownerId, to: trailing.id, selectors: [trailing.selector] })
+    if (trailing?.selector) out.push({ from: trailing.ownerId, to: trailing.id, selectors: [trailing.selector] })
     return out
   }, [path, single, trailing])
   const { connectors, offsets } = useLaneGeometry(track, links, fullIds)

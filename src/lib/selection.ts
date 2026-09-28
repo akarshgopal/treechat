@@ -50,7 +50,8 @@ export function plainTextSkippingIgnore(root: Node): string {
 /** Sanity cap only — long in-message selections should still branch. */
 export const MAX_BRANCH_SELECTION = 8_000
 
-export const SELECTABLE_MESSAGE = '[data-message-id][data-selectable="true"]'
+/** Message text, or a source lane's page or document (`data-source-passage`). */
+export const SELECTABLE_MESSAGE = '[data-message-id][data-selectable="true"], [data-source-passage]'
 
 const DOCUMENT_POSITION_PRECEDING = 2
 const DOCUMENT_POSITION_FOLLOWING = 4

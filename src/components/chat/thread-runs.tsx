@@ -45,9 +45,13 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
 
   const [initialMessages] = useState(() => toUIMessages(thread?.messages ?? []))
   const summary = thread?.summary
-  const anchorAttachments = thread?.anchor && thread.parentId
-    ? state?.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
-    : undefined
+  // A region of an image sends just that region; a passage from a page or
+  // document, nothing of the message's own files.
+  const anchorAttachments = thread?.anchor?.region
+    ? (thread.anchor.region.crop ? [thread.anchor.region.crop] : undefined)
+    : thread?.anchor && !thread.anchor.source && thread.parentId
+      ? state?.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
+      : undefined
   const chat = useChat({
     threadId,
     connection: chatConnection,

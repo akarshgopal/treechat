@@ -1,5 +1,6 @@
 import type { ChatSession } from '@/types'
 import { branchTakeaway, firstQuestion, threadTitle } from './tree.ts'
+import { anchorSourceKey } from './anchors.ts'
 
 /**
  * "Explored before": branches, in any chat, about what the person is about to
@@ -62,6 +63,8 @@ export type ExploredPassage = {
   messageId: string
   start: number
   end: number
+  /** What the offsets count in (`anchorSourceKey`): '' for the message itself. */
+  sourceKey?: string
 }
 
 export type ExploredQuery = {
@@ -107,6 +110,7 @@ export function exploredMatches(sessions: ChatSession[], query: ExploredQuery): 
         && passage!.sessionId === session.id
         && passage!.threadId === thread.parentId
         && passage!.messageId === thread.anchor.messageId
+        && anchorSourceKey(thread.anchor) === (passage!.sourceKey ?? '')
         && thread.anchor.start < passage!.end
         && passage!.start < thread.anchor.end
       let score = 0

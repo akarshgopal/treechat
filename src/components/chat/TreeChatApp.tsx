@@ -11,7 +11,7 @@ import { ChevronDown, Lightbulb, Settings, Share, SquarePen } from 'lucide-react
 import { MapButton } from '@/components/chat/LaneHeader'
 import { Menu } from '@/components/ui/menu'
 import { learnScope, type LearnScope } from '@/lib/learn'
-import { downloadText } from '@/lib/transfer'
+import { attachmentIds, downloadText } from '@/lib/transfer'
 import { unreadCount } from '@/lib/unread'
 import { BranchPopover } from '@/components/chat/BranchPopover'
 import { ThreadRunners } from '@/components/chat/thread-runs'
@@ -46,7 +46,9 @@ import { descendantIds, pathTo } from '@/lib/tree'
 import { isBranchShortcut } from '@/lib/utils'
 import type { ExploredPassage } from '@/lib/explored'
 import { useTree } from '@/store/tree-store'
-import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
+import type { AnchorRegion, Attachment, ChatMessage, ChatSession, Citation, ProviderStatus, Thread } from '@/types'
+import { cropRegion } from '@/lib/attachments/crop'
+import { anchorSourceKey } from '@/lib/anchors'
 
 import { ThreadLane } from '@/components/chat/ThreadLane'
 import { usePassageSelection } from '@/components/chat/use-passage-selection'
@@ -178,17 +180,25 @@ function TreeChatShell({
    * lens leaves focus where it was, so reading can carry on while it answers.
    */
   const startBranch = useCallback((passage: ChipState, question: string, options?: { webSearch?: boolean; focusComposer?: boolean }) => {
-    const id = createThread(passage.threadId, {
-      messageId: passage.messageId,
-      start: passage.start,
-      end: passage.end,
-      quote: passage.quote,
-    }, { webSearch: options?.webSearch })
-    queueQuestion(activeSessionId, id, question)
-    if (options?.focusComposer !== false) focusNextRef.current = id
+    const grow = (region?: AnchorRegion) => {
+      const id = createThread(passage.threadId, {
+        messageId: passage.messageId,
+        start: passage.start,
+        end: passage.end,
+        quote: passage.quote,
+        ...(passage.source ? { source: passage.source } : {}),
+        ...(region ? { region } : {}),
+      }, { webSearch: options?.webSearch })
+      queueQuestion(activeSessionId, id, question)
+      if (options?.focusComposer !== false) focusNextRef.current = id
+      focus(id)
+    }
     setAsking(null)
     clearSelection()
-    focus(id)
+    const region = passage.region
+    // A region is cut out and stored first, so the first request can send it.
+    if (region) void cropRegion(region).then((crop) => grow({ ...region, crop }), () => grow(region))
+    else grow()
   }, [activeSessionId, clearSelection, createThread, focus])
 
   /**
@@ -290,6 +300,16 @@ function TreeChatShell({
     focus(threadId)
     setSource({ threadId, messageId, citationId })
   }, [focus, source])
+
+  /** A document from the sidebar, read beside the open thread; again closes it. */
+  const onOpenDocument = useCallback((documentId: string, title: string) => {
+    if (source?.document?.id === documentId) {
+      setSource(null)
+      return
+    }
+    setAsking(null)
+    setSource({ threadId: activeThread.id, messageId: activeThread.messages.at(-1)?.id ?? '', citationId: 'document', document: { id: documentId, title } })
+  }, [activeThread, source])
 
   const closeSource = useCallback(() => {
     if (!source) return
@@ -403,6 +423,7 @@ function TreeChatShell({
       onOpenMap,
       onOpenLearn,
       onShare,
+      onAskRegion: openAsk,
     }),
     [
       draftFor,
@@ -431,6 +452,7 @@ function TreeChatShell({
       onOpenMap,
       onOpenLearn,
       onShare,
+      openAsk,
     ],
   )
 
@@ -501,6 +523,12 @@ function TreeChatShell({
   const askingPassage = usePassageKey(activeSessionId, asking?.passage ?? null)
   const chipPassage = usePassageKey(activeSessionId, chip)
   const sourceCitation = source ? citationFor(state.threads[source.threadId]?.messages, source) : undefined
+  /** Branches already grown from the open source, for its markers. */
+  const sourceBranches = useMemo(() => {
+    if (!source || !sourceCitation) return []
+    const key = anchorSourceKey({ source: { kind: sourceCitation.kind, title: sourceCitation.title, url: sourceCitation.url, documentId: sourceCitation.documentId } })
+    return Object.values(state.threads).filter((thread): thread is Thread => thread.parentId === source.threadId && anchorSourceKey(thread.anchor) === key)
+  }, [source, sourceCitation, state.threads])
   const trailing = useMemo<TrailingLane | null>(() => {
     if (!source || !sourceCitation || source.threadId !== activeThread.id) return null
     const message = `[data-message-id="${CSS.escape(source.messageId)}"]`
@@ -512,7 +540,8 @@ function TreeChatShell({
       testId: 'source-lane',
       ownerId: source.threadId,
       // The chip in the reply; the sources list when the text never cites it.
-      selector: `${message} ${cite}, [data-sources-for="${CSS.escape(source.messageId)}"] ${cite}`,
+      // A document from the sidebar has no line to draw.
+      selector: source.document ? '' : `${message} ${cite}, [data-sources-for="${CSS.escape(source.messageId)}"] ${cite}`,
       render: (frame) => (
         <Suspense fallback={null}>
           <SourceLane
@@ -522,11 +551,14 @@ function TreeChatShell({
             leadOffset={frame.leadOffset}
             narrow={narrow}
             onClose={closeSource}
+            passage={{ threadId: source.threadId, messageId: source.messageId, cited: !source.document }}
+            branches={sourceBranches}
+            openBranch={(threadId) => onOpenChild(source.threadId, threadId)}
           />
         </Suspense>
       ),
     }
-  }, [activeThread.id, closeSource, narrow, source, sourceCitation])
+  }, [activeThread.id, closeSource, narrow, onOpenChild, source, sourceBranches, sourceCitation])
   const sessionList = (inDialog: boolean) => (
     <SessionList
       sessions={sessions}
@@ -619,7 +651,7 @@ function TreeChatShell({
               onNewChat={onNewChat}
               onOpenSettings={() => setSettingsOpen(true)}
               chats={sessionList(false)}
-              documents={<DocumentsSidebarSection onOpen={() => setDocumentsOpen(true)} />}
+              documents={<DocumentsSidebarSection onOpen={() => setDocumentsOpen(true)} onOpenDocument={onOpenDocument} openDocumentId={source?.document?.id} />}
               status={demoStatus}
             />
           )}
@@ -819,6 +851,7 @@ function TreeChatShell({
 }
 
 function citationFor(messages: ChatMessage[] | undefined, source: OpenSource): Citation | undefined {
+  if (source.document) return { id: source.citationId, kind: 'document', title: source.document.title, documentId: source.document.id }
   return messages?.find((message) => message.id === source.messageId)?.citations?.find((citation) => citation.id === source.citationId)
 }
 
@@ -828,9 +861,10 @@ function usePassageKey(sessionId: string, passage: ChipState | null): ExploredPa
   const messageId = passage?.messageId
   const start = passage?.start
   const end = passage?.end
+  const sourceKey = passage ? anchorSourceKey(passage) : ''
   return useMemo(
-    () => threadId && messageId && start !== undefined && end !== undefined ? { sessionId, threadId, messageId, start, end } : undefined,
-    [sessionId, threadId, messageId, start, end],
+    () => threadId && messageId !== undefined && start !== undefined && end !== undefined ? { sessionId, threadId, messageId, start, end, sourceKey } : undefined,
+    [sessionId, threadId, messageId, start, end, sourceKey],
   )
 }
 
@@ -867,12 +901,7 @@ export function TreeChatApp() {
   }, [sessions])
   useEffect(() => {
     const prune = () => {
-      const referenced = new Set<string>()
-      for (const session of sessionsRef.current) {
-        for (const thread of Object.values(session.treeState.threads)) {
-          for (const message of thread.messages) for (const file of message.attachments ?? []) referenced.add(file.id)
-        }
-      }
+      const referenced = new Set(attachmentIds(sessionsRef.current))
       void pruneAttachments(referenced, Date.now() - ATTACHMENT_GRACE_MS).catch(() => undefined)
     }
     const idle = window.requestIdleCallback?.(prune, { timeout: 10_000 }) ?? window.setTimeout(prune, 5_000)

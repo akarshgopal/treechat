@@ -5,7 +5,9 @@ import { ArrowLeft, ExternalLink, FileText, Globe, X } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { citationWhere, safeHttpUrl } from '@/lib/citation-markers'
 import { loadSourceContent, locateSnippet, type SourceContent } from '@/lib/source-content'
-import type { Citation } from '@/types'
+import type { Citation, Thread } from '@/types'
+import { threadTitle } from '@/lib/tree'
+import { cn } from '@/lib/utils'
 import { RemoteImage } from '@/components/chat/RemoteImage'
 
 type LoadState =
@@ -14,6 +16,7 @@ type LoadState =
   | { status: 'failed' }
 
 const HIGHLIGHT = 'source-snippet'
+const ANCHORS = 'source-anchors'
 const remarkPlugins = [remarkGfm]
 
 /**
@@ -21,13 +24,18 @@ const remarkPlugins = [remarkGfm]
  * here is persisted. The head card carries `data-lane-anchor` so the lane's
  * connector and lead offset work as they do for branches.
  */
-export function SourceLane({ laneId, citation, leadOffset, narrow, onClose }: {
+export function SourceLane({ laneId, citation, leadOffset, narrow, onClose, passage, branches = [], openBranch }: {
   laneId: string
   citation: Citation
   leadOffset: number
   /** Phones: the lane replaces the conversation, so closing reads as Back. */
   narrow: boolean
   onClose: () => void
+  /** Where a branch from this text grows: the thread and message it hangs off. */
+  passage?: { threadId: string; messageId: string; cited: boolean }
+  /** Branches already grown from this source. */
+  branches?: Thread[]
+  openBranch?: (threadId: string) => void
 }) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -68,6 +76,21 @@ export function SourceLane({ laneId, citation, leadOffset, narrow, onClose }: {
     }
   }, [state, citation.snippet])
 
+  // Underline the passages branches grew from, like marks in a message.
+  const anchorKey = branches.map((branch) => `${branch.id}:${branch.anchor?.start}-${branch.anchor?.end}`).join(',')
+  useEffect(() => {
+    const body = bodyRef.current
+    const supported = typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined'
+    if (state.status !== 'loaded' || !body || !supported || !anchorKey) return
+    const ranges = branches.flatMap((branch) => branch.anchor ? [offsetRange(body, branch.anchor.start, branch.anchor.end)] : []).filter((range): range is Range => Boolean(range))
+    CSS.highlights.set(ANCHORS, new Highlight(...ranges))
+    return () => {
+      CSS.highlights.delete(ANCHORS)
+    }
+    // `anchorKey` stands for the branches' anchors.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, anchorKey])
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-lane-id={laneId}>
       <div className="flex h-12 min-w-0 shrink-0 items-center gap-1 border-b border-border px-3">
@@ -96,7 +119,26 @@ export function SourceLane({ laneId, citation, leadOffset, narrow, onClose }: {
         <div className="mx-auto w-full max-w-3xl px-4 py-5 sm:px-6">
           <div aria-hidden className="lane-lead" style={{ height: leadOffset }} />
           <div data-lane-anchor className="mb-4 border-l-2 border-branch pl-3" data-testid="source-anchor">
-            <p className="text-xs text-muted-foreground">Source {citation.id}</p>
+            <div className="flex items-center gap-1">
+              <p className="text-xs text-muted-foreground">{passage && !passage.cited ? 'Document' : `Source ${citation.id}`}</p>
+              {branches.length > 0 && openBranch ? (
+                <span className="ml-auto flex items-center" role="group" aria-label="Branches from this source">
+                  {branches.map((branch) => (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      className="margin-branch flex size-6 items-center justify-center text-branch/80 hover:text-branch-bright"
+                      onClick={() => openBranch(branch.id)}
+                      aria-label={`Open branch: ${threadTitle(branch)}`}
+                      title={threadTitle(branch)}
+                      data-testid="source-branch"
+                    >
+                      <span className={cn('margin-branch-dot', branch.unread && 'bg-branch-bright')} aria-hidden />
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+            </div>
             {citation.snippet ? (
               <p className="line-clamp-3 text-[13px] italic leading-snug text-muted-foreground">“{citation.snippet}”</p>
             ) : null}
@@ -117,7 +159,23 @@ export function SourceLane({ laneId, citation, leadOffset, narrow, onClose }: {
               ) : null}
             </div>
           ) : (
-            <div ref={bodyRef} className="tc-md text-sm leading-[1.6]" data-testid="source-content">
+            <div
+              ref={bodyRef}
+              className="tc-md text-sm leading-[1.6]"
+              data-testid="source-content"
+              // Selectable like message text: a passage here branches from this source.
+              {...(passage ? {
+                'data-source-passage': '',
+                'data-thread-id': passage.threadId,
+                'data-anchor-message-id': passage.messageId,
+                'data-source-kind': citation.kind,
+                'data-source-title': citation.title,
+                ...(citation.url ? { 'data-source-url': citation.url } : {}),
+                ...(citation.documentId ? { 'data-source-document-id': citation.documentId } : {}),
+                ...(citation.locator ? { 'data-source-locator': citation.locator } : {}),
+                ...(passage.cited ? { 'data-source-citation-id': citation.id } : {}),
+              } : {})}
+            >
               {state.content.markdown?.trim() ? (
                 <Markdown remarkPlugins={remarkPlugins} components={{ a: SourceLink, img: RemoteImage }}>
                   {state.content.markdown}
@@ -164,4 +222,23 @@ function snippetRange(root: HTMLElement, snippet: string | undefined): Range | n
   range.setStart(start.node, start.offset)
   range.setEnd(end.node, end.offset)
   return range
+}
+
+/** The DOM range of characters `[start, end)` of `root`'s text. */
+function offsetRange(root: HTMLElement, start: number, end: number): Range | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let seen = 0
+  let startPoint: { node: Text; offset: number } | null = null
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const length = node.data.length
+    if (!startPoint && start < seen + length) startPoint = { node, offset: start - seen }
+    if (startPoint && end <= seen + length) {
+      const range = document.createRange()
+      range.setStart(startPoint.node, startPoint.offset)
+      range.setEnd(node, end - seen)
+      return range
+    }
+    seen += length
+  }
+  return null
 }

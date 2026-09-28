@@ -317,6 +317,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
       onTryModel={(messageId, model) => retryAssistant(messageId, model)}
       onShowAnswer={showAnswer}
       currentModel={shell.status.model}
+      onAskRegion={shell.onAskRegion}
       onRegenerateUser={regenerateUser}
       onEditUser={editUser}
       composerRef={(el) => shell.registerComposer(threadId, el)}

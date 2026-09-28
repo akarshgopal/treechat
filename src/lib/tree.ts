@@ -1,4 +1,4 @@
-import type { ChatMessage, Thread, TreeState } from '@/types'
+import type { Anchor, ChatMessage, Thread, TreeState } from '@/types'
 import { summaryIndex } from './compaction.ts'
 
 const CONTEXT_TURNS = 6
@@ -9,6 +9,8 @@ const CONTEXT_BUDGET = 4200
 const CONTEXT_SUMMARY_CHARS = 1600
 const CONTEXT_SUMMARY_LEVEL_CHARS = 5000
 const CONTEXT_SUMMARY_BUDGET = 9000
+/** Source text around a passage from a page or document; on top of the budget. */
+const CONTEXT_SOURCE_CHARS = 1400
 
 export const CONTEXT_MAIN = 'MAIN'
 export const CONTEXT_QUOTE = 'SELECTED QUOTE'
@@ -204,6 +206,22 @@ export function summarizedTranscriptUpTo(
   ].join('\n\n')
 }
 
+/** Heads the quote; says where it came from when that was not the message. */
+function quoteHeading(anchor: Anchor | null): string {
+  if (anchor?.source) {
+    const where = anchor.source.locator ? `, ${anchor.source.locator}` : ''
+    return `${CONTEXT_QUOTE} (from ${anchor.source.kind === 'web' ? 'the page' : 'the document'} “${clipText(anchor.source.title, 120)}”${where})`
+  }
+  if (anchor?.region) return `${CONTEXT_QUOTE} (a region of the image ${clipText(anchor.region.name, 120)}, attached)`
+  return CONTEXT_QUOTE
+}
+
+/** A passage from a page or document brings some of its surroundings. */
+function sourceExcerpt(anchor: Anchor | null): string {
+  const around = anchor?.source?.context?.trim()
+  return around ? `\nAround it in the source:\n${clipText(around, CONTEXT_SOURCE_CHARS)}` : ''
+}
+
 function contextSections(
   path: Thread[],
   turnsAt: (level: number) => number,
@@ -239,7 +257,7 @@ function contextSections(
   }
 
   const selected = leaf.anchor?.quote ?? ''
-  sections.push(`${CONTEXT_QUOTE}\n«${clipText(selected, CONTEXT_QUOTE_CHARS)}»`)
+  sections.push(`${quoteHeading(leaf.anchor)}\n«${clipText(selected, CONTEXT_QUOTE_CHARS)}»${sourceExcerpt(leaf.anchor)}`)
   return { text: sections.join('\n\n'), summarized }
 }
 
@@ -267,7 +285,7 @@ export function threadContext(
     CONTEXT_CHARS_PER_TURN,
     { summaryChars: CONTEXT_SUMMARY_CHARS, levelChars: CONTEXT_SUMMARY_LEVEL_CHARS },
   )
-  const budget = full.summarized ? CONTEXT_SUMMARY_BUDGET : CONTEXT_BUDGET
+  const budget = (full.summarized ? CONTEXT_SUMMARY_BUDGET : CONTEXT_BUDGET) + sourceExcerpt(path[path.length - 1]!.anchor).length
   if (full.text.length <= budget) return full.text
 
   // Over budget: rebuild with a tighter turn window, then hard-clip.

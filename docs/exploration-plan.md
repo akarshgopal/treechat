@@ -148,6 +148,26 @@ tree:
 
 ## Status
 
-- An earlier attempt at running the four features as parallel agents was
-  stopped before anything was pushed, so nothing is built yet.
-- main is at `1492b80`.
+All four features are built on `plan/exploration`, one commit each, with unit
+tests for the pure logic and an e2e spec per feature:
+
+- Branch from anything: `src/lib/anchors.ts`, `tests/e2e/branch-from-anything.spec.ts`.
+- Unread and Explored before: `src/lib/unread.ts`, `src/lib/explored.ts`,
+  `tests/e2e/unread-explored.spec.ts`.
+- Map, What did I learn? and Share: `src/lib/learn.ts`, `src/lib/share-html.ts`,
+  `tests/e2e/map-learn-share.spec.ts`.
+- Alternative answers: `src/lib/alternates.ts`, `tests/e2e/sibling-answers.spec.ts`.
+
+Choices worth knowing:
+
+- A document opened from the sidebar hangs its branches off the open thread's
+  latest message, so they carry that conversation as context. It has no
+  margin marker in the message; the document lane shows its branches.
+- Cited-page branches get their margin marker at the citation in the reply.
+- Switching answers is blocked away from an answer that has branches, and on
+  any reply but the latest. Regenerate and Try another model still ask
+  before dropping branches on the reply they replace, as before.
+- On phones, Map sits in the app bar and What did I learn? and Share in its
+  ⋯ menu.
+
+Not merged into main: that is the owner's call.

@@ -16,6 +16,7 @@ import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
 import { parseCitations } from './citations.ts'
 import { parseUsage } from './usage.ts'
 import { parseAlternates } from './alternates.ts'
+import { parseAnchorExtras } from './anchors.ts'
 import { parseAttachments } from './attachments/parse.ts'
 import { idbDatabase, idbDone as done, idbRequest as request } from './idb.ts'
 
@@ -66,6 +67,7 @@ function parseAnchor(value: unknown): Anchor | null {
     start: record.start,
     end: record.end,
     quote: record.quote,
+    ...parseAnchorExtras(record),
   }
 }
 
