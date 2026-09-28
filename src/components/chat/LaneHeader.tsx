@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowUpLeft, Check, FoldHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowUpLeft, Check, FoldHorizontal, Pencil, Share, Trash2 } from 'lucide-react'
 import { Menu, type MenuItem } from '@/components/ui/menu'
 import { threadTitle } from '@/lib/tree'
 import type { Thread } from '@/types'
@@ -60,11 +60,32 @@ export function BranchHeader({ thread, onMerge, onDiscard, onReturn, onCollapse,
   )
 }
 
-export function MainHeader({ title, onRename, onDelete, onCollapse }: {
+/** The chat as a whole: its map, a summary of what it found, a copy to share. */
+export type ChatOverview = {
+  /** Branches with a reply not yet seen. */
+  newCount: number
+  onMap: () => void
+  onLearn: () => void
+  onShare: () => void
+}
+
+/** "Map" with its "N new" badge. */
+export function MapButton({ newCount, onMap }: Pick<ChatOverview, 'newCount' | 'onMap'>) {
+  return (
+    <button type="button" className="btn btn-outline" onClick={onMap} data-testid="open-map" aria-label={newCount > 0 ? `Map, ${newCount} new` : 'Map'}>
+      Map
+      {newCount > 0 ? <span className="rounded-full bg-branch px-1.5 text-[11px] font-semibold leading-[18px] text-background" data-testid="map-new">{newCount} new</span> : null}
+    </button>
+  )
+}
+
+export function MainHeader({ title, onRename, onDelete, onCollapse, overview }: {
   title: string
   onRename: (title: string) => void
   onDelete: () => void
   onCollapse: (() => void) | null
+  /** Absent for an empty chat: there is nothing to look back on yet. */
+  overview?: ChatOverview
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(title)
@@ -109,6 +130,15 @@ export function MainHeader({ title, onRename, onDelete, onCollapse }: {
           {title}
         </h1>
       )}
+      {overview ? (
+        <>
+          <MapButton newCount={overview.newCount} onMap={overview.onMap} />
+          <button type="button" className="btn btn-outline" onClick={overview.onLearn} data-testid="open-learn">What did I learn?</button>
+          <button type="button" className="icon-button" onClick={overview.onShare} aria-label="Share as HTML" title="Share as HTML · a read-only copy of the whole chat" data-testid="share-html">
+            <Share size={15} />
+          </button>
+        </>
+      ) : null}
       <Menu
         label="Chat actions"
         testId="chat-menu"

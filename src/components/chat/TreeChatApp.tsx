@@ -7,7 +7,12 @@ import {
   useState,
   type TouchEvent,
 } from 'react'
-import { ChevronDown, Settings, SquarePen } from 'lucide-react'
+import { ChevronDown, Lightbulb, Settings, Share, SquarePen } from 'lucide-react'
+import { MapButton } from '@/components/chat/LaneHeader'
+import { Menu } from '@/components/ui/menu'
+import { learnScope, type LearnScope } from '@/lib/learn'
+import { downloadText } from '@/lib/transfer'
+import { unreadCount } from '@/lib/unread'
 import { BranchPopover } from '@/components/chat/BranchPopover'
 import { ThreadRunners } from '@/components/chat/thread-runs'
 import { queueQuestion, stopChat, stopThread, useBusyThreads } from '@/lib/thread-run-registry'
@@ -46,7 +51,7 @@ import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } f
 import { ThreadLane } from '@/components/chat/ThreadLane'
 import { usePassageSelection } from '@/components/chat/use-passage-selection'
 import { useChatTransfer } from '@/components/chat/use-chat-transfer'
-import { CommandPalette, DocumentsDialog, SettingsDialog, SourceLane, TakeawayDialog, useOpenedOnce, usePrefetchLazyParts } from '@/components/chat/lazy-parts'
+import { CommandPalette, DocumentsDialog, LearnDrawer, MapOverlay, SettingsDialog, SourceLane, TakeawayDialog, useOpenedOnce, usePrefetchLazyParts } from '@/components/chat/lazy-parts'
 import { ShellContext, type ChipState, type OpenSource, type ShellValue } from '@/components/chat/shell-context'
 /** Unreferenced attachments younger than this survive a clean-up. */
 const ATTACHMENT_GRACE_MS = 24 * 60 * 60 * 1000
@@ -95,6 +100,7 @@ function TreeChatShell({
     activeSessionId,
     activeSession,
     activeThread,
+    rootThread,
     createThread,
     expand,
     focus,
@@ -122,6 +128,9 @@ function TreeChatShell({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [documentsOpen, setDocumentsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [mapOpen, setMapOpen] = useState(false)
+  /** What "What did I learn?" is summarizing, while its drawer is open. */
+  const [learning, setLearning] = useState<LearnScope | null>(null)
   const settingsMounted = useOpenedOnce(settingsOpen)
   const documentsMounted = useOpenedOnce(documentsOpen)
   const paletteMounted = useOpenedOnce(paletteOpen)
@@ -355,6 +364,15 @@ function TreeChatShell({
   }
 
   const onRenameChat = useCallback((title: string) => renameSession(activeSessionId, title), [activeSessionId, renameSession])
+  const onOpenMap = useCallback(() => setMapOpen(true), [])
+  const onOpenLearn = useCallback(() => setLearning(learnScope(state, state.activeThreadId, activeSession.title)), [activeSession.title, state])
+  const onShare = useCallback(() => {
+    void import('@/lib/share-html').then(({ shareFileName, shareHtml }) => {
+      const name = shareFileName(activeSession.title)
+      downloadText(name, shareHtml(activeSession), 'text/html')
+      onToast({ id: createId('toast'), text: `Saved ${name}, a read-only copy of this chat`, actions: [] })
+    }, () => onToast({ id: createId('toast'), text: 'Could not save a copy. Reload and try again.', actions: [] }))
+  }, [activeSession, onToast])
   const onDeleteChat = useCallback(() => deleteWithUndo(activeSessionId), [activeSessionId, deleteWithUndo])
 
   const shell = useMemo<ShellValue>(
@@ -382,6 +400,9 @@ function TreeChatShell({
       onRenameChat,
       onDeleteChat,
       onWebSearchOn,
+      onOpenMap,
+      onOpenLearn,
+      onShare,
     }),
     [
       draftFor,
@@ -407,6 +428,9 @@ function TreeChatShell({
       onRenameChat,
       onDeleteChat,
       onWebSearchOn,
+      onOpenMap,
+      onOpenLearn,
+      onShare,
     ],
   )
 
@@ -565,6 +589,19 @@ function TreeChatShell({
             <span className="truncate" data-testid="session-title">{activeSession.title}</span>
             <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
           </button>
+          {rootThread.messages.length > 0 ? (
+            <>
+              <MapButton newCount={unreadCount(state)} onMap={onOpenMap} />
+              <Menu
+                label="Chat actions"
+                testId="chat-menu"
+                items={[
+                  { label: 'What did I learn?', icon: <Lightbulb size={14} />, onSelect: onOpenLearn, testId: 'open-learn' },
+                  { label: 'Share as HTML', icon: <Share size={14} />, onSelect: onShare, testId: 'share-html' },
+                ]}
+              />
+            </>
+          ) : null}
           <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings" data-testid="settings-button" className="icon-button">
             <Settings className="size-4" />
           </button>
@@ -708,6 +745,22 @@ function TreeChatShell({
             onOpenDocuments={() => setDocumentsOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             onShowDemo={onRestoreDemo}
+          />
+        </Suspense>
+      ) : null}
+
+      {mapOpen ? (
+        <Suspense fallback={null}>
+          <MapOverlay state={state} title={activeSession.title} narrow={narrow} onOpen={focus} onClose={() => setMapOpen(false)} />
+        </Suspense>
+      ) : null}
+      {learning ? (
+        <Suspense fallback={null}>
+          <LearnDrawer
+            state={state}
+            scope={learning}
+            onClose={() => setLearning(null)}
+            onCopied={() => onToast({ id: createId('toast'), text: 'Copied as Markdown', actions: [] })}
           />
         </Suspense>
       ) : null}

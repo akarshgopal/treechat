@@ -33,6 +33,7 @@ import {
 } from '@/lib/message-actions'
 import { fromUIMessages, toUIMessages } from '@/lib/messages'
 import { pathTo } from '@/lib/tree'
+import { unreadCount } from '@/lib/unread'
 import {
   OPENROUTER_MODEL_OPTIONS,
   shortModelName,
@@ -254,6 +255,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
           onRename={shell.onRenameChat}
           onDelete={shell.onDeleteChat}
           onCollapse={frame.onCollapse}
+          overview={thread.messages.length > 0 ? { newCount: unreadCount(state), onMap: shell.onOpenMap, onLearn: shell.onOpenLearn, onShare: shell.onShare } : undefined}
         />
       )}
       draft={shell.draftFor(threadId)}

@@ -49,6 +49,9 @@ export type ShellValue = {
   onDeleteChat: () => void
   /** Web search was just switched on somewhere: mention its cost once. */
   onWebSearchOn: () => void
+  onOpenMap: () => void
+  onOpenLearn: () => void
+  onShare: () => void
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)
