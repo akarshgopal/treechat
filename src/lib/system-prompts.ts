@@ -1,7 +1,7 @@
 /**
- * System prompts shared by the in-browser OpenRouter client and the Vite /api plugin.
+ * System prompts for every request.
  * Keep MAIN / BRANCH depth N / SELECTED QUOTE wording in lockstep with the
- * ancestor chain `branchForwardedProps` builds on the client.
+ * ancestor chain `branchForwardedProps` builds (src/lib/tree.ts).
  */
 export const SUMMARY_SECTION = 'SUMMARY OF EARLIER CONVERSATION'
 

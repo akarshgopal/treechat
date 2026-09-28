@@ -14,7 +14,7 @@ import { createId } from '@/lib/ids'
 import { activeSessionOf } from '@/lib/sessions'
 import { lastSaveResult, loadLibrary, saveLibrary, subscribeSaveResult } from '@/lib/storage'
 import { sessionReducer } from '@/store/session-reducer'
-import type { Anchor, ChatMessage, ChatSession, SessionLibrary, Thread, ThreadSummary, TreeState } from '@/types'
+import type { Anchor, ChatMessage, ChatSession, PendingAnswers, SessionLibrary, Thread, ThreadSummary, TreeState } from '@/types'
 
 type TreeContextValue = {
   state: TreeState
@@ -37,8 +37,18 @@ type TreeContextValue = {
     threadId: string,
     messages: ChatMessage[],
     dropAnchorMessageIds: string[],
+    /** A regenerate's replaced answers to keep safe, or `null` to forget any. */
+    pendingAnswers?: PendingAnswers | null,
   ) => void
+  /** A regenerate's run ended: save its messages and forget the replaced answers. */
+  settleAnswers: (threadId: string, messages: ChatMessage[], sessionId: string) => void
   setSummary: (threadId: string, summary: ThreadSummary, basis: string, sessionId?: string) => void
+  /** A reply finished out of sight: flag it as new. */
+  markUnread: (threadId: string, sessionId: string) => void
+  /** These threads are on screen: their new replies are seen. */
+  markRead: (sessionId: string, threadIds: string[]) => void
+  /** Open a thread in any chat, switching to that chat first. */
+  openThread: (sessionId: string, threadId: string) => void
   reset: () => void
   restoreDemo: () => void
   createSession: () => void
@@ -133,7 +143,7 @@ function LoadedTreeProvider({ initial, children }: { initial: SessionLibrary; ch
         }),
       undoTakeaway: (threadId, messageId) =>
         dispatch({ type: 'tree', action: { type: 'undo-takeaway', threadId, messageId } }),
-      rewriteThread: (threadId, messages, dropAnchorMessageIds) =>
+      rewriteThread: (threadId, messages, dropAnchorMessageIds, pendingAnswers) =>
         dispatch({
           type: 'tree',
           action: {
@@ -141,10 +151,20 @@ function LoadedTreeProvider({ initial, children }: { initial: SessionLibrary; ch
             threadId,
             messages,
             dropAnchorMessageIds,
+            ...(pendingAnswers !== undefined ? { pendingAnswers } : {}),
           },
         }),
+      settleAnswers: (threadId, messages, sessionId) =>
+        dispatch({ type: 'tree', action: { type: 'settle-answers', threadId, messages }, sessionId }),
       setSummary: (threadId, summary, basis, sessionId) =>
         dispatch({ type: 'tree', action: { type: 'set-summary', threadId, summary, basis }, sessionId }),
+      markUnread: (threadId, sessionId) =>
+        dispatch({ type: 'tree', action: { type: 'mark-unread', threadId }, sessionId }),
+      markRead: (sessionId, threadIds) => dispatch({ type: 'mark-read', sessionId, threadIds }),
+      openThread: (sessionId, threadId) => {
+        dispatch({ type: 'tree', action: { type: 'focus', threadId }, sessionId })
+        dispatch({ type: 'switch-session', sessionId })
+      },
       reset: () => dispatch({ type: 'tree', action: { type: 'reset' } }),
       restoreDemo: () => dispatch({ type: 'tree', action: { type: 'restoreDemo' } }),
       createSession: () => dispatch({ type: 'create-session' }),

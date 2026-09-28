@@ -4,7 +4,7 @@ import { truncate } from '@/lib/utils'
 import type { ChatSession, SessionLibrary, TreeState } from '@/types'
 
 export const DEFAULT_SESSION_TITLE = 'New chat'
-export const SESSION_TITLE_MAX = 42
+const SESSION_TITLE_MAX = 42
 
 /** Collapse whitespace and clip to the title budget. */
 export function normalizeSessionTitle(value: string): string {

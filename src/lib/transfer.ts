@@ -1,12 +1,13 @@
 import { getAttachment, putAttachment, type StoredAttachment } from './attachments/store.ts'
 import { parseSession } from './storage.ts'
+import { anchorAttachmentIds } from './anchors.ts'
 import type { ChatSession } from '@/types'
 
 /** Marks a TreeChat export, so an unrelated JSON file is refused clearly. */
 export const EXPORT_FORMAT = 'treechat-export'
-export const EXPORT_VERSION = 1
+const EXPORT_VERSION = 1
 
-export type ExportFile = {
+type ExportFile = {
   format: typeof EXPORT_FORMAT
   version: number
   exportedAt: string
@@ -15,20 +16,21 @@ export type ExportFile = {
   attachments: StoredAttachment[]
 }
 
-export type ImportedChats = { sessions: ChatSession[]; attachments: StoredAttachment[] }
+type ImportedChats = { sessions: ChatSession[]; attachments: StoredAttachment[] }
 
-function attachmentIds(sessions: ChatSession[]): string[] {
+export function attachmentIds(sessions: ChatSession[]): string[] {
   const ids = new Set<string>()
   for (const session of sessions) {
     for (const thread of Object.values(session.treeState.threads)) {
       for (const message of thread.messages) for (const file of message.attachments ?? []) ids.add(file.id)
+      for (const id of anchorAttachmentIds(thread.anchor)) ids.add(id)
     }
   }
   return [...ids]
 }
 
 /** Everything needed to rebuild these chats elsewhere. Documents are not included. */
-export async function buildExport(sessions: ChatSession[], now = new Date()): Promise<ExportFile> {
+async function buildExport(sessions: ChatSession[], now = new Date()): Promise<ExportFile> {
   const attachments: StoredAttachment[] = []
   for (const id of attachmentIds(sessions)) {
     // A missing file (cleared storage, private window) just stays missing.
@@ -39,14 +41,19 @@ export async function buildExport(sessions: ChatSession[], now = new Date()): Pr
 }
 
 /** Named for the local date, the day the person sees on their clock. */
-export function exportFileName(now = new Date()): string {
+function exportFileName(now = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `treechat-chats-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`
 }
 
 /** Save a JSON file through the browser's download. */
-export function downloadJson(filename: string, value: unknown) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }))
+function downloadJson(filename: string, value: unknown) {
+  downloadText(filename, JSON.stringify(value, null, 2), 'application/json')
+}
+
+/** Save text as a file through the browser's download. */
+export function downloadText(filename: string, text: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }))
   const link = document.createElement('a')
   link.href = url
   link.download = filename

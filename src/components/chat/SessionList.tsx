@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { sortSessions } from '@/lib/sessions'
+import { hasUnread } from '@/lib/unread'
 import { cn } from '@/lib/utils'
 import type { ChatSession } from '@/types'
 
@@ -73,6 +74,7 @@ export function SessionList({
         {ordered.map((session) => {
           const active = session.id === activeSessionId
           const editing = session.id === editingId
+          const unread = hasUnread(session)
           return (
             <div key={session.id} className="flex min-w-0 flex-col">
             <div
@@ -116,10 +118,14 @@ export function SessionList({
                     className={cn(
                       'min-w-0 truncate text-[13px] leading-tight',
                       active ? 'font-medium text-foreground' : '',
+                      unread && 'font-semibold text-foreground',
                     )}
                   >
                     {session.title}
                   </span>
+                  {unread ? (
+                    <span className="ml-auto size-1.5 shrink-0 rounded-full bg-branch" role="img" aria-label="New replies" title="New replies" data-testid="session-unread" />
+                  ) : null}
                 </button>
               )}
               {editing ? null : (

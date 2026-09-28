@@ -8,9 +8,9 @@ import type { HastChild, HastElement, HastRoot, HastText } from './markdown.ts'
  */
 const MARKER = /\[([^[\]\s]{1,12})\]/g
 
-export type MarkerSegment = { text: string; citationId?: string }
+type MarkerSegment = { text: string; citationId?: string }
 
-export function splitCitationMarkers(text: string, ids: ReadonlySet<string>): MarkerSegment[] {
+function splitCitationMarkers(text: string, ids: ReadonlySet<string>): MarkerSegment[] {
   const segments: MarkerSegment[] = []
   let last = 0
   for (const match of text.matchAll(MARKER)) {
@@ -46,7 +46,7 @@ function chipElement(marker: string, id: string): HastElement {
   }
 }
 
-export function wrapCitationMarkers(tree: HastRoot | HastElement, ids: ReadonlySet<string>): void {
+function wrapCitationMarkers(tree: HastRoot | HastElement, ids: ReadonlySet<string>): void {
   if (ids.size === 0) return
   const next: HastChild[] = []
   let changed = false

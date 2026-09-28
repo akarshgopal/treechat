@@ -1,4 +1,4 @@
-import type { ChatMessage, Thread, TreeState } from '@/types'
+import type { Anchor, ChatMessage, Thread, TreeState } from '@/types'
 import { summaryIndex } from './compaction.ts'
 
 const CONTEXT_TURNS = 6
@@ -9,6 +9,8 @@ const CONTEXT_BUDGET = 4200
 const CONTEXT_SUMMARY_CHARS = 1600
 const CONTEXT_SUMMARY_LEVEL_CHARS = 5000
 const CONTEXT_SUMMARY_BUDGET = 9000
+/** Source text around a passage from a page or document; on top of the budget. */
+const CONTEXT_SOURCE_CHARS = 1400
 
 export const CONTEXT_MAIN = 'MAIN'
 export const CONTEXT_QUOTE = 'SELECTED QUOTE'
@@ -117,7 +119,7 @@ export function clipText(text: string, max: number): string {
  * The run of messages up to (and including) `messageId`, as a transcript.
  * The anchor message is never truncated — it is the one holding the quote.
  */
-export function transcriptUpTo(
+function transcriptUpTo(
   messages: ChatMessage[],
   messageId: string,
   turns = CONTEXT_TURNS,
@@ -164,7 +166,7 @@ type SummaryWindow = { summaryChars: number; levelChars: number }
  * anchor itself. Null when the summary does not end at or before the anchor —
  * it would describe turns after the passage this branch grew from.
  */
-export function summarizedTranscriptUpTo(
+function summarizedTranscriptUpTo(
   thread: Thread,
   messageId: string,
   turns: number,
@@ -204,6 +206,22 @@ export function summarizedTranscriptUpTo(
   ].join('\n\n')
 }
 
+/** Heads the quote; says where it came from when that was not the message. */
+function quoteHeading(anchor: Anchor | null): string {
+  if (anchor?.source) {
+    const where = anchor.source.locator ? `, ${anchor.source.locator}` : ''
+    return `${CONTEXT_QUOTE} (from ${anchor.source.kind === 'web' ? 'the page' : 'the document'} “${clipText(anchor.source.title, 120)}”${where})`
+  }
+  if (anchor?.region) return `${CONTEXT_QUOTE} (a region of the image ${clipText(anchor.region.name, 120)}, attached)`
+  return CONTEXT_QUOTE
+}
+
+/** A passage from a page or document brings some of its surroundings. */
+function sourceExcerpt(anchor: Anchor | null): string {
+  const around = anchor?.source?.context?.trim()
+  return around ? `\nAround it in the source:\n${clipText(around, CONTEXT_SOURCE_CHARS)}` : ''
+}
+
 function contextSections(
   path: Thread[],
   turnsAt: (level: number) => number,
@@ -230,16 +248,22 @@ function contextSections(
     if (!anchor) continue
 
     const turns = turnsAt(i)
-    const fromSummary = summarizedTranscriptUpTo(thread, anchor.messageId, turns, charsPerTurn, summaryWindow)
+    // A document opened beside a thread is anchored to no message: the thread
+    // as it was when the branch grew (or all of it, if that message is gone).
+    const through = anchor.source?.throughMessageId
+    const anchorId = anchor.messageId
+      || (through && thread.messages.some((message) => message.id === through) ? through : thread.messages.at(-1)?.id)
+      || ''
+    const fromSummary = summarizedTranscriptUpTo(thread, anchorId, turns, charsPerTurn, summaryWindow)
     if (fromSummary) summarized = true
     const transcript = fromSummary
-      ?? transcriptUpTo(thread.messages, anchor.messageId, turns, charsPerTurn)
+      ?? transcriptUpTo(thread.messages, anchorId, turns, charsPerTurn)
     const originatingQuote = i === 0 ? null : (thread.anchor?.quote ?? null)
     sections.push(formatAncestorSection(i, transcript, originatingQuote))
   }
 
   const selected = leaf.anchor?.quote ?? ''
-  sections.push(`${CONTEXT_QUOTE}\n«${clipText(selected, CONTEXT_QUOTE_CHARS)}»`)
+  sections.push(`${quoteHeading(leaf.anchor)}\n«${clipText(selected, CONTEXT_QUOTE_CHARS)}»${sourceExcerpt(leaf.anchor)}`)
   return { text: sections.join('\n\n'), summarized }
 }
 
@@ -267,7 +291,7 @@ export function threadContext(
     CONTEXT_CHARS_PER_TURN,
     { summaryChars: CONTEXT_SUMMARY_CHARS, levelChars: CONTEXT_SUMMARY_LEVEL_CHARS },
   )
-  const budget = full.summarized ? CONTEXT_SUMMARY_BUDGET : CONTEXT_BUDGET
+  const budget = (full.summarized ? CONTEXT_SUMMARY_BUDGET : CONTEXT_BUDGET) + sourceExcerpt(path[path.length - 1]!.anchor).length
   if (full.text.length <= budget) return full.text
 
   // Over budget: rebuild with a tighter turn window, then hard-clip.
@@ -296,4 +320,24 @@ export function branchForwardedProps(
     quote: thread.anchor.quote,
     context: threadContext(state, threadId),
   }
+}
+
+/**
+ * A branch's takeaway: the latest one brought back into its parent. Only the
+ * summary itself, not the parent's other messages.
+ */
+export function branchTakeaway(state: TreeState, threadId: string): string | undefined {
+  const thread = state.threads[threadId]
+  const parent = thread?.parentId ? state.threads[thread.parentId] : undefined
+  if (!parent) return undefined
+  for (let index = parent.messages.length - 1; index >= 0; index -= 1) {
+    const message = parent.messages[index]!
+    if (message.kind === 'drop-summary' && message.sourceThreadId === threadId && message.content.trim()) return message.content.trim()
+  }
+  return undefined
+}
+
+/** The first question asked in a thread, if any. */
+export function firstQuestion(thread: Thread): string | undefined {
+  return thread.messages.find((message) => message.role === 'user' && message.content.trim())?.content.trim()
 }

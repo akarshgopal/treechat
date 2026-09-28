@@ -3,6 +3,7 @@ import type { ChatMessage } from '@/types'
 import { parseCitations, sameCitations } from './citations.ts'
 import { parseAttachments, sameAttachments } from './attachments/parse.ts'
 import { parseUsage, sameUsage } from './usage.ts'
+import { parseAlternates, sameAlternates } from './alternates.ts'
 
 export function textOf(message: UIMessage | undefined): string {
   if (!message) return ''
@@ -22,6 +23,11 @@ function metadataOf(message: ChatMessage): Record<string, unknown> | undefined {
   if (message.citations) metadata.citations = message.citations
   if (message.attachments) metadata.attachments = message.attachments
   if (message.usage) metadata.usage = message.usage
+  if (message.model) metadata.model = message.model
+  if (message.alternates) {
+    metadata.alternates = message.alternates
+    if (message.answerIndex !== undefined) metadata.answerIndex = message.answerIndex
+  }
   return Object.keys(metadata).length > 0 ? metadata : undefined
 }
 
@@ -43,6 +49,8 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
     const citations = parseCitations(message.metadata?.citations)
     const attachments = parseAttachments(message.metadata?.attachments)
     const usage = parseUsage(message.metadata?.usage)
+    const model = typeof message.metadata?.model === 'string' && message.metadata.model ? message.metadata.model : undefined
+    const alternates = parseAlternates(message.metadata?.alternates, message.metadata?.answerIndex)
     return [
       {
         id: message.id,
@@ -61,6 +69,8 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
         ...(citations ? { citations } : {}),
         ...(attachments ? { attachments } : {}),
         ...(usage ? { usage } : {}),
+        ...(model ? { model } : {}),
+        ...alternates,
       } satisfies ChatMessage,
     ]
   })
@@ -77,7 +87,8 @@ export function sameTranscript(a: ChatMessage[], b: ChatMessage[]) {
       (message.kind ?? 'message') === (other.kind ?? 'message') &&
       sameCitations(message.citations, other.citations) &&
       sameAttachments(message.attachments, other.attachments) &&
-      sameUsage(message.usage, other.usage)
+      sameUsage(message.usage, other.usage) &&
+      sameAlternates(message, other)
     )
   })
 }

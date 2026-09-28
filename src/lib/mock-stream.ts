@@ -1,4 +1,5 @@
 import { EventType, type StreamChunk } from '@tanstack/ai'
+import type { Citation } from '@/types'
 
 type MockInput = {
   messages: unknown[]
@@ -10,27 +11,27 @@ type MockInput = {
   pace?: boolean
   /** Pretend the reply was researched: cite two fake web sources. */
   webSearch?: boolean
+  /** A model asked for by name ("Try another model"): the demo says so. */
+  model?: string
 }
 
 /**
- * CUSTOM stream event carrying a reply's sources. It survives the local API's
- * SSE hop as well as the in-browser mock; `runChat` records it for the thread
- * and keeps it out of the chat engine.
+ * CUSTOM stream event carrying the demo reply's sources; `runChat` records it
+ * for the thread and keeps it out of the chat engine.
  */
 export const CITATIONS_EVENT = 'treechat.citations'
 
-/** Shaped like `Citation` in src/types.ts (shared code does not import the app). */
-export const MOCK_WEB_CITATIONS = [
+const MOCK_WEB_CITATIONS: Citation[] = [
   {
     id: '1',
-    kind: 'web' as const,
+    kind: 'web',
     title: 'Branching conversations keep tangents in place',
     url: 'https://example.com/branching-conversations',
     snippet: 'A branch stays attached to the passage that prompted it',
   },
   {
     id: '2',
-    kind: 'web' as const,
+    kind: 'web',
     title: 'Bringing takeaways back',
     url: 'https://example.com/takeaways',
     locator: 'Section 2',
@@ -99,6 +100,10 @@ function lastUserText(messages: unknown[]): string {
 function craftReply(userText: string, quote?: string): string {
   const text = userText.toLowerCase()
 
+  // "What did I learn?": answered from the outline in the request, which may
+  // quote anything (code, attachments), so it is recognised first.
+  if (text.startsWith('summarize what i learned in this treechat exploration')) return learnReply(userText)
+
   // Attachments reach the mock as bracketed notes (it cannot see images).
   const images = [...userText.matchAll(/\[Image: ([^\]]+?) — [^\]]*\]/g)].map((match) => match[1])
   const files = [...userText.matchAll(/^Attached file (.+):$/gm)].map((match) => match[1])
@@ -137,6 +142,32 @@ Select \`quote.trim()\` in that block, or this **bold** phrase, to grow a branch
   if (topic) return topic.reply
 
   return 'This is a demo reply — no model is connected, so TreeChat can’t really answer that. Add an OpenRouter key in Settings for real answers. Meanwhile, select a phrase in this reply and tap a lens to see branching work.'
+}
+
+/**
+ * A summary built from the request's `TITLE:` / `BRANCH:` / `TAKEAWAY:`
+ * lines, so the demo shows the real shape: a lead, then what each branch
+ * concluded, then what else was looked at.
+ */
+function learnReply(request: string): string {
+  const title = request.match(/^TITLE: (.+)$/m)?.[1]?.trim() ?? 'this exploration'
+  const branches: Array<{ title: string; takeaway?: string }> = []
+  for (const line of request.split('\n')) {
+    const branch = line.match(/^\s*BRANCH: (.+)$/)
+    if (branch) branches.push({ title: branch[1]!.trim() })
+    const takeaway = line.match(/^TAKEAWAY: (.+)$/)
+    if (takeaway && branches.length > 0) branches[branches.length - 1]!.takeaway = takeaway[1]!.trim()
+  }
+  const kept = branches.filter((branch) => branch.takeaway)
+  const rest = branches.filter((branch) => !branch.takeaway)
+  const count = branches.length
+  const lead = count === 0
+    ? `This demo summary covers “${title}”, which has no branches yet. With an OpenRouter key, the model reads the conversation and says what it found.`
+    : `This demo summary covers “${title}” and its ${count} ${count === 1 ? 'branch' : 'branches'}. With an OpenRouter key, the model reads every transcript and says what the exploration found; here, the takeaways you brought back are listed as they are.`
+  const parts = [lead]
+  if (kept.length > 0) parts.push(`## Takeaways\n${kept.map((branch) => `- **${branch.title}** ${branch.takeaway}`).join('\n')}`)
+  if (rest.length > 0) parts.push(`## Also explored\n${rest.map((branch) => `- ${branch.title}`).join('\n')}`)
+  return parts.join('\n\n')
 }
 
 /**
@@ -218,7 +249,8 @@ function tokensOf(reply: string): string[] {
 export async function* mockChatStream(input: MockInput): AsyncGenerator<StreamChunk> {
   const { threadId, runId, signal } = input
   const messageId = crypto.randomUUID()
-  const reply = input.webSearch ? MOCK_SEARCH_REPLY : craftReply(lastUserText(input.messages), input.quote)
+  const answer = input.webSearch ? MOCK_SEARCH_REPLY : craftReply(lastUserText(input.messages), input.quote)
+  const reply = input.model ? `Demo answer standing in for ${input.model}. ${answer}` : answer
   const now = () => Date.now()
   const paced = input.pace ?? !inNodeTest()
 

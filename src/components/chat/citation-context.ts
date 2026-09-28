@@ -1,7 +1,7 @@
 import { createContext } from 'react'
 import type { Citation } from '@/types'
 
-export type CitationContextValue = {
+type CitationContextValue = {
   byId: Map<string, Citation>
   /** The citation whose source lane is open from this message, if any. */
   openId: string | null

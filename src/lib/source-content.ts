@@ -12,10 +12,10 @@ export type SourceContent = { markdown?: string; text?: string }
  * loaded — the lane then falls back to the citation's own title and snippet.
  * Honour `signal`: the lane aborts when it closes or switches source.
  */
-export type SourceLoader = (citation: Citation, signal: AbortSignal) => Promise<SourceContent>
+type SourceLoader = (citation: Citation, signal: AbortSignal) => Promise<SourceContent>
 
 /** Thrown when there is nothing to show beyond what the citation already holds. */
-export class SourceUnavailableError extends Error {
+class SourceUnavailableError extends Error {
   constructor(message = 'This source could not be loaded.') {
     super(message)
     this.name = 'SourceUnavailableError'
@@ -30,7 +30,7 @@ const loaders = new Map<Citation['kind'], SourceLoader>()
  *
  *   registerSourceLoader('document', async (citation, signal) => ({ text: … }))
  */
-export function registerSourceLoader(kind: Citation['kind'], loader: SourceLoader): () => void {
+function registerSourceLoader(kind: Citation['kind'], loader: SourceLoader): () => void {
   const previous = loaders.get(kind)
   loaders.set(kind, loader)
   return () => {
@@ -59,14 +59,14 @@ export async function loadSourceContent(citation: Citation, signal: AbortSignal)
 }
 
 /** Reader service that returns any public page as markdown. */
-export const READER_ORIGIN = 'https://r.jina.ai/'
+const READER_ORIGIN = 'https://r.jina.ai/'
 
-export function readerUrl(url: string): string {
+function readerUrl(url: string): string {
   return `${READER_ORIGIN}${url}`
 }
 
 /** The reader prefixes its markdown with `Title:` / `URL Source:` lines. */
-export function stripReaderPreamble(body: string): string {
+function stripReaderPreamble(body: string): string {
   const marker = body.indexOf('Markdown Content:')
   return marker >= 0 ? body.slice(marker + 'Markdown Content:'.length).trim() : body.trim()
 }
@@ -76,7 +76,7 @@ export function stripReaderPreamble(body: string): string {
  * CORS "simple request"; if the service still refuses the browser, the lane
  * shows the fallback.
  */
-export const webReaderLoader: SourceLoader = async (citation, signal) => {
+const webReaderLoader: SourceLoader = async (citation, signal) => {
   const url = safeHttpUrl(citation.url)
   if (!url) throw new SourceUnavailableError('This source has no web address.')
   const response = await fetch(readerUrl(url), { signal })
@@ -90,7 +90,7 @@ registerSourceLoader('web', webReaderLoader)
  * Documents live in this browser's IndexedDB. The store is imported only when
  * a document source is opened, so plain chats never load it.
  */
-export const documentLoader: SourceLoader = async (citation, signal) => {
+const documentLoader: SourceLoader = async (citation, signal) => {
   if (!citation.documentId) throw new SourceUnavailableError('This source has no document.')
   let doc, text
   try {

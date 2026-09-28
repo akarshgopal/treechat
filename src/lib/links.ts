@@ -1,5 +1,5 @@
-export const REPO_URL = 'https://github.com/akarshgopal/treechat'
-export const ISSUES_URL = `${REPO_URL}/issues`
+const REPO_URL = 'https://github.com/akarshgopal/treechat'
+const ISSUES_URL = `${REPO_URL}/issues`
 
 /**
  * A new-issue link, optionally prefilled with what went wrong. Nothing is

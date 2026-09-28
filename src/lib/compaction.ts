@@ -5,14 +5,14 @@ export const SUMMARY_KEEP_RECENT = 6
 /** Unsummarized older history this large triggers a (re)summary. */
 export const SUMMARY_TRIGGER_TOKENS = 8000
 /** One summary pass reads at most this much, so the request itself fits. */
-export const SUMMARY_MAX_INPUT_TOKENS = 24000
+const SUMMARY_MAX_INPUT_TOKENS = 24000
 
 /** Rough, provider-agnostic: about four characters per token. */
-export function estimateTokens(text: string): number {
+function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
-export function estimateMessageTokens(messages: ChatMessage[]): number {
+function estimateMessageTokens(messages: ChatMessage[]): number {
   // A few tokens of per-message overhead (role, separators).
   return messages.reduce((total, message) => total + estimateTokens(message.content) + 4, 0)
 }
@@ -109,7 +109,7 @@ export function summaryHolds(
 }
 
 /** The summary as the chat transport expects it in `forwardedProps.threadSummary`. */
-export type ThreadSummaryProp = Pick<ThreadSummary, 'content' | 'throughMessageId'>
+type ThreadSummaryProp = Pick<ThreadSummary, 'content' | 'throughMessageId'>
 
 function isSummaryProp(value: unknown): value is ThreadSummaryProp {
   if (!value || typeof value !== 'object') return false

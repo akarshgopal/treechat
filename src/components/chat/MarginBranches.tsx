@@ -39,7 +39,11 @@ export function MarginBranches({ branches, openId, onOpen }: {
       const origin = root.getBoundingClientRect()
       const found: Line[] = []
       for (const branch of branchesRef.current) {
-        const mark = root.querySelector<HTMLElement>(`[data-mark-ids~="${CSS.escape(branch.id)}"]`)
+        // A passage of a cited source sits at its citation in the text.
+        const citation = branch.anchor?.source?.citationId
+        const mark = citation
+          ? root.querySelector<HTMLElement>(`[data-citation-id="${CSS.escape(citation)}"]`)
+          : root.querySelector<HTMLElement>(`[data-mark-ids~="${CSS.escape(branch.id)}"]`)
         const rect = mark?.getClientRects()[0]
         const top = rect ? rect.top - origin.top : 0
         const height = rect ? rect.height : 20

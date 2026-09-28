@@ -6,7 +6,7 @@
  * blocks anything.
  */
 
-export const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
+const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
 const CACHE_KEY = 'treechat:models:v3'
 const CACHE_MS = 24 * 60 * 60 * 1000
 
@@ -43,7 +43,7 @@ const price = (value: unknown): number | undefined => {
  * `architecture.input_modalities: ['text', 'image']` and
  * `architecture.modality: 'text+image->text'`.
  */
-export function parseModelCatalog(payload: unknown): ModelInfo[] {
+function parseModelCatalog(payload: unknown): ModelInfo[] {
   const data = (payload as { data?: unknown } | null)?.data
   if (!Array.isArray(data)) return []
   const out: ModelInfo[] = []

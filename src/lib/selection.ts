@@ -1,4 +1,4 @@
-export type TextRange = {
+type TextRange = {
   start: number
   end: number
   text: string
@@ -48,9 +48,10 @@ export function plainTextSkippingIgnore(root: Node): string {
 }
 
 /** Sanity cap only — long in-message selections should still branch. */
-export const MAX_BRANCH_SELECTION = 8_000
+const MAX_BRANCH_SELECTION = 8_000
 
-export const SELECTABLE_MESSAGE = '[data-message-id][data-selectable="true"]'
+/** Message text, or a source lane's page or document (`data-source-passage`). */
+const SELECTABLE_MESSAGE = '[data-message-id][data-selectable="true"], [data-source-passage]'
 
 const DOCUMENT_POSITION_PRECEDING = 2
 const DOCUMENT_POSITION_FOLLOWING = 4
@@ -177,7 +178,7 @@ function prefixTextLength(root: Node, target: Node): number {
 }
 
 /** Character offset in `root.textContent` for a DOM point. */
-export function pointToOffset(root: Node, node: Node, offset: number): number | null {
+function pointToOffset(root: Node, node: Node, offset: number): number | null {
   if (!isInside(root, node)) return null
   if (isText(node)) {
     const len = node.textContent?.length ?? 0
@@ -269,7 +270,7 @@ export function selectableMessageFromRange(range: Range): HTMLElement | null {
   return hits.length === 1 ? hits[0] : null
 }
 
-export type SelectionBox = {
+type SelectionBox = {
   top: number
   left: number
   bottom: number
@@ -312,7 +313,7 @@ export type Mark = {
   open: boolean
 }
 
-export type Segment = { text: string; marks?: Mark[] }
+type Segment = { text: string; marks?: Mark[] }
 
 /**
  * Slice `content` into plain and marked segments.

@@ -15,6 +15,9 @@ import type {
 import { LEGACY_STORAGE_KEY, STORAGE_KEY, V2_STORAGE_KEY } from '@/types'
 import { parseCitations } from './citations.ts'
 import { parseUsage } from './usage.ts'
+import { parseAlternates, parsePendingAnswers, settleInterrupted } from './alternates.ts'
+import { createId } from './ids.ts'
+import { parseAnchorExtras } from './anchors.ts'
 import { parseAttachments } from './attachments/parse.ts'
 import { idbDatabase, idbDone as done, idbRequest as request } from './idb.ts'
 
@@ -42,6 +45,8 @@ function parseMessage(value: unknown): ChatMessage | null {
     ...(citations ? { citations } : {}),
     ...(attachments ? { attachments } : {}),
     ...(usage ? { usage } : {}),
+    ...(typeof record.model === 'string' && record.model ? { model: record.model } : {}),
+    ...(record.role === 'assistant' ? parseAlternates(record.alternates, record.answerIndex) : {}),
   }
 }
 
@@ -63,6 +68,7 @@ function parseAnchor(value: unknown): Anchor | null {
     start: record.start,
     end: record.end,
     quote: record.quote,
+    ...parseAnchorExtras(record),
   }
 }
 
@@ -86,7 +92,10 @@ function parseThread(value: unknown): Thread | null {
   const anchor = parseAnchor(record.anchor)
   // A non-root thread without a usable anchor has nowhere to attach.
   if (parentId !== null && !anchor) return null
-  const messages = parseMessages(record.messages)
+  const pending = parsePendingAnswers(record.pendingAnswers)
+  // Nothing is running as chats load: a regenerate cut short by closing the
+  // page is settled now, without losing an answer.
+  const messages = pending ? settleInterrupted(parseMessages(record.messages), pending, createId('msg')) : parseMessages(record.messages)
   const summary = parseSummary(record.summary)
   return {
     id: record.id,
@@ -98,6 +107,7 @@ function parseThread(value: unknown): Thread | null {
     // A summary of messages that are no longer there would describe nothing.
     ...(summary && messages.some((message) => message.id === summary.throughMessageId) ? { summary } : {}),
     ...(record.webSearch === true ? { webSearch: true } : {}),
+    ...(record.unread === true ? { unread: true as const } : {}),
   }
 }
 
@@ -193,7 +203,7 @@ function parseV2(record: Record<string, unknown>): TreeState | null {
 }
 
 /** Parse a v2-shaped tree blob (also the `treeState` of a v3 session). */
-export function parseTreeState(value: unknown): TreeState | null {
+function parseTreeState(value: unknown): TreeState | null {
   if (!value || typeof value !== 'object') return null
   return parseV2(value as Record<string, unknown>)
 }
@@ -355,7 +365,7 @@ export async function loadLibrary(): Promise<SessionLibrary> {
 }
 
 /** `full`: the browser refused the write (quota); nothing was dropped. */
-export type SaveResult = 'saved' | 'full' | 'unavailable'
+type SaveResult = 'saved' | 'full' | 'unavailable'
 
 let lastSave: SaveResult = 'saved'
 const saveListeners = new Set<() => void>()

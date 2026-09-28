@@ -36,7 +36,7 @@ export type TrailingLane = {
   testId: string
   /** The lane it opens from. */
   ownerId: string
-  /** Where in the owner lane its connector starts. */
+  /** Where in the owner lane its connector starts; empty for no connector. */
   selector: string
   render: (frame: LaneFrame) => ReactNode
 }
@@ -52,6 +52,8 @@ type LanesProps = {
   trailing?: TrailingLane | null
   /** Threads with a reply streaming in: their connectors pulse. */
   busyIds?: ReadonlySet<string>
+  /** The threads shown as full lanes (not strips), whenever that changes. */
+  onVisibleChange?: (threadIds: string[]) => void
 }
 
 type LaneEntry = { id: string; title: string; thread?: Thread; trailing?: TrailingLane }
@@ -140,7 +142,7 @@ function useJustFinished(busyIds: ReadonlySet<string>) {
   return ready
 }
 
-export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds = NO_IDS }: LanesProps) {
+export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds = NO_IDS, onVisibleChange }: LanesProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const [defaultWidth, setDefaultWidth] = useState(loadDefaultWidth)
@@ -162,6 +164,11 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds =
     .filter((entry) => !collapsed(entry.id, entries.indexOf(entry)))
     .map((entry) => entry.id)
 
+  const shownThreads = fullIds.filter((id) => path.some((thread) => thread.id === id)).join(',')
+  useEffect(() => {
+    onVisibleChange?.(shownThreads ? shownThreads.split(',') : [])
+  }, [onVisibleChange, shownThreads])
+
   const links = useMemo<LaneLink[]>(() => {
     if (single) return []
     const out = path.slice(1).map((child, index) => ({
@@ -172,7 +179,7 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds =
         `[data-message-id="${CSS.escape(child.anchor?.messageId ?? '')}"]`,
       ],
     }))
-    if (trailing) out.push({ from: trailing.ownerId, to: trailing.id, selectors: [trailing.selector] })
+    if (trailing?.selector) out.push({ from: trailing.ownerId, to: trailing.id, selectors: [trailing.selector] })
     return out
   }, [path, single, trailing])
   const { connectors, offsets } = useLaneGeometry(track, links, fullIds)

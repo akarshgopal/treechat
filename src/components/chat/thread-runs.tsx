@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@tanstack/ai-react'
-import { chatConnection } from '@/lib/chat-connection'
+import { treeChatConnection } from '@/lib/client-chat'
 import { takeRunCitations } from '@/lib/citations'
-import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
+import { fromUIMessages, sameTranscript, textOf, toUIMessages } from '@/lib/messages'
 import { refreshSummary } from '@/lib/summarize'
 import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { hasQuestion, parseKey, publishChat, runKey, setBusy, takeQuestion, useRunningKeys } from '@/lib/thread-run-registry'
 import { takeRunUsage } from '@/lib/usage'
+import { restoredReply, takeRunModel } from '@/lib/alternates'
+import { createId } from '@/lib/ids'
+import { isThreadVisible } from '@/lib/unread'
 import { useTree } from '@/store/tree-store'
 
 /**
@@ -36,7 +39,7 @@ export function ThreadRunners({ epoch }: { epoch: number }) {
 }
 
 function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: string }) {
-  const { sessions, replaceMessages, setSummary } = useTree()
+  const { sessions, replaceMessages, setSummary, markUnread, settleAnswers } = useTree()
   const session = sessions.find((entry) => entry.id === sessionId)
   const state = session?.treeState
   const thread = state?.threads[threadId]
@@ -44,12 +47,19 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
 
   const [initialMessages] = useState(() => toUIMessages(thread?.messages ?? []))
   const summary = thread?.summary
-  const anchorAttachments = thread?.anchor && thread.parentId
+  // A region of an image sends just that region; a passage from a page or
+  // document, nothing of the message's own files.
+  const anchorFiles = thread?.anchor && thread.parentId
     ? state?.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
     : undefined
+  const region = thread?.anchor?.region
+  const anchorAttachments = region
+    // Without a crop (it could not be made), the whole image rather than nothing.
+    ? (region.crop ? [region.crop] : anchorFiles?.filter((file) => file.id === region.attachmentId))
+    : thread?.anchor?.source ? undefined : anchorFiles
   const chat = useChat({
     threadId,
-    connection: chatConnection,
+    connection: treeChatConnection,
     initialMessages,
     forwardedProps: {
       ...(state ? branchForwardedProps(state, threadId) : {}),
@@ -103,22 +113,44 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
     const finished = wasLoading.current && !chat.isLoading
     wasLoading.current = chat.isLoading
     if (finished) {
+      if (!chat.error && textOf(chat.messages.at(-1)).trim() && !isThreadVisible(sessionId, threadId)) markUnread(threadId, sessionId)
       if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis, sessionId))
-      const citations = takeRunCitations(threadId)
-      const usage = takeRunUsage(threadId)
+      const citations = takeRunCitations(key)
+      const usage = takeRunUsage(key)
+      const model = takeRunModel(key)
       const last = chat.messages.at(-1)
-      if ((citations || usage) && last?.role === 'assistant') {
-        const messages = chat.messages.map((message) =>
-          message === last
-            ? { ...message, metadata: { ...(message.metadata ?? {}), ...(citations ? { citations } : {}), ...(usage ? { usage } : {}) } }
-            : message,
-        )
-        setMessages(messages)
-        replaceMessages(threadId, fromUIMessages(messages), sessionId)
+      const answered = !chat.error && last?.role === 'assistant' && Boolean(textOf(last).trim())
+      // A regenerate saved the answers it replaced on the thread.
+      const earlier = thread?.pendingAnswers
+      let messages = chat.messages
+      if (!answered && earlier) {
+        // No new reply: put back the one the regenerate replaced, answers and all.
+        const kept = last?.role === 'assistant' && !textOf(last).trim() ? chat.messages.slice(0, -1) : chat.messages
+        messages = [...kept, ...toUIMessages([restoredReply(earlier, createId('msg'))])]
+      } else if ((citations || usage || model || earlier) && last?.role === 'assistant') {
+        messages = chat.messages.map((message) => {
+          if (message !== last) return message
+          const { answerIndex: _index, ...metadata } = message.metadata ?? {}
+          const own = Array.isArray(metadata.alternates) ? metadata.alternates : []
+          return {
+            ...message,
+            metadata: {
+              ...metadata,
+              ...(citations ? { citations } : {}),
+              ...(usage ? { usage } : {}),
+              ...(model ? { model } : {}),
+              // A regenerated reply keeps the answers it replaces.
+              ...(earlier ? { alternates: [...earlier.answers, ...own] } : {}),
+            },
+          }
+        })
       }
+      if (messages !== chat.messages) setMessages(messages)
+      if (earlier) settleAnswers(threadId, fromUIMessages(messages), sessionId)
+      else if (messages !== chat.messages) replaceMessages(threadId, fromUIMessages(messages), sessionId)
     }
     setBusy(key, chat.isLoading || sending.current)
-  }, [chat.error, chat.isLoading, chat.messages, key, replaceMessages, sessionId, setMessages, setSummary, summary, threadId])
+  }, [chat.error, chat.isLoading, chat.messages, key, markUnread, replaceMessages, sessionId, setMessages, setSummary, settleAnswers, summary, thread?.pendingAnswers, threadId])
 
   useEffect(() => () => setBusy(key, false), [key])
 

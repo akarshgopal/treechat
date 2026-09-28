@@ -5,8 +5,8 @@ import {
   loadProviderConfig,
   type ClientProviderConfig,
 } from './provider.ts'
-import { CITATIONS_EVENT, mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
-import { buildSystemPrompts } from '../../shared/system-prompts.ts'
+import { CITATIONS_EVENT, mockChatStream, textFromMessage } from './mock-stream.ts'
+import { buildSystemPrompts } from './system-prompts.ts'
 import { clearRunCitations, parseCitations, recordRunCitations } from './citations.ts'
 import { clearRunUsage, recordRunUsage, usageFromOpenRouterChunk } from './usage.ts'
 import { applyWebSearch, createWebCitationCollector, isWebSearch } from './web-search.ts'
@@ -15,18 +15,20 @@ import { withDocumentNote, withDocuments } from './documents/rag.ts'
 import { describeImagesInBackground } from './attachments/describe.ts'
 import { parseAttachments } from './attachments/parse.ts'
 import { prepareRequestMessages, type RequestImage } from './attachments/request.ts'
+import { claimNextModel } from './alternates.ts'
+import { runKeyForRequest } from './run-key.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
-export const OPENROUTER_APP_TITLE = 'TreeChat'
+const OPENROUTER_APP_TITLE = 'TreeChat'
 
 /** Replies come from OpenRouter with a saved key, else from the in-page demo. */
-export type ChatBackend = 'openrouter' | 'mock'
+type ChatBackend = 'openrouter' | 'mock'
 
-export type OpenAIContentPart =
+type OpenAIContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
-export type OpenAIChatMessage = {
+type OpenAIChatMessage = {
   role: 'system' | 'user' | 'assistant'
   /** Parts only when a user turn carries images. */
   content: string | OpenAIContentPart[]
@@ -47,7 +49,7 @@ export function resolveChatBackend(config: ClientProviderConfig | null = loadPro
   return config?.apiKey ? 'openrouter' : 'mock'
 }
 
-export function openRouterHeaders(
+function openRouterHeaders(
   config: ClientProviderConfig,
   origin = defaultOrigin(),
 ): Record<string, string> {
@@ -59,7 +61,7 @@ export function openRouterHeaders(
   }
 }
 
-export function openRouterRequestBody(
+function openRouterRequestBody(
   config: ClientProviderConfig,
   messages: OpenAIChatMessage[],
   sessionId?: string,
@@ -100,7 +102,7 @@ function defaultOrigin(): string {
   return 'https://akarshgopal.github.io/treechat'
 }
 
-export function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
+function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
   const out: OpenAIChatMessage[] = []
   for (const message of messages) {
     if (!message || typeof message !== 'object') continue
@@ -123,7 +125,7 @@ export function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
   return out
 }
 
-export function buildOpenRouterMessages(
+function buildOpenRouterMessages(
   messages: unknown[],
   forwardedProps: Record<string, unknown> = {},
 ): OpenAIChatMessage[] {
@@ -134,7 +136,7 @@ export function buildOpenRouterMessages(
   return [...system, ...toOpenAIChatMessages(messages)]
 }
 
-export function contentDeltaFromOpenAIData(payload: string): string | null {
+function contentDeltaFromOpenAIData(payload: string): string | null {
   const trimmed = payload.trim()
   if (!trimmed || trimmed === '[DONE]') return null
   try {
@@ -248,6 +250,7 @@ export async function* openRouterChatStream(input: {
   signal?: AbortSignal
 }): AsyncGenerator<StreamChunk> {
   const { config, threadId, runId, signal } = input
+  const key = runKeyForRequest(threadId, input.forwardedProps)
   const messageId = crypto.randomUUID()
   const openaiMessages = buildOpenRouterMessages(
     input.messages,
@@ -312,9 +315,9 @@ export async function* openRouterChatStream(input: {
         yield { type: EventType.RUN_ERROR, message: event.error ? errorMessageFromOpenRouter(response.status, payload) : 'The provider stopped with an error. Try regenerating.', code: 'provider', timestamp: now() }
         return
       }
-      if (webCitations.add(event)) recordRunCitations(threadId, webCitations.citations())
+      if (webCitations.add(event)) recordRunCitations(key, webCitations.citations())
       const usage = usageFromOpenRouterChunk(event)
-      if (usage) recordRunUsage(threadId, usage)
+      if (usage) recordRunUsage(key, usage)
       const delta = contentDeltaFromOpenAIData(payload)
       if (!delta) continue
       receivedText = true
@@ -354,14 +357,15 @@ export async function* openRouterChatStream(input: {
 }
 
 export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
-  clearRunCitations(input.threadId)
-  clearRunUsage(input.threadId)
-  // Sources arrive as a CUSTOM event (mock, local API); they belong to the
+  const key = runKeyForRequest(input.threadId, input.forwardedProps)
+  clearRunCitations(key)
+  clearRunUsage(key)
+  // The demo's sources arrive as a CUSTOM event; they belong to the
   // thread's run, not to the chat engine's message stream.
   for await (const chunk of routeChat(input)) {
     if (chunk.type === EventType.CUSTOM && chunk.name === CITATIONS_EVENT) {
       const citations = parseCitations(chunk.value)
-      if (citations) recordRunCitations(input.threadId, citations)
+      if (citations) recordRunCitations(key, citations)
       continue
     }
     yield chunk
@@ -370,6 +374,9 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
 
 async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   const config = loadProviderConfig()
+  // "Try another model" asks for one reply from a model other than Settings'.
+  const key = runKeyForRequest(input.threadId, input.forwardedProps)
+  const model = input.model ?? claimNextModel(key)
   // Documents attached to the chat add an excerpts section and citations.
   // Retrieval reads the full transcript; compaction then trims what is sent.
   // Both happen here so every backend below gets the same request, while the
@@ -378,6 +385,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
     messages: input.messages,
     forwardedProps: mergeForwarded(input.data, input.forwardedProps),
     threadId: input.threadId,
+    runKey: key,
   })
   const { citations } = retrieved
   const { messages, forwardedProps } = applySummaryToRequest(input.messages, retrieved.forwardedProps)
@@ -395,7 +403,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   if (backend === 'openrouter' && config) {
     yield* openRouterChatStream({
       messages: requestMessages,
-      config: input.model ? { ...config, model: input.model } : config,
+      config: model ? { ...config, model } : config,
       forwardedProps,
       threadId: input.threadId,
       runId: input.runId,
@@ -411,6 +419,7 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
     quote:
       typeof forwardedProps.quote === 'string' ? forwardedProps.quote : undefined,
     webSearch: isWebSearch(forwardedProps),
+    model,
     signal: input.signal,
   }), citations)
 }

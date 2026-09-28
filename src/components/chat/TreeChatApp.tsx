@@ -7,7 +7,12 @@ import {
   useState,
   type TouchEvent,
 } from 'react'
-import { ChevronDown, Settings, SquarePen } from 'lucide-react'
+import { ChevronDown, Lightbulb, Settings, Share, SquarePen } from 'lucide-react'
+import { MapButton } from '@/components/chat/LaneHeader'
+import { Menu } from '@/components/ui/menu'
+import { learnScope, type LearnScope } from '@/lib/learn'
+import { attachmentIds, downloadText } from '@/lib/transfer'
+import { setVisibleThreads, unreadCount } from '@/lib/unread'
 import { BranchPopover } from '@/components/chat/BranchPopover'
 import { ThreadRunners } from '@/components/chat/thread-runs'
 import { queueQuestion, stopChat, stopThread, useBusyThreads } from '@/lib/thread-run-registry'
@@ -39,13 +44,16 @@ import {
 } from '@/lib/selection'
 import { descendantIds, pathTo } from '@/lib/tree'
 import { isBranchShortcut } from '@/lib/utils'
+import type { ExploredPassage } from '@/lib/explored'
 import { useTree } from '@/store/tree-store'
-import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
+import type { AnchorRegion, Attachment, ChatMessage, ChatSession, Citation, ProviderStatus, Thread } from '@/types'
+import { cropRegion } from '@/lib/attachments/crop'
+import { anchorSourceKey } from '@/lib/anchors'
 
 import { ThreadLane } from '@/components/chat/ThreadLane'
 import { usePassageSelection } from '@/components/chat/use-passage-selection'
 import { useChatTransfer } from '@/components/chat/use-chat-transfer'
-import { CommandPalette, DocumentsDialog, SettingsDialog, SourceLane, TakeawayDialog, useOpenedOnce, usePrefetchLazyParts } from '@/components/chat/lazy-parts'
+import { CommandPalette, DocumentsDialog, LearnDrawer, MapOverlay, SettingsDialog, SourceLane, TakeawayDialog, useOpenedOnce, usePrefetchLazyParts } from '@/components/chat/lazy-parts'
 import { ShellContext, type ChipState, type OpenSource, type ShellValue } from '@/components/chat/shell-context'
 /** Unreferenced attachments younger than this survive a clean-up. */
 const ATTACHMENT_GRACE_MS = 24 * 60 * 60 * 1000
@@ -94,6 +102,8 @@ function TreeChatShell({
     activeSessionId,
     activeSession,
     activeThread,
+    rootThread,
+    markRead,
     createThread,
     expand,
     focus,
@@ -121,6 +131,9 @@ function TreeChatShell({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [documentsOpen, setDocumentsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [mapOpen, setMapOpen] = useState(false)
+  /** What "What did I learn?" is summarizing, while its drawer is open. */
+  const [learning, setLearning] = useState<LearnScope | null>(null)
   const settingsMounted = useOpenedOnce(settingsOpen)
   const documentsMounted = useOpenedOnce(documentsOpen)
   const paletteMounted = useOpenedOnce(paletteOpen)
@@ -129,6 +142,14 @@ function TreeChatShell({
   const busyIds = useBusyThreads(activeSessionId)
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const focusNextRef = useRef<string | null>(null)
+  /** False once this chat's shell is gone (the chat was switched). */
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const draftFor = useCallback((threadId: string) => drafts[threadId] ?? '', [drafts])
   const attachmentsFor = useCallback((threadId: string) => attachments[threadId] ?? NO_ATTACHMENTS, [attachments])
@@ -168,18 +189,32 @@ function TreeChatShell({
    * lens leaves focus where it was, so reading can carry on while it answers.
    */
   const startBranch = useCallback((passage: ChipState, question: string, options?: { webSearch?: boolean; focusComposer?: boolean }) => {
-    const id = createThread(passage.threadId, {
-      messageId: passage.messageId,
-      start: passage.start,
-      end: passage.end,
-      quote: passage.quote,
-    }, { webSearch: options?.webSearch })
-    queueQuestion(activeSessionId, id, question)
-    if (options?.focusComposer !== false) focusNextRef.current = id
+    // A document beside a thread: its context stops where the thread is now.
+    const through = passage.source && !passage.messageId ? state.threads[passage.threadId]?.messages.at(-1)?.id : undefined
+    const source = passage.source ? { ...passage.source, ...(through ? { throughMessageId: through } : {}) } : undefined
+    const grow = (region?: AnchorRegion) => {
+      // The crop finished after this chat was closed: leave it be.
+      if (!mounted.current) return
+      const id = createThread(passage.threadId, {
+        messageId: passage.messageId,
+        // In a source, the offsets live with it: none point into the message.
+        start: source ? 0 : passage.start,
+        end: source ? 0 : passage.end,
+        quote: passage.quote,
+        ...(source ? { source } : {}),
+        ...(region ? { region } : {}),
+      }, { webSearch: options?.webSearch })
+      queueQuestion(activeSessionId, id, question)
+      if (options?.focusComposer !== false) focusNextRef.current = id
+      focus(id)
+    }
     setAsking(null)
     clearSelection()
-    focus(id)
-  }, [activeSessionId, clearSelection, createThread, focus])
+    const region = passage.region
+    // A region is cut out and stored first, so the first request can send it.
+    if (region) void cropRegion(region).then((crop) => grow({ ...region, crop }), () => grow(region))
+    else grow()
+  }, [activeSessionId, clearSelection, createThread, focus, state.threads])
 
   /**
    * With a key, web search costs extra per search. Say so the first time it
@@ -281,6 +316,17 @@ function TreeChatShell({
     setSource({ threadId, messageId, citationId })
   }, [focus, source])
 
+  /** A document from the sidebar, read beside the open thread; again closes it. */
+  const onOpenDocument = useCallback((documentId: string, title: string) => {
+    if (source?.document?.id === documentId) {
+      setSource(null)
+      return
+    }
+    setAsking(null)
+    // Not tied to any message: its branches read the whole thread as context.
+    setSource({ threadId: activeThread.id, messageId: '', citationId: 'document', document: { id: documentId, title } })
+  }, [activeThread.id, source])
+
   const closeSource = useCallback(() => {
     if (!source) return
     setSource(null)
@@ -354,6 +400,32 @@ function TreeChatShell({
   }
 
   const onRenameChat = useCallback((title: string) => renameSession(activeSessionId, title), [activeSessionId, renameSession])
+  // What is on screen is read, and a reply finishing there is not new.
+  const visibleRef = useRef<string[]>([])
+  const onVisibleChange = useCallback((threadIds: string[]) => {
+    visibleRef.current = threadIds
+    setVisibleThreads(activeSessionId, threadIds)
+    if (document.visibilityState !== 'hidden') markRead(activeSessionId, threadIds)
+  }, [activeSessionId, markRead])
+  useEffect(() => {
+    const onShow = () => {
+      if (document.visibilityState === 'visible') markRead(activeSessionId, visibleRef.current)
+    }
+    document.addEventListener('visibilitychange', onShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onShow)
+      setVisibleThreads(activeSessionId, [])
+    }
+  }, [activeSessionId, markRead])
+  const onOpenMap = useCallback(() => setMapOpen(true), [])
+  const onOpenLearn = useCallback((threadId?: string) => setLearning(learnScope(state, threadId ?? state.activeThreadId, activeSession.title)), [activeSession.title, state])
+  const onShare = useCallback(() => {
+    void import('@/lib/share-html').then(({ shareFileName, shareHtml }) => {
+      const name = shareFileName(activeSession.title)
+      downloadText(name, shareHtml(activeSession), 'text/html')
+      onToast({ id: createId('toast'), text: `Saved ${name}, a read-only copy of this chat`, actions: [] })
+    }, () => onToast({ id: createId('toast'), text: 'Could not save a copy. Reload and try again.', actions: [] }))
+  }, [activeSession, onToast])
   const onDeleteChat = useCallback(() => deleteWithUndo(activeSessionId), [activeSessionId, deleteWithUndo])
 
   const shell = useMemo<ShellValue>(
@@ -381,6 +453,10 @@ function TreeChatShell({
       onRenameChat,
       onDeleteChat,
       onWebSearchOn,
+      onOpenMap,
+      onOpenLearn,
+      onShare,
+      onAskRegion: openAsk,
     }),
     [
       draftFor,
@@ -406,6 +482,10 @@ function TreeChatShell({
       onRenameChat,
       onDeleteChat,
       onWebSearchOn,
+      onOpenMap,
+      onOpenLearn,
+      onShare,
+      openAsk,
     ],
   )
 
@@ -473,7 +553,19 @@ function TreeChatShell({
     [switchSession],
   )
   const lanePath = useMemo(() => pathTo(state, activeThread.id), [state, activeThread.id])
+  const askingPassage = usePassageKey(activeSessionId, asking?.passage ?? null)
+  const chipPassage = usePassageKey(activeSessionId, chip)
+  const askingThreadId = asking?.passage.threadId
+  const chipThreadId = chip?.threadId
+  const askingPath = useMemo(() => askingThreadId ? pathTo(state, askingThreadId).map((thread) => thread.id) : undefined, [askingThreadId, state])
+  const chipPath = useMemo(() => chipThreadId ? pathTo(state, chipThreadId).map((thread) => thread.id) : undefined, [chipThreadId, state])
   const sourceCitation = source ? citationFor(state.threads[source.threadId]?.messages, source) : undefined
+  /** Branches already grown from the open source, for its markers. */
+  const sourceBranches = useMemo(() => {
+    if (!source || !sourceCitation) return []
+    const key = anchorSourceKey({ source: { kind: sourceCitation.kind, title: sourceCitation.title, url: sourceCitation.url, documentId: sourceCitation.documentId } })
+    return Object.values(state.threads).filter((thread): thread is Thread => thread.parentId === source.threadId && anchorSourceKey(thread.anchor) === key)
+  }, [source, sourceCitation, state.threads])
   const trailing = useMemo<TrailingLane | null>(() => {
     if (!source || !sourceCitation || source.threadId !== activeThread.id) return null
     const message = `[data-message-id="${CSS.escape(source.messageId)}"]`
@@ -485,7 +577,8 @@ function TreeChatShell({
       testId: 'source-lane',
       ownerId: source.threadId,
       // The chip in the reply; the sources list when the text never cites it.
-      selector: `${message} ${cite}, [data-sources-for="${CSS.escape(source.messageId)}"] ${cite}`,
+      // A document from the sidebar has no line to draw.
+      selector: source.document ? '' : `${message} ${cite}, [data-sources-for="${CSS.escape(source.messageId)}"] ${cite}`,
       render: (frame) => (
         <Suspense fallback={null}>
           <SourceLane
@@ -495,11 +588,14 @@ function TreeChatShell({
             leadOffset={frame.leadOffset}
             narrow={narrow}
             onClose={closeSource}
+            passage={{ threadId: source.threadId, messageId: source.messageId, cited: !source.document }}
+            branches={sourceBranches}
+            openBranch={(threadId) => onOpenChild(source.threadId, threadId)}
           />
         </Suspense>
       ),
     }
-  }, [activeThread.id, closeSource, narrow, source, sourceCitation])
+  }, [activeThread.id, closeSource, narrow, onOpenChild, source, sourceBranches, sourceCitation])
   const sessionList = (inDialog: boolean) => (
     <SessionList
       sessions={sessions}
@@ -562,6 +658,19 @@ function TreeChatShell({
             <span className="truncate" data-testid="session-title">{activeSession.title}</span>
             <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
           </button>
+          {rootThread.messages.length > 0 ? (
+            <>
+              <MapButton newCount={unreadCount(state)} onMap={onOpenMap} />
+              <Menu
+                label="Chat actions"
+                testId="chat-menu"
+                items={[
+                  { label: 'What did I learn?', icon: <Lightbulb size={14} />, onSelect: () => onOpenLearn(), testId: 'open-learn' },
+                  { label: 'Share as HTML', icon: <Share size={14} />, onSelect: onShare, testId: 'share-html' },
+                ]}
+              />
+            </>
+          ) : null}
           <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings" data-testid="settings-button" className="icon-button">
             <Settings className="size-4" />
           </button>
@@ -579,7 +688,7 @@ function TreeChatShell({
               onNewChat={onNewChat}
               onOpenSettings={() => setSettingsOpen(true)}
               chats={sessionList(false)}
-              documents={<DocumentsSidebarSection onOpen={() => setDocumentsOpen(true)} />}
+              documents={<DocumentsSidebarSection onOpen={() => setDocumentsOpen(true)} onOpenDocument={onOpenDocument} openDocumentId={source?.document?.id} />}
               status={demoStatus}
             />
           )}
@@ -593,6 +702,8 @@ function TreeChatShell({
                 range={asking.passage.range}
                 quote={asking.passage.quote}
                 initialQuestion={asking.initial}
+                passage={askingPassage}
+                excludeThreadIds={askingPath}
                 onLens={(lens) => onLens(asking.passage, lens)}
                 onAsk={(question) => startBranch(asking.passage, question)}
                 onOpenAsk={() => undefined}
@@ -607,6 +718,8 @@ function TreeChatShell({
                 sheet={narrow}
                 anchor={chip}
                 quote={chip.quote}
+                passage={chipPassage}
+                excludeThreadIds={chipPath}
                 onLens={(lens) => onLens(chip, lens)}
                 onAsk={(question) => startBranch(chip, question)}
                 onOpenAsk={() => openAsk(chip)}
@@ -631,6 +744,7 @@ function TreeChatShell({
                 rootTitle={activeSession.title}
                 trailing={trailing}
                 busyIds={busyIds}
+                onVisibleChange={onVisibleChange}
                 renderLane={(thread, frame) => {
                   const index = lanePath.findIndex((entry) => entry.id === thread.id)
                   return (
@@ -707,6 +821,22 @@ function TreeChatShell({
         </Suspense>
       ) : null}
 
+      {mapOpen ? (
+        <Suspense fallback={null}>
+          <MapOverlay state={state} title={activeSession.title} narrow={narrow} onOpen={focus} onClose={() => setMapOpen(false)} />
+        </Suspense>
+      ) : null}
+      {learning ? (
+        <Suspense fallback={null}>
+          <LearnDrawer
+            state={state}
+            scope={learning}
+            onClose={() => setLearning(null)}
+            onCopied={() => onToast({ id: createId('toast'), text: 'Copied as Markdown', actions: [] })}
+          />
+        </Suspense>
+      ) : null}
+
       {previewThreadId && state.threads[previewThreadId] ? (
         <Suspense fallback={null}>
           <TakeawayDialog key={previewThreadId} thread={state.threads[previewThreadId]} state={state} onClose={() => setPreviewThreadId(null)} onConfirm={(content) => {
@@ -761,7 +891,21 @@ function TreeChatShell({
 }
 
 function citationFor(messages: ChatMessage[] | undefined, source: OpenSource): Citation | undefined {
+  if (source.document) return { id: source.citationId, kind: 'document', title: source.document.title, documentId: source.document.id }
   return messages?.find((message) => message.id === source.messageId)?.citations?.find((citation) => citation.id === source.citationId)
+}
+
+/** Where a selected passage is, stable while only its screen position changes. */
+function usePassageKey(sessionId: string, passage: ChipState | null): ExploredPassage | undefined {
+  const threadId = passage?.threadId
+  const messageId = passage?.messageId
+  const start = passage?.start
+  const end = passage?.end
+  const sourceKey = passage ? anchorSourceKey(passage) : ''
+  return useMemo(
+    () => threadId && messageId !== undefined && start !== undefined && end !== undefined ? { sessionId, threadId, messageId, start, end, sourceKey } : undefined,
+    [sessionId, threadId, messageId, start, end, sourceKey],
+  )
 }
 
 /** Phones get one lane at a time; there is no room for depth side by side. */
@@ -797,12 +941,7 @@ export function TreeChatApp() {
   }, [sessions])
   useEffect(() => {
     const prune = () => {
-      const referenced = new Set<string>()
-      for (const session of sessionsRef.current) {
-        for (const thread of Object.values(session.treeState.threads)) {
-          for (const message of thread.messages) for (const file of message.attachments ?? []) referenced.add(file.id)
-        }
-      }
+      const referenced = new Set(attachmentIds(sessionsRef.current))
       void pruneAttachments(referenced, Date.now() - ATTACHMENT_GRACE_MS).catch(() => undefined)
     }
     const idle = window.requestIdleCallback?.(prune, { timeout: 10_000 }) ?? window.setTimeout(prune, 5_000)

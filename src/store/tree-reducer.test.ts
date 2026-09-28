@@ -197,3 +197,17 @@ test('a summary lands only on the messages it was written from', () => {
   })
   assert.equal(reducer(edited, { type: 'set-summary', threadId: 'root', summary, basis }), edited)
 })
+
+test('a regenerate keeps the replaced answers on the thread until its run settles', () => {
+  const pending = { answers: [{ content: 'Old answer', createdAt: 0 }], index: 0 }
+  let state = reducer(base(), { type: 'rewrite-thread', threadId: 'root', messages: [msg('r1')], dropAnchorMessageIds: [], pendingAnswers: pending })
+  assert.deepEqual(state.threads.root!.pendingAnswers, pending)
+  // A rewrite that says nothing about them leaves them be; null forgets them.
+  state = reducer(state, { type: 'rewrite-thread', threadId: 'root', messages: [msg('r1')], dropAnchorMessageIds: [] })
+  assert.deepEqual(state.threads.root!.pendingAnswers, pending)
+  const forgotten = reducer(state, { type: 'rewrite-thread', threadId: 'root', messages: [msg('r1')], dropAnchorMessageIds: [], pendingAnswers: null })
+  assert.equal('pendingAnswers' in forgotten.threads.root!, false)
+  const settled = reducer(state, { type: 'settle-answers', threadId: 'root', messages: [msg('r1'), msg('a', 'assistant')] })
+  assert.equal('pendingAnswers' in settled.threads.root!, false)
+  assert.equal(settled.threads.root!.messages.length, 2)
+})

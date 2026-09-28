@@ -5,9 +5,10 @@ import {
   titleFromTree,
 } from '../lib/sessions.ts'
 import { reducer as treeReducer, type Action as TreeAction } from './tree-reducer.ts'
+import { readThreads } from '../lib/unread.ts'
 import type { ChatSession, SessionLibrary } from '@/types'
 
-export type SessionAction =
+type SessionAction =
   | { type: 'create-session' }
   | { type: 'switch-session'; sessionId: string }
   | { type: 'rename-session'; sessionId: string; title: string }
@@ -18,6 +19,8 @@ export type SessionAction =
   | { type: 'import-sessions'; sessions: ChatSession[] }
   /** Which stored documents a chat searches. */
   | { type: 'set-session-documents'; sessionId: string; documentIds: string[] }
+  /** These threads' new replies were seen. Not activity: the chat keeps its place. */
+  | { type: 'mark-read'; sessionId: string; threadIds: string[] }
   /** A document was removed from the library: detach it everywhere. */
   | { type: 'forget-document'; documentId: string }
   /** A tree edit: to the open chat, or to `sessionId` (a reply finishing in the background). */
@@ -123,6 +126,11 @@ export function sessionReducer(
         sameIds(session.documentIds, ids) ? session : withDocumentIds(session, ids),
       )
     }
+    case 'mark-read':
+      return mapSession(state, action.sessionId, (session) => {
+        const treeState = readThreads(session.treeState, action.threadIds)
+        return treeState === session.treeState ? session : { ...session, treeState }
+      })
     case 'forget-document': {
       let changed = false
       const sessions = state.sessions.map((session) => {

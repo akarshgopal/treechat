@@ -6,7 +6,7 @@ import { createModelEmbedder } from './model-embedder.ts'
  * use the deterministic bag-of-words embedder instead of downloading the
  * model. E2E tests do this with `page.addInitScript`; it is read once.
  */
-export const FAKE_EMBEDDER_KEY = 'treechat:fake-embedder'
+const FAKE_EMBEDDER_KEY = 'treechat:fake-embedder'
 
 let current: Embedder | null = null
 

@@ -682,3 +682,11 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   background-color: color-mix(in oklch, var(--branch) 32%, transparent);
   color: inherit;
 }
+
+/* Passages of a source lane that branches grew from. */
+::highlight(source-anchors) {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--branch) 75%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}

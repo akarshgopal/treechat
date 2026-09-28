@@ -1,8 +1,11 @@
 import {
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
+import { ExploredBefore } from '@/components/chat/ExploredBefore'
+import { useExplored } from '@/components/chat/use-explored'
 import { useThreadChat } from '@/lib/thread-run-registry'
 import { BranchHeader, MainHeader } from '@/components/chat/LaneHeader'
 import { type LaneFrame } from '@/components/chat/Lanes'
@@ -29,6 +32,10 @@ import {
   retryFromUser,
 } from '@/lib/message-actions'
 import { fromUIMessages, toUIMessages } from '@/lib/messages'
+import { pathTo } from '@/lib/tree'
+import { unreadCount } from '@/lib/unread'
+import { dropNextModel, pendingAnswersOf, runKeyOf, setNextModel, switchAnswer } from '@/lib/alternates'
+import type { PendingAnswers } from '@/types'
 import {
   OPENROUTER_MODEL_OPTIONS,
   shortModelName,
@@ -109,8 +116,12 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
   const [attachProblem, setAttachProblem] = useState<string | null>(null)
   const pendingFiles = shell.attachmentsFor(threadId)
   const visionNotice = useVisionNotice(pendingFiles, shell.status, shell.onSwitchModel)
+  // Never offer the thread being typed in, or those above it: you are there.
+  const here = useMemo(() => pathTo(state, threadId).map((entry) => entry.id), [state, threadId])
+  const explored = useExplored({ text: shell.draftFor(threadId), excludeThreadIds: here })
 
   if (!thread || !chat) return null
+  const runKey = runKeyOf(shell.sessionId, threadId)
 
   const snapshot = () => {
     const live = fromUIMessages(chat.messages)
@@ -161,6 +172,8 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     anchorIds: string[],
     replacedId: string | undefined,
     verb: string,
+    /** Answers of the reply a regenerate replaces, kept on the thread until it ends. */
+    pendingAnswers: PendingAnswers | null = null,
   ): Promise<boolean> => {
     if (!next) return Promise.resolve(false)
     const dropped = droppedMessageIds(before, next)
@@ -169,7 +182,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     const apply = () => {
       if (chat.isLoading) chat.stop()
       chat.setMessages(toUIMessages(next))
-      rewriteThread(threadId, next, anchorIds)
+      rewriteThread(threadId, next, anchorIds, pendingAnswers)
       void chat.reload()
     }
     if (lostMessages === 0 && lostBranches === 0) {
@@ -188,10 +201,30 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     return reply?.role === 'assistant' && reply.kind !== 'drop-summary' ? reply.id : undefined
   }
 
-  const retryAssistant = (messageId: string) => {
+  /**
+   * A new answer to the reply: its current and earlier answers stay beside
+   * it, and `model` (Try another model) answers just this once.
+   */
+  const retryAssistant = (messageId: string, model?: string) => {
     const before = snapshot()
     const next = retryFromAssistant(before, messageId)
-    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate')
+    const replaced = before.find((message) => message.id === messageId)
+    if (next && model) setNextModel(runKey, model)
+    void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate', replaced ? pendingAnswersOf(replaced) : null).then((applied) => {
+      if (!applied) dropNextModel(runKey)
+    })
+  }
+
+  /** Show another of a reply's answers. Only the latest reply, and never away from one with branches. */
+  const showAnswer = (messageId: string, index: number) => {
+    const before = snapshot()
+    const at = before.findIndex((message) => message.id === messageId)
+    if (at !== before.length - 1 || chat.isLoading) return
+    const next = [...before]
+    next[at] = switchAnswer(before[at]!, index)
+    if (next[at] === before[at]) return
+    chat.setMessages(toUIMessages(next))
+    rewriteThread(threadId, next, [])
   }
 
   const editUser = (messageId: string, content: string) => {
@@ -222,7 +255,12 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
       scrollPositions={shell.scrollPositions}
       scrollKey={`${shell.sessionId}:${threadId}`}
       error={chat.error?.message}
-      onRetryError={() => { void chat.reload() }}
+      onRetryError={() => {
+        // A failed regenerate put the reply back: try it again the same way, keeping its answers.
+        const last = snapshot().at(-1)
+        if (last?.role === 'assistant' && last.kind !== 'drop-summary') retryAssistant(last.id)
+        else void chat.reload()
+      }}
       onShowDemo={shell.onShowDemo}
       starters={shell.status.mode === 'live' ? LIVE_STARTERS : DEMO_STARTERS}
       onStarter={(question) => void chat.sendMessage(question)}
@@ -237,6 +275,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
           onMerge={() => shell.onMerge(threadId)}
           onDiscard={() => shell.onDiscard(threadId)}
           onReturn={() => shell.onReturn(threadId)}
+          onLearn={() => shell.onOpenLearn(threadId)}
           onCollapse={frame.onCollapse}
           summarized={Object.values(state.threads).some((entry) => entry.messages.some((message) => message.sourceThreadId === threadId))}
         />
@@ -247,6 +286,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
           onRename={shell.onRenameChat}
           onDelete={shell.onDeleteChat}
           onCollapse={frame.onCollapse}
+          overview={thread.messages.length > 0 ? { newCount: unreadCount(state), onMap: shell.onOpenMap, onLearn: () => shell.onOpenLearn(threadId), onShare: shell.onShare } : undefined}
         />
       )}
       draft={shell.draftFor(threadId)}
@@ -263,6 +303,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
           {visionNotice}
         </span>
       ) : undefined}
+      composerAbove={explored.matches.length > 0 ? <ExploredBefore matches={explored.matches} onOpen={explored.open} onDismiss={explored.dismiss} /> : undefined}
       composerWebSearch={{
         on: Boolean(thread.webSearch),
         paid: shell.status.mode === 'live',
@@ -278,6 +319,10 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
       onOpenChild={shell.onOpenChild}
       onFocusChild={shell.onFocus}
       onRetryAssistant={retryAssistant}
+      onTryModel={(messageId, model) => retryAssistant(messageId, model)}
+      onShowAnswer={showAnswer}
+      currentModel={shell.status.model}
+      onAskRegion={shell.onAskRegion}
       onRegenerateUser={regenerateUser}
       onEditUser={editUser}
       composerRef={(el) => shell.registerComposer(threadId, el)}

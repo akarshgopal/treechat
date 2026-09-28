@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import { type StreamChunk } from '@tanstack/ai'
 import { takeRunCitations } from '../citations.ts'
+import { runKeyOf } from '../run-key.ts'
 import { runChat } from '../client-chat.ts'
 import { saveProviderConfig } from '../provider.ts'
 import { setEmbedder } from './active-embedder.ts'
@@ -51,7 +52,9 @@ test('OpenRouter requests carry a DOCUMENTS system message and record citations'
   assert.match(system.at(-1)!.content, /^DOCUMENTS/)
   assert.match(system.at(-1)!.content, /\[1\] handbook\.md — Deploy/)
   assert.doesNotMatch(system.at(-1)!.content, /pasta/)
-  const citations = takeRunCitations('thread-or')
+  // Recorded for this chat's thread, not for a same-id thread in another chat.
+  assert.equal(takeRunCitations(runKeyOf('chat-2', 'thread-or')), undefined)
+  const citations = takeRunCitations(runKeyOf('chat-1', 'thread-or'))
   assert.deepEqual(citations?.map((citation) => [citation.id, citation.kind, citation.title, citation.documentId, citation.locator]), [
     ['1', 'document', 'handbook.md', 'handbook', 'Deploy'],
   ])

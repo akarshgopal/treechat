@@ -12,7 +12,7 @@ export const RESEND_RECENT_MESSAGES = 4
 export type RequestImage = { url: string; label: string }
 
 /** A message ready for a request: its text plus any images to send with it. */
-export type PreparedMessage = Record<string, unknown> & {
+type PreparedMessage = Record<string, unknown> & {
   role: string
   parts: Array<{ type: 'text'; content: string }>
   requestImages?: RequestImage[]

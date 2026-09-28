@@ -4,14 +4,14 @@ import { bm25Scores } from './keyword.ts'
 import { getChunks, getDocument } from './store.ts'
 import type { DocumentChunk, StoredDocument } from './types.ts'
 
-export type RetrievedChunk = {
+type RetrievedChunk = {
   chunk: DocumentChunk
   document: StoredDocument
   score: number
   method: 'vector' | 'keyword'
 }
 
-export type RetrieveOptions = {
+type RetrieveOptions = {
   embedder: Embedder
   /** How many excerpts to return at most. */
   k?: number

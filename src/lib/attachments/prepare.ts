@@ -7,20 +7,20 @@ import { putAttachment } from './store.ts'
  * sending more only costs tokens and upload time; text in screenshots stays
  * legible at this size.
  */
-export const MAX_IMAGE_EDGE = 1568
+const MAX_IMAGE_EDGE = 1568
 export const MAX_ATTACHMENTS = 8
 /** Refuse absurd inputs before decoding them. */
-export const MAX_INPUT_BYTES = 25 * 1024 * 1024
+const MAX_INPUT_BYTES = 25 * 1024 * 1024
 /** Text files are sent whole; past this they belong in Documents. */
-export const MAX_TEXT_CHARS = 60_000
+const MAX_TEXT_CHARS = 60_000
 
 const TEXT_TYPES = /^(text\/|application\/(json|xml|x-yaml|yaml|javascript|typescript|x-sh|sql|csv|toml))/
 const TEXT_EXTENSIONS = /\.(txt|md|markdown|mdx|csv|tsv|json|jsonl|ya?ml|toml|xml|html?|css|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|hpp|cs|php|sh|zsh|sql|log|ini|env|tex|rst|org)$/i
 
-export type AttachmentKind = 'image' | 'text' | 'document' | 'unsupported'
+type AttachmentKind = 'image' | 'text' | 'document' | 'unsupported'
 
 /** What a dropped or pasted file becomes. PDFs go to Documents. */
-export function classifyFile(file: Pick<File, 'name' | 'type'>): AttachmentKind {
+function classifyFile(file: Pick<File, 'name' | 'type'>): AttachmentKind {
   if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') return 'image'
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return 'document'
   if (TEXT_TYPES.test(file.type) || TEXT_EXTENSIONS.test(file.name)) return 'text'
@@ -28,13 +28,13 @@ export function classifyFile(file: Pick<File, 'name' | 'type'>): AttachmentKind 
 }
 
 /** Scale `width × height` so the long edge is at most `max`, keeping aspect. */
-export function fitWithin(width: number, height: number, max = MAX_IMAGE_EDGE): { width: number; height: number } {
+function fitWithin(width: number, height: number, max = MAX_IMAGE_EDGE): { width: number; height: number } {
   const scale = Math.min(1, max / Math.max(width, height))
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
 }
 
 /** Screenshots pasted from the clipboard arrive as "image.png"; name them usefully. */
-export function attachmentName(file: Pick<File, 'name' | 'type'>, now = new Date()): string {
+function attachmentName(file: Pick<File, 'name' | 'type'>, now = new Date()): string {
   if (file.name && file.name !== 'image.png' && file.name !== 'image') return file.name
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`
   return `Screenshot ${stamp}.${file.type.split('/')[1] ?? 'png'}`
@@ -95,7 +95,7 @@ async function prepareText(file: File): Promise<{ attachment: Attachment; data: 
   }
 }
 
-export type PreparedFiles = {
+type PreparedFiles = {
   attachments: Attachment[]
   /** Files meant for the Documents library (PDFs). */
   documents: File[]

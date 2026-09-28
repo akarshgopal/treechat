@@ -47,7 +47,7 @@ async function refresh() {
 }
 
 /** Load once per page. A document still "indexing" from a closed tab never finished. */
-export function loadDocumentLibrary() {
+function loadDocumentLibrary() {
   if (!loading) {
     loading = (async () => {
       try {

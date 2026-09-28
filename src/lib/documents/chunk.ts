@@ -1,6 +1,6 @@
 import { chunkId, type DocumentChunk, type TextBlock } from './types.ts'
 
-export type ChunkOptions = {
+type ChunkOptions = {
   /** Target characters per chunk. */
   size?: number
   /** Characters repeated from the end of one chunk at the start of the next. */
@@ -64,7 +64,7 @@ function tail(text: string, overlap: number): string {
   return space >= 0 ? window.slice(space + 1) : window
 }
 
-export function locatorOf(pages: number[], heading?: string): string | undefined {
+function locatorOf(pages: number[], heading?: string): string | undefined {
   if (pages.length > 0) {
     const first = Math.min(...pages)
     const last = Math.max(...pages)

@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Attachment, ProviderStatus } from '@/types'
+import type { AnchorRegion, AnchorSource, Attachment, ProviderStatus } from '@/types'
 
 /** A passage selected in a message: where it is and what it says. */
 export type ChipState = {
@@ -13,10 +13,23 @@ export type ChipState = {
   bottom: number
   /** The passage in the DOM, snapped to whole words. */
   range: Range | null
+  /** Selected in a source lane: offsets count that page or document's text. */
+  source?: AnchorSource
+  /** A region of an image instead of text. */
+  region?: AnchorRegion
 }
 
-/** A source open beside the reply that cites it. Shell state, never persisted. */
-export type OpenSource = { threadId: string; messageId: string; citationId: string }
+/**
+ * A source open beside the reply that cites it, or a document opened from
+ * the sidebar beside the open thread. Shell state, never persisted.
+ */
+export type OpenSource = {
+  threadId: string
+  messageId: string
+  citationId: string
+  /** Opened from the sidebar rather than cited. */
+  document?: { id: string; title: string }
+}
 
 /**
  * What every lane needs from the shell around it. Lanes render per thread, so
@@ -49,6 +62,12 @@ export type ShellValue = {
   onDeleteChat: () => void
   /** Web search was just switched on somewhere: mention its cost once. */
   onWebSearchOn: () => void
+  onOpenMap: () => void
+  /** A summary from this thread down: the root means the whole chat. Default: the open thread. */
+  onOpenLearn: (threadId?: string) => void
+  onShare: () => void
+  /** Ask about a region dragged out on an image. */
+  onAskRegion: (passage: ChipState) => void
 }
 
 export const ShellContext = createContext<ShellValue | null>(null)

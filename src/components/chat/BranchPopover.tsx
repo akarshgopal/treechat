@@ -1,4 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { ExploredBefore } from '@/components/chat/ExploredBefore'
+import { useExplored } from '@/components/chat/use-explored'
+import type { ExploredPassage } from '@/lib/explored'
 import { createPortal } from 'react-dom'
 import { ArrowUp, X } from 'lucide-react'
 import { LENSES, type Lens } from '@/lib/lenses'
@@ -6,7 +9,7 @@ import { selectionClientRect } from '@/lib/selection'
 import { useAutosize } from '@/lib/use-autosize'
 import { branchShortcutLabel, cn } from '@/lib/utils'
 
-export type PopoverAnchor = { top: number; left: number; bottom: number }
+type PopoverAnchor = { top: number; left: number; bottom: number }
 
 type BranchPopoverProps = {
   /** Where the passage sits on screen when the popover opened. */
@@ -25,6 +28,10 @@ type BranchPopoverProps = {
   onHold?: () => void
   /** Phones: a sheet along the bottom, clear of the system selection menu. */
   sheet?: boolean
+  /** Where the passage is, so branches already anchored over it are offered. */
+  passage?: ExploredPassage
+  /** Never offered as explored before: the thread the passage is in, and those above it. */
+  excludeThreadIds?: readonly string[]
 }
 
 const HIGHLIGHT = 'pending-branch'
@@ -45,8 +52,21 @@ export function BranchPopover({
   onCancel,
   onHold,
   sheet = false,
+  passage,
+  excludeThreadIds,
 }: BranchPopoverProps) {
   const [question, setQuestion] = useState(initialQuestion)
+  const explored = useExplored({ text: question, passage, excludeThreadIds })
+  const exploredLine = explored.matches.length > 0 ? (
+    <ExploredBefore
+      matches={explored.matches}
+      onOpen={(match) => {
+        onCancel()
+        explored.open(match)
+      }}
+      onDismiss={explored.dismiss}
+    />
+  ) : null
   const [position, setPosition] = useState(anchor)
   const input = useRef<HTMLTextAreaElement>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -54,9 +74,10 @@ export function BranchPopover({
   useAutosize(input, question, 140)
 
   // Clamp by the real width so the bar never runs off a narrow screen.
+  const exploredCount = explored.matches.length
   useLayoutEffect(() => {
     if (box.current) setMeasured({ width: box.current.offsetWidth, height: box.current.offsetHeight })
-  }, [mode])
+  }, [mode, exploredCount])
 
   // Follow the passage while the thread scrolls under an open question.
   const [seenAnchor, setSeenAnchor] = useState(anchor)
@@ -182,6 +203,7 @@ export function BranchPopover({
         submit()
       }}
     >
+      {exploredLine ? <div className="mb-0.5">{exploredLine}</div> : null}
       <div className="flex items-end gap-1 rounded-lg border border-input bg-background/40 pl-3 focus-within:border-branch/60">
         <label className="sr-only" htmlFor="branch-question-input">Your branch question</label>
         <textarea
@@ -225,11 +247,14 @@ export function BranchPopover({
         onKeyDown={onKeyDown}
       >
         {mode === 'lenses' ? (
-          <div className="flex min-w-0 items-center gap-1">
-            {lensRow}
-            <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
-            {askButton}
-          </div>
+          <>
+            {exploredLine ? <div className="mb-1.5" onMouseDown={(event) => event.preventDefault()}>{exploredLine}</div> : null}
+            <div className="flex min-w-0 items-center gap-1">
+              {lensRow}
+              <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
+              {askButton}
+            </div>
+          </>
         ) : questionForm}
       </div>,
       document.body,
@@ -242,7 +267,7 @@ export function BranchPopover({
       className={cn(
         'branch-popover pointer-events-auto fixed z-50 -translate-x-1/2 rounded-xl border border-branch/30 bg-paper shadow-2xl',
         roomAbove && '-translate-y-full',
-        mode === 'lenses' ? 'flex max-w-[calc(100vw-24px)] items-center gap-0.5 p-1' : 'p-1.5',
+        mode === 'lenses' ? 'flex max-w-[calc(100vw-24px)] flex-wrap items-center gap-0.5 p-1' : 'p-1.5',
       )}
       style={{ top, left, width }}
       data-testid="branch-popover"
@@ -252,6 +277,8 @@ export function BranchPopover({
     >
       {mode === 'lenses' ? (
         <>
+          {/* Keeps the selection (and so this bar) alive through a click. */}
+          {exploredLine ? <div className="order-last w-0 min-w-full pt-1" onMouseDown={(event) => event.preventDefault()}>{exploredLine}</div> : null}
           {lensRow}
           <span className="mx-0.5 h-5 w-px shrink-0 bg-border" aria-hidden />
           {askButton}

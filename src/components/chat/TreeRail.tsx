@@ -120,16 +120,20 @@ function Row({
             className={cn(
               'min-w-0 truncate text-xs leading-tight',
               active && 'font-medium text-foreground',
+              thread.unread && 'font-semibold text-foreground',
             )}
           >
             {label}
           </span>
+          {thread.unread ? (
+            <span className="ml-auto size-1.5 shrink-0 rounded-full bg-branch" role="img" aria-label="New reply" title="New reply" data-testid="thread-unread" />
+          ) : null}
           {summarized ? (
-            <Check className="ml-auto size-3 shrink-0 text-branch" aria-label="Takeaway brought back" />
+            <Check className={cn('size-3 shrink-0 text-branch', !thread.unread && 'ml-auto')} aria-label="Takeaway brought back" />
           ) : null}
           {busyIds.has(thread.id) ? (
             <span
-              className={cn('size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/70', !summarized && 'ml-auto')}
+              className={cn('size-1.5 shrink-0 animate-pulse rounded-full bg-foreground/70', !summarized && !thread.unread && 'ml-auto')}
               role="status"
               aria-label="Replying"
               title="Replying…"

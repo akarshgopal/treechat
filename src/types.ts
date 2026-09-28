@@ -55,6 +55,25 @@ export type ChatMessage = {
   attachments?: Attachment[]
   /** What a reply cost, as OpenRouter reported it. */
   usage?: MessageUsage
+  /** The model asked for when it was not the one in Settings ("Try another model"). */
+  model?: string
+  /**
+   * A reply's other answers (regenerated, or from another model), oldest
+   * first. `content` and the fields above are always the current answer, the
+   * only one context, takeaways and summaries see.
+   */
+  alternates?: AnswerAlternate[]
+  /** Where the current answer sits among all of them; its index when absent is last. */
+  answerIndex?: number
+}
+
+/** An answer kept beside the current one on the same reply. */
+export type AnswerAlternate = {
+  content: string
+  createdAt: number
+  citations?: Citation[]
+  usage?: MessageUsage
+  model?: string
 }
 
 /** Tokens and cost of one reply; `cost` is USD (OpenRouter credits). */
@@ -78,12 +97,54 @@ export type ThreadSummary = {
   createdAt: number
 }
 
-/** Where a thread is pinned inside its parent's message. */
+/**
+ * Where a thread is pinned inside its parent's message. `start` / `end` count
+ * characters of the message's text; they are 0 when the anchor is in a source
+ * or an image (see `source` / `region`), so older versions underline nothing.
+ */
 export type Anchor = {
   messageId: string
   start: number
   end: number
   quote: string
+  /** Branched from a cited page or a document rather than the message itself. */
+  source?: AnchorSource
+  /** Branched from a region of an image attached to the message. */
+  region?: AnchorRegion
+}
+
+/** The page or document a passage was selected in. */
+export type AnchorSource = {
+  kind: 'web' | 'document'
+  title: string
+  /** The passage in the source's text, in characters. */
+  start: number
+  end: number
+  url?: string
+  documentId?: string
+  /** Where in the source, e.g. "p. 4". */
+  locator?: string
+  /** The citation of the anchor message it was opened from, if any. */
+  citationId?: string
+  /** A bounded stretch of the source around the passage, sent as context. */
+  context?: string
+  /**
+   * A document opened beside a thread hangs off no message (`messageId: ''`);
+   * its context is the thread up to this message, its last when branched.
+   */
+  throughMessageId?: string
+}
+
+/** A rectangle of an image, in fractions of its width and height. */
+export type AnchorRegion = {
+  attachmentId: string
+  name: string
+  x: number
+  y: number
+  w: number
+  h: number
+  /** The cropped region, stored as its own image and sent with the branch. */
+  crop?: Attachment
 }
 
 /**
@@ -107,7 +168,17 @@ export type Thread = {
   summary?: ThreadSummary
   /** Replies in this thread search the web and cite their sources. Set only when on. */
   webSearch?: boolean
+  /** A reply finished here while it was out of sight. Set only when true. */
+  unread?: true
+  /**
+   * While a regenerate runs: the answers of the reply it replaced, saved so
+   * that a failure, or a reload, puts them back rather than losing them.
+   */
+  pendingAnswers?: PendingAnswers
 }
+
+/** A replaced reply's answers, in order, and which one was showing. */
+export type PendingAnswers = { answers: AnswerAlternate[]; index: number }
 
 export type TreeState = {
   threads: Record<string, Thread>

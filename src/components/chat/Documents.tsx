@@ -43,7 +43,12 @@ export function AddFilesButton({ onAdded, compact = false }: { onAdded: (ids: st
 }
 
 /** Compact sidebar section: the library at a glance, attach in one click. */
-export function DocumentsSidebarSection({ onOpen }: { onOpen: () => void }) {
+export function DocumentsSidebarSection({ onOpen, onOpenDocument, openDocumentId }: {
+  onOpen: () => void
+  /** Read a document beside the chat. */
+  onOpenDocument?: (documentId: string, title: string) => void
+  openDocumentId?: string
+}) {
   const library = useDocumentLibrary()
   const { attached, setAttached, attach } = useChatDocuments()
   const count = attached.filter((id) => library.documents.some((doc) => doc.id === id)).length
@@ -64,19 +69,36 @@ export function DocumentsSidebarSection({ onOpen }: { onOpen: () => void }) {
             const checked = attached.includes(doc.id)
             return (
               <li key={doc.id}>
-                <label className="flex h-7 min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground">
-                  <input
-                    type="checkbox"
-                    className="size-3.5 shrink-0 accent-[var(--foreground)]"
-                    checked={checked}
-                    disabled={doc.status === 'error'}
-                    onChange={(event) => setAttached(event.target.checked ? [...attached, doc.id] : attached.filter((id) => id !== doc.id))}
-                    aria-label={`Use ${doc.name} in this chat`}
-                  />
-                  <span className={cn('min-w-0 flex-1 truncate', checked && 'text-foreground')} title={doc.name}>{doc.name}</span>
+                <div className={cn('flex h-7 min-w-0 items-center rounded-md pr-2 text-xs text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground', openDocumentId === doc.id && 'bg-foreground/[0.07] text-foreground')}>
+                  {/* The whole left of the row toggles the checkbox; the name opens the document. */}
+                  <label className={cn('flex h-full shrink-0 cursor-pointer items-center pl-2 pr-2', !(onOpenDocument && doc.status === 'ready') && 'min-w-0 flex-1')}>
+                    <input
+                      type="checkbox"
+                      className="size-3.5 shrink-0 cursor-pointer accent-[var(--foreground)]"
+                      checked={checked}
+                      disabled={doc.status === 'error'}
+                      onChange={(event) => setAttached(event.target.checked ? [...attached, doc.id] : attached.filter((id) => id !== doc.id))}
+                      aria-label={`Use ${doc.name} in this chat`}
+                    />
+                    {onOpenDocument && doc.status === 'ready' ? null : (
+                      <span className={cn('ml-2 min-w-0 flex-1 truncate', checked && 'text-foreground')} title={doc.name}>{doc.name}</span>
+                    )}
+                  </label>
+                  {onOpenDocument && doc.status === 'ready' ? (
+                    <button
+                      type="button"
+                      className={cn('min-w-0 flex-1 truncate text-left', checked && 'text-foreground')}
+                      title={`Read ${doc.name} beside the chat`}
+                      aria-pressed={openDocumentId === doc.id}
+                      onClick={() => onOpenDocument(doc.id, doc.name)}
+                      data-testid="document-open"
+                    >
+                      {doc.name}
+                    </button>
+                  ) : null}
                   {busy ? <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground" title="Indexing" /> : null}
                   {doc.status === 'error' ? <span className="size-1.5 shrink-0 rounded-full bg-destructive" title={doc.error} /> : null}
-                </label>
+                </div>
               </li>
             )
           })}
