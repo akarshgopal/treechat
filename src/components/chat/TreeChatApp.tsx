@@ -39,6 +39,7 @@ import {
 } from '@/lib/selection'
 import { descendantIds, pathTo } from '@/lib/tree'
 import { isBranchShortcut } from '@/lib/utils'
+import type { ExploredPassage } from '@/lib/explored'
 import { useTree } from '@/store/tree-store'
 import type { Attachment, ChatMessage, ChatSession, Citation, ProviderStatus } from '@/types'
 
@@ -473,6 +474,8 @@ function TreeChatShell({
     [switchSession],
   )
   const lanePath = useMemo(() => pathTo(state, activeThread.id), [state, activeThread.id])
+  const askingPassage = usePassageKey(activeSessionId, asking?.passage ?? null)
+  const chipPassage = usePassageKey(activeSessionId, chip)
   const sourceCitation = source ? citationFor(state.threads[source.threadId]?.messages, source) : undefined
   const trailing = useMemo<TrailingLane | null>(() => {
     if (!source || !sourceCitation || source.threadId !== activeThread.id) return null
@@ -593,6 +596,7 @@ function TreeChatShell({
                 range={asking.passage.range}
                 quote={asking.passage.quote}
                 initialQuestion={asking.initial}
+                passage={askingPassage}
                 onLens={(lens) => onLens(asking.passage, lens)}
                 onAsk={(question) => startBranch(asking.passage, question)}
                 onOpenAsk={() => undefined}
@@ -607,6 +611,7 @@ function TreeChatShell({
                 sheet={narrow}
                 anchor={chip}
                 quote={chip.quote}
+                passage={chipPassage}
                 onLens={(lens) => onLens(chip, lens)}
                 onAsk={(question) => startBranch(chip, question)}
                 onOpenAsk={() => openAsk(chip)}
@@ -762,6 +767,18 @@ function TreeChatShell({
 
 function citationFor(messages: ChatMessage[] | undefined, source: OpenSource): Citation | undefined {
   return messages?.find((message) => message.id === source.messageId)?.citations?.find((citation) => citation.id === source.citationId)
+}
+
+/** Where a selected passage is, stable while only its screen position changes. */
+function usePassageKey(sessionId: string, passage: ChipState | null): ExploredPassage | undefined {
+  const threadId = passage?.threadId
+  const messageId = passage?.messageId
+  const start = passage?.start
+  const end = passage?.end
+  return useMemo(
+    () => threadId && messageId && start !== undefined && end !== undefined ? { sessionId, threadId, messageId, start, end } : undefined,
+    [sessionId, threadId, messageId, start, end],
+  )
 }
 
 /** Phones get one lane at a time; there is no room for depth side by side. */

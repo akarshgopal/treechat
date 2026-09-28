@@ -2,6 +2,7 @@ import { prefixFingerprint, summaryHolds } from '../lib/compaction.ts'
 import { doomedIdsForAnchors } from '../lib/message-actions.ts'
 import { createEmptyState, createSeedState } from '../lib/seed.ts'
 import { descendantIds, expansionToReveal } from '../lib/tree.ts'
+import { clearVisibleUnread } from '../lib/unread.ts'
 import type { ChatMessage, Thread, ThreadSummary, TreeState } from '@/types'
 
 export type Action =
@@ -20,6 +21,8 @@ export type Action =
   | { type: 'expand'; parentId: string; childId: string | null }
   | { type: 'focus'; threadId: string }
   | { type: 'set-web-search'; threadId: string; on: boolean }
+  /** A reply finished while the thread was out of sight. */
+  | { type: 'mark-unread'; threadId: string }
   | { type: 'discard'; threadId: string }
   /** Undo a discard: put removed threads back, when their parents are still here. */
   | { type: 'restore-threads'; threads: Thread[]; focusId?: string }
@@ -134,14 +137,20 @@ export function reducer(state: TreeState, action: Action): TreeState {
       }
     case 'focus': {
       if (!state.threads[action.threadId]) return state
-      return {
+      // Opening a thread (and so the lanes above it) reads its new replies.
+      return clearVisibleUnread({
         ...state,
         activeThreadId: action.threadId,
         expanded: {
           ...state.expanded,
           ...expansionToReveal(state, action.threadId),
         },
-      }
+      })
+    }
+    case 'mark-unread': {
+      const thread = state.threads[action.threadId]
+      if (!thread || thread.unread) return state
+      return withThread(state, { ...thread, unread: true })
     }
     case 'set-web-search': {
       const thread = state.threads[action.threadId]
@@ -173,7 +182,7 @@ export function reducer(state: TreeState, action: Action): TreeState {
       }
       if (Object.keys(threads).length === Object.keys(state.threads).length) return state
       const focusId = action.focusId && threads[action.focusId] ? action.focusId : state.activeThreadId
-      return { ...state, threads, activeThreadId: focusId, expanded: { ...state.expanded, ...expansionToReveal({ ...state, threads }, focusId) } }
+      return clearVisibleUnread({ ...state, threads, activeThreadId: focusId, expanded: { ...state.expanded, ...expansionToReveal({ ...state, threads }, focusId) } })
     }
     case 'reset':
       return createEmptyState()

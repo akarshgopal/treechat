@@ -107,6 +107,8 @@ export type Thread = {
   summary?: ThreadSummary
   /** Replies in this thread search the web and cite their sources. Set only when on. */
   webSearch?: boolean
+  /** A reply finished here while it was out of sight. Set only when true. */
+  unread?: true
 }
 
 export type TreeState = {

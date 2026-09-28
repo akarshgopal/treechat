@@ -98,6 +98,7 @@ function parseThread(value: unknown): Thread | null {
     // A summary of messages that are no longer there would describe nothing.
     ...(summary && messages.some((message) => message.id === summary.throughMessageId) ? { summary } : {}),
     ...(record.webSearch === true ? { webSearch: true } : {}),
+    ...(record.unread === true ? { unread: true as const } : {}),
   }
 }
 

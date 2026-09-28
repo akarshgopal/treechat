@@ -1,8 +1,11 @@
 import {
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
+import { ExploredBefore } from '@/components/chat/ExploredBefore'
+import { useExplored } from '@/components/chat/use-explored'
 import { useThreadChat } from '@/lib/thread-run-registry'
 import { BranchHeader, MainHeader } from '@/components/chat/LaneHeader'
 import { type LaneFrame } from '@/components/chat/Lanes'
@@ -29,6 +32,7 @@ import {
   retryFromUser,
 } from '@/lib/message-actions'
 import { fromUIMessages, toUIMessages } from '@/lib/messages'
+import { pathTo } from '@/lib/tree'
 import {
   OPENROUTER_MODEL_OPTIONS,
   shortModelName,
@@ -109,6 +113,9 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
   const [attachProblem, setAttachProblem] = useState<string | null>(null)
   const pendingFiles = shell.attachmentsFor(threadId)
   const visionNotice = useVisionNotice(pendingFiles, shell.status, shell.onSwitchModel)
+  // Never offer the thread being typed in, or those above it: you are there.
+  const here = useMemo(() => pathTo(state, threadId).map((entry) => entry.id), [state, threadId])
+  const explored = useExplored({ text: shell.draftFor(threadId), excludeThreadIds: here })
 
   if (!thread || !chat) return null
 
@@ -263,6 +270,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
           {visionNotice}
         </span>
       ) : undefined}
+      composerAbove={explored.matches.length > 0 ? <ExploredBefore matches={explored.matches} onOpen={explored.open} onDismiss={explored.dismiss} /> : undefined}
       composerWebSearch={{
         on: Boolean(thread.webSearch),
         paid: shell.status.mode === 'live',

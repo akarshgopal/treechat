@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@tanstack/ai-react'
 import { chatConnection } from '@/lib/chat-connection'
 import { takeRunCitations } from '@/lib/citations'
-import { fromUIMessages, sameTranscript, toUIMessages } from '@/lib/messages'
+import { fromUIMessages, sameTranscript, textOf, toUIMessages } from '@/lib/messages'
 import { refreshSummary } from '@/lib/summarize'
 import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { hasQuestion, parseKey, publishChat, runKey, setBusy, takeQuestion, useRunningKeys } from '@/lib/thread-run-registry'
@@ -36,7 +36,7 @@ export function ThreadRunners({ epoch }: { epoch: number }) {
 }
 
 function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: string }) {
-  const { sessions, replaceMessages, setSummary } = useTree()
+  const { sessions, replaceMessages, setSummary, markUnread } = useTree()
   const session = sessions.find((entry) => entry.id === sessionId)
   const state = session?.treeState
   const thread = state?.threads[threadId]
@@ -103,6 +103,7 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
     const finished = wasLoading.current && !chat.isLoading
     wasLoading.current = chat.isLoading
     if (finished) {
+      if (!chat.error && textOf(chat.messages.at(-1)).trim()) markUnread(threadId, sessionId)
       if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis, sessionId))
       const citations = takeRunCitations(threadId)
       const usage = takeRunUsage(threadId)
@@ -118,7 +119,7 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
       }
     }
     setBusy(key, chat.isLoading || sending.current)
-  }, [chat.error, chat.isLoading, chat.messages, key, replaceMessages, sessionId, setMessages, setSummary, summary, threadId])
+  }, [chat.error, chat.isLoading, chat.messages, key, markUnread, replaceMessages, sessionId, setMessages, setSummary, summary, threadId])
 
   useEffect(() => () => setBusy(key, false), [key])
 

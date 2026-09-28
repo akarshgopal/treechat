@@ -31,6 +31,8 @@ type ThreadViewProps = {
   /** Files for the next message in this thread. */
   composerAttach?: ComposerAttach
   composerNotice?: ReactNode
+  /** Above the composer: branches already explored about the draft. */
+  composerAbove?: ReactNode
   /** Whether replies in this thread search the web. */
   composerWebSearch?: ComposerWebSearch
   emptyLabel?: string
@@ -92,6 +94,7 @@ export function ThreadView({
   composerTrailing,
   composerAttach,
   composerNotice,
+  composerAbove,
   composerWebSearch,
   emptyLabel,
   onRetryAssistant,
@@ -274,6 +277,7 @@ export function ThreadView({
         <div className="mx-auto w-full max-w-3xl">
           {guide}
           {error ? <div role="alert" className="mb-2 flex items-center gap-2 text-[13px] text-destructive">{error} <button type="button" className="btn" onClick={onRetryError}>Try again</button></div> : null}
+          {composerAbove ? <div className="mb-2">{composerAbove}</div> : null}
           {composer}
         </div>
       </div>

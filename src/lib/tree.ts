@@ -297,3 +297,23 @@ export function branchForwardedProps(
     context: threadContext(state, threadId),
   }
 }
+
+/**
+ * A branch's takeaway: the latest one brought back into its parent. Only the
+ * summary itself, not the parent's other messages.
+ */
+export function branchTakeaway(state: TreeState, threadId: string): string | undefined {
+  const thread = state.threads[threadId]
+  const parent = thread?.parentId ? state.threads[thread.parentId] : undefined
+  if (!parent) return undefined
+  for (let index = parent.messages.length - 1; index >= 0; index -= 1) {
+    const message = parent.messages[index]!
+    if (message.kind === 'drop-summary' && message.sourceThreadId === threadId && message.content.trim()) return message.content.trim()
+  }
+  return undefined
+}
+
+/** The first question asked in a thread, if any. */
+export function firstQuestion(thread: Thread): string | undefined {
+  return thread.messages.find((message) => message.role === 'user' && message.content.trim())?.content.trim()
+}
