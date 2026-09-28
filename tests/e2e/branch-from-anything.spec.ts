@@ -11,6 +11,8 @@ Markdown Content:
 
 ${'Filler about reading long pages. '.repeat(20)}
 
+![A diagram of a branch](https://example.com/diagram.png)
+
 In practice, a branch stays attached to the passage that prompted it, which is the whole point.
 
 Tangents that wander off are easier to follow when they sit beside their source.`
@@ -68,6 +70,8 @@ test('a passage of a cited page branches like message text, with the page around
   await expect(page.getByTestId('branch-lane').getByTestId('margin-branch')).toHaveCount(1)
   await page.getByTestId('branch-lane').getByRole('button', { name: 'Source 1: Branching conversations keep tangents in place' }).click()
   await expect(page.getByTestId('source-lane').getByTestId('source-branch')).toHaveCount(1)
+  // The underline sits on the passage itself, past the image placeholder before it.
+  await expect.poll(() => page.evaluate(() => [...(CSS.highlights.get('source-anchors') ?? [])].map((range) => range.toString()))).toEqual(['easier to follow when they sit beside their source'])
 })
 
 test('a document from the sidebar opens beside the chat, and its text branches', async ({ page }, testInfo) => {
@@ -92,7 +96,8 @@ test('a document from the sidebar opens beside the chat, and its text branches',
   })
   const grown = (await branchWith(page, (thread) => Boolean(thread.anchor?.source)))!
   expect(grown.parentId).toBe('thread-root')
-  expect(grown.anchor!.messageId).toBe('msg-root-6')
+  // Tied to no message, so rewriting the latest reply leaves it be.
+  expect(grown.anchor!.messageId).toBe('')
   // Not an underline in the message it hangs off.
   await expect(page.locator(`[data-mark-ids~="${grown.id}"]`)).toHaveCount(0)
 

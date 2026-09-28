@@ -248,10 +248,12 @@ function contextSections(
     if (!anchor) continue
 
     const turns = turnsAt(i)
-    const fromSummary = summarizedTranscriptUpTo(thread, anchor.messageId, turns, charsPerTurn, summaryWindow)
+    // A document opened beside a thread is anchored to no message: the thread so far.
+    const anchorId = anchor.messageId || thread.messages.at(-1)?.id || ''
+    const fromSummary = summarizedTranscriptUpTo(thread, anchorId, turns, charsPerTurn, summaryWindow)
     if (fromSummary) summarized = true
     const transcript = fromSummary
-      ?? transcriptUpTo(thread.messages, anchor.messageId, turns, charsPerTurn)
+      ?? transcriptUpTo(thread.messages, anchorId, turns, charsPerTurn)
     const originatingQuote = i === 0 ? null : (thread.anchor?.quote ?? null)
     sections.push(formatAncestorSection(i, transcript, originatingQuote))
   }

@@ -308,8 +308,9 @@ function TreeChatShell({
       return
     }
     setAsking(null)
-    setSource({ threadId: activeThread.id, messageId: activeThread.messages.at(-1)?.id ?? '', citationId: 'document', document: { id: documentId, title } })
-  }, [activeThread, source])
+    // Not tied to any message: its branches read the whole thread as context.
+    setSource({ threadId: activeThread.id, messageId: '', citationId: 'document', document: { id: documentId, title } })
+  }, [activeThread.id, source])
 
   const closeSource = useCallback(() => {
     if (!source) return

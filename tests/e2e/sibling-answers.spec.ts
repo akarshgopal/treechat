@@ -122,3 +122,25 @@ test('only the latest reply can switch', async ({ page }) => {
   await expect(pager.getByRole('button', { name: 'Previous answer' })).toBeDisabled()
   await expect(pager).toHaveAttribute('title', 'Only the latest reply can switch answers')
 })
+
+test('answers kept by a failed regenerate do not end up on the next reply', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'the queue is the same on phones')
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })))
+  await page.reload()
+  let calls = 0
+  await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {
+    calls += 1
+    if (calls === 1) return route.fulfill({ status: 500, body: JSON.stringify({ error: { message: 'Upstream is down' } }) })
+    const body = `data: ${JSON.stringify({ choices: [{ delta: { content: 'A fresh reply' } }] })}\n\ndata: [DONE]\n\n`
+    return route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body })
+  })
+  await restoreDemo(page)
+  await page.getByTestId('message-retry').last().click({ force: true })
+  await expect(page.getByRole('alert')).toContainText('Upstream is down')
+  await page.getByTestId('thread-composer').fill('Something else entirely')
+  await page.getByTestId('thread-composer').press('Enter')
+  await expect(lastReply(page)).toHaveText('A fresh reply', { timeout: 15_000 })
+  await expect(page.getByTestId('answer-pager')).toHaveCount(0)
+  await expect.poll(async () => (await rootMessages(page)).at(-1)?.content).toBe('A fresh reply')
+  expect((await rootMessages(page)).at(-1)!.alternates).toBeUndefined()
+})

@@ -130,6 +130,8 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     const text = shell.draftFor(threadId).trim()
     const attachments = shell.attachmentsFor(threadId)
     if (!text && attachments.length === 0) return
+    // Answers waiting on a failed regenerate belong to that reply, not this one.
+    dropEarlierAnswers(threadId)
     shell.setDraft(threadId, '')
     shell.setAttachments(threadId, () => [])
     setAttachProblem(null)

@@ -79,3 +79,11 @@ test('a passage matches branches anchored over it only within the same text', ()
   assert.deepEqual(exploredMatches([session], { passage, sessionId: 's' }), [])
   assert.equal(exploredMatches([session], { passage: { ...passage, sourceKey: 'document:doc-1' }, sessionId: 's' })[0]?.threadId, 'b')
 })
+
+test('a document opened beside a thread (no anchor message) reads the thread so far', () => {
+  const session = sessionWith({ ...fromPage, source: { ...fromPage.source!, citationId: undefined } })
+  session.treeState.threads.b!.anchor!.messageId = ''
+  const { context } = branchForwardedProps(session.treeState, 'b')!
+  // The main thread's latest message is in, not just the quote.
+  assert.match(context, /assistant: Every lane has its own composer/)
+})

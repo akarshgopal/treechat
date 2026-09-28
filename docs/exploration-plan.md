@@ -160,9 +160,9 @@ tests for the pure logic and an e2e spec per feature:
 
 Choices worth knowing:
 
-- A document opened from the sidebar hangs its branches off the open thread's
-  latest message, so they carry that conversation as context. It has no
-  margin marker in the message; the document lane shows its branches.
+- A document opened from the sidebar anchors its branches to no message
+  (`messageId: ''`); they read the open thread so far as context, and
+  rewriting a reply never touches them. The document lane shows them.
 - Cited-page branches get their margin marker at the citation in the reply.
 - Switching answers is blocked away from an answer that has branches, and on
   any reply but the latest. Regenerate and Try another model still ask

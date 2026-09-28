@@ -8,6 +8,7 @@ import { loadSourceContent, locateSnippet, type SourceContent } from '@/lib/sour
 import type { Citation, Thread } from '@/types'
 import { threadTitle } from '@/lib/tree'
 import { cn } from '@/lib/utils'
+import { OFFSET_IGNORE_ATTR } from '@/lib/selection'
 import { RemoteImage } from '@/components/chat/RemoteImage'
 
 type LoadState =
@@ -226,7 +227,10 @@ function snippetRange(root: HTMLElement, snippet: string | undefined): Range | n
 
 /** The DOM range of characters `[start, end)` of `root`'s text. */
 function offsetRange(root: HTMLElement, start: number, end: number): Range | null {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  // Counted as selection offsets are: chrome such as image placeholders is skipped.
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => node.parentElement?.closest(`[${OFFSET_IGNORE_ATTR}]`) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  })
   let seen = 0
   let startPoint: { node: Text; offset: number } | null = null
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
