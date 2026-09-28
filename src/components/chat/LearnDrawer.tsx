@@ -66,7 +66,11 @@ export function LearnDrawer({ state, scope, onClose, onCopied }: {
           data-testid="learn-drawer"
         >
           <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border pl-5 pr-3">
-            <DialogPrimitive.Title className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">What did I learn?</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+              What did I learn?
+              {/* Whole chat on the main thread; otherwise the open branch and what grew from it. */}
+              <span className="ml-2 font-normal text-muted-foreground" data-testid="learn-scope">{snapshot.scope.title}</span>
+            </DialogPrimitive.Title>
             <DialogPrimitive.Close className="icon-button" aria-label="Close" title="Close · Esc">
               <X size={16} />
             </DialogPrimitive.Close>

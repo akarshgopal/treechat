@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { ArrowUpRight, ChevronLeft, ChevronRight, GitBranch, Pencil, RotateCw, Shuffle } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ModelPicker } from '@/components/chat/ModelPicker'
 import { answerModel, answersOf, currentIndex } from '@/lib/alternates'
 import { isModelId, OPENROUTER_MODEL_OPTIONS } from '@/lib/provider'
 import { SourcesList } from '@/components/chat/Citations'
@@ -361,6 +360,9 @@ function UsageLabel({ usage }: { usage: MessageUsage }) {
   )
 }
 
+/** Only "Other…" needs the full model list, so it loads with that dialog. */
+const ModelPicker = lazy(() => import('@/components/chat/ModelPicker').then((module) => ({ default: module.ModelPicker })))
+
 /** A model's short display name: the preset's label, else OpenRouter's name, else the id. */
 function modelLabel(model: string): string {
   return OPENROUTER_MODEL_OPTIONS.find((option) => option.id === model)?.label
@@ -432,7 +434,9 @@ function TryAnotherModel({ currentModel, onPick }: { currentModel?: string; onPi
               <DialogTitle>Try another model</DialogTitle>
               <DialogDescription>For this answer only; Settings stay as they are.</DialogDescription>
             </DialogHeader>
-            <ModelPicker id="try-model-picker" label="Model" value={picked} onChange={setPicked} suggestions={options} testId="try-model-picker" />
+            <Suspense fallback={<div className="h-9" />}>
+              <ModelPicker id="try-model-picker" label="Model" value={picked} onChange={setPicked} suggestions={options} testId="try-model-picker" />
+            </Suspense>
             <div className="flex justify-end gap-2">
               <button type="button" className="btn" onClick={() => setOther(false)}>Cancel</button>
               <button

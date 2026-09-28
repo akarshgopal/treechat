@@ -15,7 +15,7 @@ import { withDocumentNote, withDocuments } from './documents/rag.ts'
 import { describeImagesInBackground } from './attachments/describe.ts'
 import { parseAttachments } from './attachments/parse.ts'
 import { prepareRequestMessages, type RequestImage } from './attachments/request.ts'
-import { claimNextModel } from './alternates.ts'
+import { claimNextModel, runKeyOf } from './alternates.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const OPENROUTER_APP_TITLE = 'TreeChat'
@@ -372,7 +372,8 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
 async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   const config = loadProviderConfig()
   // "Try another model" asks for one reply from a model other than Settings'.
-  const model = input.model ?? claimNextModel(input.threadId)
+  const sessionId = typeof input.forwardedProps?.cacheSessionId === 'string' ? input.forwardedProps.cacheSessionId : ''
+  const model = input.model ?? claimNextModel(runKeyOf(sessionId, input.threadId))
   // Documents attached to the chat add an excerpts section and citations.
   // Retrieval reads the full transcript; compaction then trims what is sent.
   // Both happen here so every backend below gets the same request, while the

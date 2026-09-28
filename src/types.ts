@@ -124,6 +124,11 @@ export type AnchorSource = {
   citationId?: string
   /** A bounded stretch of the source around the passage, sent as context. */
   context?: string
+  /**
+   * A document opened beside a thread hangs off no message (`messageId: ''`);
+   * its context is the thread up to this message, its last when branched.
+   */
+  throughMessageId?: string
 }
 
 /** A rectangle of an image, in fractions of its width and height. */

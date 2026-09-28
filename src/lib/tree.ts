@@ -248,8 +248,12 @@ function contextSections(
     if (!anchor) continue
 
     const turns = turnsAt(i)
-    // A document opened beside a thread is anchored to no message: the thread so far.
-    const anchorId = anchor.messageId || thread.messages.at(-1)?.id || ''
+    // A document opened beside a thread is anchored to no message: the thread
+    // as it was when the branch grew (or all of it, if that message is gone).
+    const through = anchor.source?.throughMessageId
+    const anchorId = anchor.messageId
+      || (through && thread.messages.some((message) => message.id === through) ? through : thread.messages.at(-1)?.id)
+      || ''
     const fromSummary = summarizedTranscriptUpTo(thread, anchorId, turns, charsPerTurn, summaryWindow)
     if (fromSummary) summarized = true
     const transcript = fromSummary

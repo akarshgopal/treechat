@@ -59,3 +59,9 @@ test('file names come from the title', () => {
   assert.equal(shareFileName('Why is the sky blue?'), 'why-is-the-sky-blue.html')
   assert.equal(shareFileName('???'), 'treechat.html')
 })
+
+test('a list ends where a heading, a fence or the other kind of list begins', () => {
+  const html = markdownToHtml('1. first\n- note\n## Next\n```\ncode\n```')
+  assert.equal(html, '<ol><li>first</li></ol>\n<ul><li>note</li></ul>\n<h4>Next</h4>\n<pre><code>code</code></pre>')
+  assert.equal(markdownToHtml('- one\n  continued'), '<ul><li>one continued</li></ul>')
+})

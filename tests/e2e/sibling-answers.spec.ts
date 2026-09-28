@@ -137,10 +137,38 @@ test('answers kept by a failed regenerate do not end up on the next reply', asyn
   await restoreDemo(page)
   await page.getByTestId('message-retry').last().click({ force: true })
   await expect(page.getByRole('alert')).toContainText('Upstream is down')
+  // The reply the regenerate replaced is back.
+  await expect(lastReply(page)).toContainText(ORIGINAL)
+  await expect.poll(async () => (await rootMessages(page)).at(-1)?.content).toContain(ORIGINAL)
   await page.getByTestId('thread-composer').fill('Something else entirely')
   await page.getByTestId('thread-composer').press('Enter')
   await expect(lastReply(page)).toHaveText('A fresh reply', { timeout: 15_000 })
   await expect(page.getByTestId('answer-pager')).toHaveCount(0)
   await expect.poll(async () => (await rootMessages(page)).at(-1)?.content).toBe('A fresh reply')
   expect((await rootMessages(page)).at(-1)!.alternates).toBeUndefined()
+})
+
+test('a failed regenerate keeps every answer, and Try again adds the new one beside them', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'the same on phones')
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })))
+  await page.reload()
+  let calls = 0
+  await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {
+    calls += 1
+    if (calls === 2) return route.fulfill({ status: 429, body: JSON.stringify({ error: { message: 'Rate limited' } }) })
+    const body = `data: ${JSON.stringify({ choices: [{ delta: { content: `Answer ${calls}` } }] })}\n\ndata: [DONE]\n\n`
+    return route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body })
+  })
+  await restoreDemo(page)
+  await page.getByTestId('message-retry').last().click({ force: true })
+  await expect(page.getByTestId('answer-position')).toHaveText('2 of 2', { timeout: 15_000 })
+  await page.getByTestId('message-retry').last().click({ force: true })
+  await expect(page.getByRole('alert')).toContainText('Rate limited')
+  await expect(page.getByTestId('answer-position')).toHaveText('2 of 2')
+  await expect(lastReply(page)).toHaveText('Answer 1')
+  await page.getByRole('alert').getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByTestId('answer-position')).toHaveText('3 of 3', { timeout: 15_000 })
+  await expect(lastReply(page)).toHaveText('Answer 3')
+  await page.reload()
+  await expect(page.getByTestId('answer-position')).toHaveText('3 of 3')
 })

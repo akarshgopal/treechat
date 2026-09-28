@@ -1,4 +1,4 @@
-import type { ChatSession } from '@/types'
+import type { ChatSession, Thread } from '@/types'
 import { branchTakeaway, firstQuestion, threadTitle } from './tree.ts'
 import { anchorSourceKey } from './anchors.ts'
 
@@ -92,10 +92,24 @@ export type ExploredMatch = {
 
 export const EXPLORED_LIMIT = 2
 
+/** Threads are replaced, never changed, on every edit: their terms can be kept. */
+const termsCache = new WeakMap<Thread, Set<string>>()
+
+function branchTerms(thread: Thread): Set<string> {
+  let terms = termsCache.get(thread)
+  if (!terms) {
+    terms = significantTerms([threadTitle(thread), firstQuestion(thread) ?? '', thread.anchor?.quote ?? ''].join(' '))
+    termsCache.set(thread, terms)
+  }
+  return terms
+}
+
 /** Answered branches in any chat that match the query, best first, at most `limit`. */
 export function exploredMatches(sessions: ChatSession[], query: ExploredQuery): ExploredMatch[] {
-  const excluded = new Set(query.excludeThreadIds ?? [])
   const asked = significantTerms(query.text ?? '')
+  // Nothing to compare: skip the scan (every empty composer asks on every change).
+  if (asked.size === 0 && !query.passage) return []
+  const excluded = new Set(query.excludeThreadIds ?? [])
   const out: Array<ExploredMatch & { createdAt: number }> = []
   for (const session of sessions) {
     const tree = session.treeState
@@ -116,7 +130,7 @@ export function exploredMatches(sessions: ChatSession[], query: ExploredQuery): 
       let score = 0
       if (overlaps) score = 2
       else if (asked.size > 0) {
-        const terms = significantTerms([threadTitle(thread), firstQuestion(thread) ?? '', thread.anchor.quote].join(' '))
+        const terms = branchTerms(thread)
         let shared = 0
         for (const term of asked) if (terms.has(term)) shared += 1
         // Most of what is being asked, and never a single common word of a long question.

@@ -2,7 +2,6 @@ import { prefixFingerprint, summaryHolds } from '../lib/compaction.ts'
 import { doomedIdsForAnchors } from '../lib/message-actions.ts'
 import { createEmptyState, createSeedState } from '../lib/seed.ts'
 import { descendantIds, expansionToReveal } from '../lib/tree.ts'
-import { clearVisibleUnread } from '../lib/unread.ts'
 import type { ChatMessage, Thread, ThreadSummary, TreeState } from '@/types'
 
 export type Action =
@@ -137,15 +136,14 @@ export function reducer(state: TreeState, action: Action): TreeState {
       }
     case 'focus': {
       if (!state.threads[action.threadId]) return state
-      // Opening a thread (and so the lanes above it) reads its new replies.
-      return clearVisibleUnread({
+      return {
         ...state,
         activeThreadId: action.threadId,
         expanded: {
           ...state.expanded,
           ...expansionToReveal(state, action.threadId),
         },
-      })
+      }
     }
     case 'mark-unread': {
       const thread = state.threads[action.threadId]
@@ -182,7 +180,7 @@ export function reducer(state: TreeState, action: Action): TreeState {
       }
       if (Object.keys(threads).length === Object.keys(state.threads).length) return state
       const focusId = action.focusId && threads[action.focusId] ? action.focusId : state.activeThreadId
-      return clearVisibleUnread({ ...state, threads, activeThreadId: focusId, expanded: { ...state.expanded, ...expansionToReveal({ ...state, threads }, focusId) } })
+      return { ...state, threads, activeThreadId: focusId, expanded: { ...state.expanded, ...expansionToReveal({ ...state, threads }, focusId) } }
     }
     case 'reset':
       return createEmptyState()

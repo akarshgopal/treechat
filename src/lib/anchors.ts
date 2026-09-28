@@ -56,7 +56,7 @@ function parseSource(value: unknown): AnchorSource | undefined {
   if (record.kind !== 'web' && record.kind !== 'document') return undefined
   if (typeof record.title !== 'string') return undefined
   const text = (key: string) => (typeof record[key] === 'string' && record[key] ? { [key]: record[key] as string } : {})
-  return { kind: record.kind, title: record.title, ...text('url'), ...text('documentId'), ...text('locator'), ...text('citationId'), ...text('context') }
+  return { kind: record.kind, title: record.title, ...text('url'), ...text('documentId'), ...text('locator'), ...text('citationId'), ...text('context'), ...text('throughMessageId') }
 }
 
 function parseRegion(value: unknown): AnchorRegion | undefined {

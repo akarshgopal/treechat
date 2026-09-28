@@ -95,9 +95,12 @@ export function markdownToHtml(markdown: string): string {
     if (ordered || /^\s*[-*+]\s/.test(line)) {
       const items: string[] = []
       const item = ordered ? /^\s*\d+[.)]\s+(.*)$/ : /^\s*[-*+]\s+(.*)$/
+      const otherList = ordered ? /^\s*[-*+]\s/ : /^\s*\d+[.)]\s/
       while (index < lines.length && lines[index]!.trim()) {
         const current = lines[index]!.match(item)
         if (current) items.push(current[1]!)
+        // A heading, fence, quote, rule or the other kind of list ends this one.
+        else if (otherList.test(lines[index]!) || isBlockStart(lines[index]!)) break
         else if (items.length > 0) items[items.length - 1] += ` ${lines[index]!.trim()}`
         index += 1
       }

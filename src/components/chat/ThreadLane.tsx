@@ -34,7 +34,7 @@ import {
 import { fromUIMessages, toUIMessages } from '@/lib/messages'
 import { pathTo } from '@/lib/tree'
 import { unreadCount } from '@/lib/unread'
-import { answersOf, dropEarlierAnswers, dropNextModel, queueEarlierAnswers, setNextModel, switchAnswer } from '@/lib/alternates'
+import { dropEarlierAnswers, dropNextModel, queueEarlierAnswers, runKeyOf, setNextModel, switchAnswer } from '@/lib/alternates'
 import {
   OPENROUTER_MODEL_OPTIONS,
   shortModelName,
@@ -120,6 +120,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
   const explored = useExplored({ text: shell.draftFor(threadId), excludeThreadIds: here })
 
   if (!thread || !chat) return null
+  const runKey = runKeyOf(shell.sessionId, threadId)
 
   const snapshot = () => {
     const live = fromUIMessages(chat.messages)
@@ -131,7 +132,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     const attachments = shell.attachmentsFor(threadId)
     if (!text && attachments.length === 0) return
     // Answers waiting on a failed regenerate belong to that reply, not this one.
-    dropEarlierAnswers(threadId)
+    dropEarlierAnswers(runKey)
     shell.setDraft(threadId, '')
     shell.setAttachments(threadId, () => [])
     setAttachProblem(null)
@@ -207,12 +208,12 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
     const before = snapshot()
     const next = retryFromAssistant(before, messageId)
     const replaced = before.find((message) => message.id === messageId)
-    if (next && replaced) queueEarlierAnswers(threadId, answersOf(replaced))
-    if (next && model) setNextModel(threadId, model)
+    if (next && replaced) queueEarlierAnswers(runKey, replaced)
+    if (next && model) setNextModel(runKey, model)
     void rewrite(next, before, next ? droppedMessageIds(before, next) : [], messageId, 'Regenerate').then((applied) => {
       if (applied) return
-      dropEarlierAnswers(threadId)
-      dropNextModel(threadId)
+      dropEarlierAnswers(runKey)
+      dropNextModel(runKey)
     })
   }
 
@@ -229,14 +230,14 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
   }
 
   const editUser = (messageId: string, content: string) => {
-    dropEarlierAnswers(threadId)
+    dropEarlierAnswers(runKey)
     const before = snapshot()
     const next = editUserMessage(before, messageId, content)
     return rewrite(next, before, next ? dropAnchorIdsForEdit(before, next, messageId) : [], replyAfter(before, messageId), 'Edit & resend')
   }
 
   const regenerateUser = (messageId: string) => {
-    dropEarlierAnswers(threadId)
+    dropEarlierAnswers(runKey)
     const before = snapshot()
     const next = retryFromUser(before, messageId)
     void rewrite(next, before, next ? droppedMessageIds(before, next) : [], replyAfter(before, messageId), 'Regenerate')
@@ -258,7 +259,12 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
       scrollPositions={shell.scrollPositions}
       scrollKey={`${shell.sessionId}:${threadId}`}
       error={chat.error?.message}
-      onRetryError={() => { void chat.reload() }}
+      onRetryError={() => {
+        // A failed regenerate put the reply back: try it again the same way, keeping its answers.
+        const last = snapshot().at(-1)
+        if (last?.role === 'assistant' && last.kind !== 'drop-summary') retryAssistant(last.id)
+        else void chat.reload()
+      }}
       onShowDemo={shell.onShowDemo}
       starters={shell.status.mode === 'live' ? LIVE_STARTERS : DEMO_STARTERS}
       onStarter={(question) => void chat.sendMessage(question)}

@@ -12,7 +12,7 @@ import { MapButton } from '@/components/chat/LaneHeader'
 import { Menu } from '@/components/ui/menu'
 import { learnScope, type LearnScope } from '@/lib/learn'
 import { attachmentIds, downloadText } from '@/lib/transfer'
-import { unreadCount } from '@/lib/unread'
+import { setVisibleThreads, unreadCount } from '@/lib/unread'
 import { BranchPopover } from '@/components/chat/BranchPopover'
 import { ThreadRunners } from '@/components/chat/thread-runs'
 import { queueQuestion, stopChat, stopThread, useBusyThreads } from '@/lib/thread-run-registry'
@@ -103,6 +103,7 @@ function TreeChatShell({
     activeSession,
     activeThread,
     rootThread,
+    markRead,
     createThread,
     expand,
     focus,
@@ -141,6 +142,14 @@ function TreeChatShell({
   const busyIds = useBusyThreads(activeSessionId)
   const composersRef = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const focusNextRef = useRef<string | null>(null)
+  /** False once this chat's shell is gone (the chat was switched). */
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const draftFor = useCallback((threadId: string) => drafts[threadId] ?? '', [drafts])
   const attachmentsFor = useCallback((threadId: string) => attachments[threadId] ?? NO_ATTACHMENTS, [attachments])
@@ -180,13 +189,18 @@ function TreeChatShell({
    * lens leaves focus where it was, so reading can carry on while it answers.
    */
   const startBranch = useCallback((passage: ChipState, question: string, options?: { webSearch?: boolean; focusComposer?: boolean }) => {
+    // A document beside a thread: its context stops where the thread is now.
+    const through = passage.source && !passage.messageId ? state.threads[passage.threadId]?.messages.at(-1)?.id : undefined
+    const source = passage.source ? { ...passage.source, ...(through ? { throughMessageId: through } : {}) } : undefined
     const grow = (region?: AnchorRegion) => {
+      // The crop finished after this chat was closed: leave it be.
+      if (!mounted.current) return
       const id = createThread(passage.threadId, {
         messageId: passage.messageId,
         start: passage.start,
         end: passage.end,
         quote: passage.quote,
-        ...(passage.source ? { source: passage.source } : {}),
+        ...(source ? { source } : {}),
         ...(region ? { region } : {}),
       }, { webSearch: options?.webSearch })
       queueQuestion(activeSessionId, id, question)
@@ -199,7 +213,7 @@ function TreeChatShell({
     // A region is cut out and stored first, so the first request can send it.
     if (region) void cropRegion(region).then((crop) => grow({ ...region, crop }), () => grow(region))
     else grow()
-  }, [activeSessionId, clearSelection, createThread, focus])
+  }, [activeSessionId, clearSelection, createThread, focus, state.threads])
 
   /**
    * With a key, web search costs extra per search. Say so the first time it
@@ -385,6 +399,23 @@ function TreeChatShell({
   }
 
   const onRenameChat = useCallback((title: string) => renameSession(activeSessionId, title), [activeSessionId, renameSession])
+  // What is on screen is read, and a reply finishing there is not new.
+  const visibleRef = useRef<string[]>([])
+  const onVisibleChange = useCallback((threadIds: string[]) => {
+    visibleRef.current = threadIds
+    setVisibleThreads(activeSessionId, threadIds)
+    if (document.visibilityState !== 'hidden') markRead(activeSessionId, threadIds)
+  }, [activeSessionId, markRead])
+  useEffect(() => {
+    const onShow = () => {
+      if (document.visibilityState === 'visible') markRead(activeSessionId, visibleRef.current)
+    }
+    document.addEventListener('visibilitychange', onShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onShow)
+      setVisibleThreads(activeSessionId, [])
+    }
+  }, [activeSessionId, markRead])
   const onOpenMap = useCallback(() => setMapOpen(true), [])
   const onOpenLearn = useCallback(() => setLearning(learnScope(state, state.activeThreadId, activeSession.title)), [activeSession.title, state])
   const onShare = useCallback(() => {
@@ -523,6 +554,10 @@ function TreeChatShell({
   const lanePath = useMemo(() => pathTo(state, activeThread.id), [state, activeThread.id])
   const askingPassage = usePassageKey(activeSessionId, asking?.passage ?? null)
   const chipPassage = usePassageKey(activeSessionId, chip)
+  const askingThreadId = asking?.passage.threadId
+  const chipThreadId = chip?.threadId
+  const askingPath = useMemo(() => askingThreadId ? pathTo(state, askingThreadId).map((thread) => thread.id) : undefined, [askingThreadId, state])
+  const chipPath = useMemo(() => chipThreadId ? pathTo(state, chipThreadId).map((thread) => thread.id) : undefined, [chipThreadId, state])
   const sourceCitation = source ? citationFor(state.threads[source.threadId]?.messages, source) : undefined
   /** Branches already grown from the open source, for its markers. */
   const sourceBranches = useMemo(() => {
@@ -667,6 +702,7 @@ function TreeChatShell({
                 quote={asking.passage.quote}
                 initialQuestion={asking.initial}
                 passage={askingPassage}
+                excludeThreadIds={askingPath}
                 onLens={(lens) => onLens(asking.passage, lens)}
                 onAsk={(question) => startBranch(asking.passage, question)}
                 onOpenAsk={() => undefined}
@@ -682,6 +718,7 @@ function TreeChatShell({
                 anchor={chip}
                 quote={chip.quote}
                 passage={chipPassage}
+                excludeThreadIds={chipPath}
                 onLens={(lens) => onLens(chip, lens)}
                 onAsk={(question) => startBranch(chip, question)}
                 onOpenAsk={() => openAsk(chip)}
@@ -706,6 +743,7 @@ function TreeChatShell({
                 rootTitle={activeSession.title}
                 trailing={trailing}
                 busyIds={busyIds}
+                onVisibleChange={onVisibleChange}
                 renderLane={(thread, frame) => {
                   const index = lanePath.findIndex((entry) => entry.id === thread.id)
                   return (

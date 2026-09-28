@@ -30,6 +30,8 @@ type BranchPopoverProps = {
   sheet?: boolean
   /** Where the passage is, so branches already anchored over it are offered. */
   passage?: ExploredPassage
+  /** Never offered as explored before: the thread the passage is in, and those above it. */
+  excludeThreadIds?: readonly string[]
 }
 
 const HIGHLIGHT = 'pending-branch'
@@ -51,9 +53,10 @@ export function BranchPopover({
   onHold,
   sheet = false,
   passage,
+  excludeThreadIds,
 }: BranchPopoverProps) {
   const [question, setQuestion] = useState(initialQuestion)
-  const explored = useExplored({ text: question, passage })
+  const explored = useExplored({ text: question, passage, excludeThreadIds })
   const exploredLine = explored.matches.length > 0 ? (
     <ExploredBefore
       matches={explored.matches}

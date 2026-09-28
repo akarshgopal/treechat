@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { answerModel, answersOf, claimNextModel, currentIndex, parseAlternates, setNextModel, switchAnswer, takeRunModel } from './alternates.ts'
+import { answerModel, answersOf, claimNextModel, currentIndex, parseAlternates, queueEarlierAnswers, restoredReply, runKeyOf, setNextModel, switchAnswer, takeEarlierAnswers, takeRunModel } from './alternates.ts'
 import { fromUIMessages, sameTranscript, toUIMessages } from './messages.ts'
 import { parseSession } from './storage.ts'
 import { createSeedState } from './seed.ts'
@@ -61,13 +61,30 @@ test('broken stored answers are dropped, and a bad position falls back to last',
   assert.deepEqual(parseAlternates([{ content: 'x', createdAt: 1 }], 5), { alternates: [{ content: 'x', createdAt: 1 }] })
 })
 
-test('another model answers one request of one thread, and the run remembers which', () => {
-  setNextModel('t1', 'x-ai/grok-4.7')
-  assert.equal(claimNextModel('t2'), undefined)
-  assert.equal(claimNextModel('t1'), 'x-ai/grok-4.7')
-  assert.equal(claimNextModel('t1'), undefined)
-  assert.equal(takeRunModel('t1'), undefined)
-  setNextModel('t1', 'x-ai/grok-4.7')
-  claimNextModel('t1')
-  assert.equal(takeRunModel('t1'), 'x-ai/grok-4.7')
+test('another model answers one request of one thread in one chat, and the run remembers which', () => {
+  const a = runKeyOf('chat-a', 'thread-root')
+  const b = runKeyOf('chat-b', 'thread-root')
+  setNextModel(a, 'x-ai/grok-4.7')
+  // Every chat's main thread shares an id; another chat's run takes nothing.
+  assert.equal(claimNextModel(b), undefined)
+  assert.equal(claimNextModel(a), 'x-ai/grok-4.7')
+  assert.equal(claimNextModel(a), undefined)
+  assert.equal(takeRunModel(a), undefined)
+  setNextModel(a, 'x-ai/grok-4.7')
+  claimNextModel(a)
+  assert.equal(takeRunModel(b), undefined)
+  assert.equal(takeRunModel(a), 'x-ai/grok-4.7')
+})
+
+test('a failed regenerate puts the reply back as it was, every answer included', () => {
+  const key = runKeyOf('chat-a', 'thread-root')
+  const shown = switchAnswer(reply, 1)
+  queueEarlierAnswers(key, shown)
+  assert.equal(takeEarlierAnswers(runKeyOf('chat-b', 'thread-root')), undefined)
+  const earlier = takeEarlierAnswers(key)!
+  assert.equal(takeEarlierAnswers(key), undefined)
+  const back = restoredReply(earlier, 'restored')
+  assert.deepEqual({ ...back, createdAt: 0 }, { ...shown, id: 'restored', createdAt: 0 })
+  const single = restoredReply({ answers: [{ content: 'Only', createdAt: 5 }], index: 0 }, 'r')
+  assert.deepEqual(single, { id: 'r', role: 'assistant', content: 'Only', createdAt: 5 })
 })

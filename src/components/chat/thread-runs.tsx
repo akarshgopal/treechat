@@ -7,7 +7,9 @@ import { refreshSummary } from '@/lib/summarize'
 import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { hasQuestion, parseKey, publishChat, runKey, setBusy, takeQuestion, useRunningKeys } from '@/lib/thread-run-registry'
 import { takeRunUsage } from '@/lib/usage'
-import { takeEarlierAnswers, takeRunModel } from '@/lib/alternates'
+import { restoredReply, takeEarlierAnswers, takeRunModel } from '@/lib/alternates'
+import { createId } from '@/lib/ids'
+import { isThreadVisible } from '@/lib/unread'
 import { useTree } from '@/store/tree-store'
 
 /**
@@ -47,11 +49,14 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
   const summary = thread?.summary
   // A region of an image sends just that region; a passage from a page or
   // document, nothing of the message's own files.
-  const anchorAttachments = thread?.anchor?.region
-    ? (thread.anchor.region.crop ? [thread.anchor.region.crop] : undefined)
-    : thread?.anchor && !thread.anchor.source && thread.parentId
-      ? state?.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
-      : undefined
+  const anchorFiles = thread?.anchor && thread.parentId
+    ? state?.threads[thread.parentId]?.messages.find((message) => message.id === thread.anchor!.messageId)?.attachments
+    : undefined
+  const region = thread?.anchor?.region
+  const anchorAttachments = region
+    // Without a crop (it could not be made), the whole image rather than nothing.
+    ? (region.crop ? [region.crop] : anchorFiles?.filter((file) => file.id === region.attachmentId))
+    : thread?.anchor?.source ? undefined : anchorFiles
   const chat = useChat({
     threadId,
     connection: chatConnection,
@@ -108,18 +113,21 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
     const finished = wasLoading.current && !chat.isLoading
     wasLoading.current = chat.isLoading
     if (finished) {
-      if (!chat.error && textOf(chat.messages.at(-1)).trim()) markUnread(threadId, sessionId)
+      if (!chat.error && textOf(chat.messages.at(-1)).trim() && !isThreadVisible(sessionId, threadId)) markUnread(threadId, sessionId)
       if (!chat.error) void refreshSummary(threadId, fromUIMessages(chat.messages), summary, (next, basis) => setSummary(threadId, next, basis, sessionId))
       const citations = takeRunCitations(threadId)
       const usage = takeRunUsage(threadId)
-      const model = takeRunModel(threadId)
+      const model = takeRunModel(key)
       const last = chat.messages.at(-1)
       const answered = !chat.error && last?.role === 'assistant' && Boolean(textOf(last).trim())
-      // A regenerated reply keeps the answers it replaces. A failed one leaves
-      // them waiting for the retry.
-      const earlier = answered ? takeEarlierAnswers(threadId) : []
-      if ((citations || usage || model || earlier.length > 0) && last?.role === 'assistant') {
-        const messages = chat.messages.map((message) => {
+      const earlier = takeEarlierAnswers(key)
+      let messages = chat.messages
+      if (!answered && earlier) {
+        // No new reply: put back the one the regenerate replaced, answers and all.
+        const kept = last?.role === 'assistant' && !textOf(last).trim() ? chat.messages.slice(0, -1) : chat.messages
+        messages = [...kept, ...toUIMessages([restoredReply(earlier, createId('msg'))])]
+      } else if ((citations || usage || model || earlier) && last?.role === 'assistant') {
+        messages = chat.messages.map((message) => {
           if (message !== last) return message
           const { answerIndex: _index, ...metadata } = message.metadata ?? {}
           const own = Array.isArray(metadata.alternates) ? metadata.alternates : []
@@ -130,10 +138,13 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
               ...(citations ? { citations } : {}),
               ...(usage ? { usage } : {}),
               ...(model ? { model } : {}),
-              ...(earlier.length > 0 ? { alternates: [...earlier, ...own] } : {}),
+              // A regenerated reply keeps the answers it replaces.
+              ...(earlier ? { alternates: [...earlier.answers, ...own] } : {}),
             },
           }
         })
+      }
+      if (messages !== chat.messages) {
         setMessages(messages)
         replaceMessages(threadId, fromUIMessages(messages), sessionId)
       }

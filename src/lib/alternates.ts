@@ -91,23 +91,48 @@ export function sameAlternates(a: ChatMessage, b: ChatMessage): boolean {
 }
 
 /*
- * Handing a regenerate's earlier answers to the reply that replaces them:
- * the thread's runner attaches them when the new reply finishes.
+ * Per-run hand-offs, keyed by chat and thread (`runKeyOf`): every chat's main
+ * thread has the same id, so the thread alone is not enough.
  */
-const pending = new Map<string, AnswerAlternate[]>()
+export const runKeyOf = (sessionId: string, threadId: string) => `${sessionId}\u0000${threadId}`
 
-export function queueEarlierAnswers(threadId: string, answers: AnswerAlternate[]) {
-  pending.set(threadId, answers)
+/** A regenerated reply's answers, and which of them was showing. */
+export type EarlierAnswers = { answers: AnswerAlternate[]; index: number }
+
+/**
+ * The runner attaches a regenerate's earlier answers to the reply that
+ * replaces them, or puts them back as they were if no new reply comes.
+ */
+const pending = new Map<string, EarlierAnswers>()
+
+export function queueEarlierAnswers(key: string, message: ChatMessage) {
+  pending.set(key, { answers: answersOf(message), index: currentIndex(message) })
 }
 
-export function takeEarlierAnswers(threadId: string): AnswerAlternate[] {
-  const answers = pending.get(threadId) ?? []
-  pending.delete(threadId)
-  return answers
+export function takeEarlierAnswers(key: string): EarlierAnswers | undefined {
+  const earlier = pending.get(key)
+  pending.delete(key)
+  return earlier
 }
 
-export function dropEarlierAnswers(threadId: string) {
-  pending.delete(threadId)
+export function dropEarlierAnswers(key: string) {
+  pending.delete(key)
+}
+
+/** The reply a failed regenerate replaced, back as it was (under a new id). */
+export function restoredReply(earlier: EarlierAnswers, id: string): ChatMessage {
+  const current = earlier.answers[earlier.index] ?? earlier.answers.at(-1)!
+  const others = earlier.answers.filter((answer) => answer !== current)
+  return {
+    id,
+    role: 'assistant',
+    content: current.content,
+    createdAt: current.createdAt,
+    ...(current.citations ? { citations: current.citations } : {}),
+    ...(current.usage ? { usage: current.usage } : {}),
+    ...(current.model ? { model: current.model } : {}),
+    ...(others.length > 0 ? { alternates: others, answerIndex: earlier.answers.indexOf(current) } : {}),
+  }
 }
 
 /*
@@ -116,29 +141,28 @@ export function dropEarlierAnswers(threadId: string) {
  */
 const models = new Map<string, string>()
 
-export function setNextModel(threadId: string, model: string) {
-  models.set(threadId, model)
+export function setNextModel(key: string, model: string) {
+  models.set(key, model)
 }
 
-
-export function dropNextModel(threadId: string) {
-  models.delete(threadId)
+export function dropNextModel(key: string) {
+  models.delete(key)
 }
 
 /** The override a run used, for the runner to note on the reply. */
 const running = new Map<string, string>()
 
 /** For the transport: the override for this request, if one was set. */
-export function claimNextModel(threadId: string): string | undefined {
-  const model = models.get(threadId)
-  models.delete(threadId)
-  if (model) running.set(threadId, model)
-  else running.delete(threadId)
+export function claimNextModel(key: string): string | undefined {
+  const model = models.get(key)
+  models.delete(key)
+  if (model) running.set(key, model)
+  else running.delete(key)
   return model
 }
 
-export function takeRunModel(threadId: string): string | undefined {
-  const model = running.get(threadId)
-  running.delete(threadId)
+export function takeRunModel(key: string): string | undefined {
+  const model = running.get(key)
+  running.delete(key)
   return model
 }

@@ -167,6 +167,14 @@ Choices worth knowing:
 - Switching answers is blocked away from an answer that has branches, and on
   any reply but the latest. Regenerate and Try another model still ask
   before dropping branches on the reply they replace, as before.
+- Unread follows what is actually on screen: full lanes only (not folded
+  strips, not ancestors hidden on a phone), and nothing while the tab is
+  hidden.
+- A regenerate that fails or is stopped before any text puts the replaced
+  reply back with all its answers; Try again regenerates it again. Reloading
+  the page while a regenerate is still streaming loses the earlier answers.
+- What did I learn? follows the plan's scope (the open branch when one is
+  open, even from the main header) and names the scope in its header.
 - On phones, Map sits in the app bar and What did I learn? and Share in its
   ⋯ menu.
 

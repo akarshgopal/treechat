@@ -5,7 +5,7 @@ import {
   titleFromTree,
 } from '../lib/sessions.ts'
 import { reducer as treeReducer, type Action as TreeAction } from './tree-reducer.ts'
-import { clearVisibleUnread, visibleThreadIds } from '../lib/unread.ts'
+import { readThreads } from '../lib/unread.ts'
 import type { ChatSession, SessionLibrary } from '@/types'
 
 export type SessionAction =
@@ -19,6 +19,8 @@ export type SessionAction =
   | { type: 'import-sessions'; sessions: ChatSession[] }
   /** Which stored documents a chat searches. */
   | { type: 'set-session-documents'; sessionId: string; documentIds: string[] }
+  /** These threads' new replies were seen. Not activity: the chat keeps its place. */
+  | { type: 'mark-read'; sessionId: string; threadIds: string[] }
   /** A document was removed from the library: detach it everywhere. */
   | { type: 'forget-document'; documentId: string }
   /** A tree edit: to the open chat, or to `sessionId` (a reply finishing in the background). */
@@ -71,13 +73,7 @@ export function sessionReducer(
       if (!state.sessions.some((session) => session.id === action.sessionId)) {
         return state
       }
-      // What opens with the chat has now been seen. Not activity: the chat
-      // keeps its place in the list.
-      const opened = mapSession(state, action.sessionId, (session) => {
-        const treeState = clearVisibleUnread(session.treeState)
-        return treeState === session.treeState ? session : { ...session, treeState }
-      })
-      return { ...opened, activeSessionId: action.sessionId }
+      return { ...state, activeSessionId: action.sessionId }
     }
     case 'rename-session': {
       const title = normalizeSessionTitle(action.title)
@@ -130,6 +126,11 @@ export function sessionReducer(
         sameIds(session.documentIds, ids) ? session : withDocumentIds(session, ids),
       )
     }
+    case 'mark-read':
+      return mapSession(state, action.sessionId, (session) => {
+        const treeState = readThreads(session.treeState, action.threadIds)
+        return treeState === session.treeState ? session : { ...session, treeState }
+      })
     case 'forget-document': {
       let changed = false
       const sessions = state.sessions.map((session) => {
@@ -144,12 +145,6 @@ export function sessionReducer(
         (session) => session.id === (action.sessionId ?? state.activeSessionId),
       )
       if (!current) return state
-      // A reply that finished on screen was seen as it arrived.
-      if (
-        action.action.type === 'mark-unread' &&
-        current.id === state.activeSessionId &&
-        visibleThreadIds(current.treeState).has(action.action.threadId)
-      ) return state
       const treeState = treeReducer(current.treeState, action.action)
       if (treeState === current.treeState) return state
       const title = current.titleLocked ? current.title : titleFromTree(treeState)

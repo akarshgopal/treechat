@@ -52,6 +52,8 @@ type LanesProps = {
   trailing?: TrailingLane | null
   /** Threads with a reply streaming in: their connectors pulse. */
   busyIds?: ReadonlySet<string>
+  /** The threads shown as full lanes (not strips), whenever that changes. */
+  onVisibleChange?: (threadIds: string[]) => void
 }
 
 type LaneEntry = { id: string; title: string; thread?: Thread; trailing?: TrailingLane }
@@ -140,7 +142,7 @@ function useJustFinished(busyIds: ReadonlySet<string>) {
   return ready
 }
 
-export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds = NO_IDS }: LanesProps) {
+export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds = NO_IDS, onVisibleChange }: LanesProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const [defaultWidth, setDefaultWidth] = useState(loadDefaultWidth)
@@ -161,6 +163,11 @@ export function Lanes({ path, renderLane, single, rootTitle, trailing, busyIds =
   const fullIds = visible
     .filter((entry) => !collapsed(entry.id, entries.indexOf(entry)))
     .map((entry) => entry.id)
+
+  const shownThreads = fullIds.filter((id) => path.some((thread) => thread.id === id)).join(',')
+  useEffect(() => {
+    onVisibleChange?.(shownThreads ? shownThreads.split(',') : [])
+  }, [onVisibleChange, shownThreads])
 
   const links = useMemo<LaneLink[]>(() => {
     if (single) return []

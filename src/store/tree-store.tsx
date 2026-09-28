@@ -39,8 +39,10 @@ type TreeContextValue = {
     dropAnchorMessageIds: string[],
   ) => void
   setSummary: (threadId: string, summary: ThreadSummary, basis: string, sessionId?: string) => void
-  /** A reply finished; flags it as new unless the thread is on screen. */
+  /** A reply finished out of sight: flag it as new. */
   markUnread: (threadId: string, sessionId: string) => void
+  /** These threads are on screen: their new replies are seen. */
+  markRead: (sessionId: string, threadIds: string[]) => void
   /** Open a thread in any chat, switching to that chat first. */
   openThread: (sessionId: string, threadId: string) => void
   reset: () => void
@@ -151,6 +153,7 @@ function LoadedTreeProvider({ initial, children }: { initial: SessionLibrary; ch
         dispatch({ type: 'tree', action: { type: 'set-summary', threadId, summary, basis }, sessionId }),
       markUnread: (threadId, sessionId) =>
         dispatch({ type: 'tree', action: { type: 'mark-unread', threadId }, sessionId }),
+      markRead: (sessionId, threadIds) => dispatch({ type: 'mark-read', sessionId, threadIds }),
       openThread: (sessionId, threadId) => {
         dispatch({ type: 'tree', action: { type: 'focus', threadId }, sessionId })
         dispatch({ type: 'switch-session', sessionId })
