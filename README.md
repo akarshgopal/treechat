@@ -155,6 +155,8 @@ Without a key, replies are demo text generated in the page and nothing is sent a
 - TanStack AI: `@tanstack/ai`, `@tanstack/ai-react` (`useChat`)
 - GitHub Pages (static) + in-browser OpenRouter BYOK
 
+Product decisions, ground rules for changes and tests, and the checks to do by hand before a release are in [docs/decisions.md](docs/decisions.md).
+
 ## License
 
 Created by Akarsh Gopal. Released under the [MIT License](LICENSE) — © 2026 Akarsh Gopal.
