@@ -2,14 +2,14 @@ import { childThreads, pathTo } from '@/lib/tree'
 import type { Thread, TreeState } from '@/types'
 
 /** Per-session expand/collapse of the TREE rail (not the inline branch cards). */
-export const RAIL_COLLAPSE_KEY_PREFIX = 'treechat:rail-collapse:'
+const RAIL_COLLAPSE_KEY_PREFIX = 'treechat:rail-collapse:'
 
-export function railCollapseStorageKey(sessionId: string): string {
+function railCollapseStorageKey(sessionId: string): string {
   return `${RAIL_COLLAPSE_KEY_PREFIX}${sessionId}`
 }
 
 /** Default: root expanded, every deeper node collapsed. */
-export function defaultExpandedIds(rootId: string): string[] {
+function defaultExpandedIds(rootId: string): string[] {
   return [rootId]
 }
 
@@ -37,7 +37,7 @@ export function toggleExpandedId(
  * Ids that no longer exist in the tree are dropped; if every stored id is
  * stale, we fall back to the default rather than a fully collapsed rail.
  */
-export function parseExpandedIds(
+function parseExpandedIds(
   raw: unknown,
   knownIds: ReadonlySet<string>,
   rootId: string,

@@ -3,7 +3,7 @@
  * OpenRouter, with the key, when Settings opens.
  */
 
-export const KEY_URL = 'https://openrouter.ai/api/v1/key'
+const KEY_URL = 'https://openrouter.ai/api/v1/key'
 const LEGACY_KEY_URL = 'https://openrouter.ai/api/v1/auth/key'
 
 export type KeyUsage = {
@@ -19,7 +19,7 @@ export type KeyUsage = {
 
 const money = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
 
-export function parseKeyUsage(payload: unknown): KeyUsage | null {
+function parseKeyUsage(payload: unknown): KeyUsage | null {
   const data = (payload as { data?: Record<string, unknown> } | null)?.data
   if (!data || typeof data !== 'object') return null
   const usage = money(data.usage)

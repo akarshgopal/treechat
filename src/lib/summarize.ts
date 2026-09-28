@@ -9,7 +9,7 @@ const MOCK_SUMMARY_CHARS = 1600
 /** A single catch-up never runs away on a huge imported thread. */
 const MAX_PASSES = 4
 
-export function summaryPrompt(plan: CompactionPlan): string {
+function summaryPrompt(plan: CompactionPlan): string {
   const transcript = plan.messages
     .map((message) => `${message.role}: ${message.content}`)
     .join('\n\n')
@@ -22,7 +22,7 @@ export function summaryPrompt(plan: CompactionPlan): string {
 }
 
 /** No model in demo mode: a readable extract stands in for a real summary. */
-export function mockSummary(plan: CompactionPlan): string {
+function mockSummary(plan: CompactionPlan): string {
   const lines = [
     ...(plan.previous ? plan.previous.split('\n') : []),
     ...plan.messages.map((message) => `- ${message.role}: ${clipText(message.content, 120)}`),

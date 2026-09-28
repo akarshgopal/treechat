@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function isModKey(event: KeyboardEvent | ReactKeyboardEvent) {
+function isModKey(event: KeyboardEvent | ReactKeyboardEvent) {
   return event.metaKey || event.ctrlKey
 }
 
@@ -31,7 +31,7 @@ function detectPlatform() {
   return uaData?.platform || navigator.platform || ''
 }
 
-export function isApplePlatform(platform = detectPlatform()) {
+function isApplePlatform(platform = detectPlatform()) {
   return /Mac|iPhone|iPad|iPod/i.test(platform)
 }
 

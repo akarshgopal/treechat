@@ -5,9 +5,9 @@ import type { ChatSession } from '@/types'
 
 /** Marks a TreeChat export, so an unrelated JSON file is refused clearly. */
 export const EXPORT_FORMAT = 'treechat-export'
-export const EXPORT_VERSION = 1
+const EXPORT_VERSION = 1
 
-export type ExportFile = {
+type ExportFile = {
   format: typeof EXPORT_FORMAT
   version: number
   exportedAt: string
@@ -16,7 +16,7 @@ export type ExportFile = {
   attachments: StoredAttachment[]
 }
 
-export type ImportedChats = { sessions: ChatSession[]; attachments: StoredAttachment[] }
+type ImportedChats = { sessions: ChatSession[]; attachments: StoredAttachment[] }
 
 export function attachmentIds(sessions: ChatSession[]): string[] {
   const ids = new Set<string>()
@@ -30,7 +30,7 @@ export function attachmentIds(sessions: ChatSession[]): string[] {
 }
 
 /** Everything needed to rebuild these chats elsewhere. Documents are not included. */
-export async function buildExport(sessions: ChatSession[], now = new Date()): Promise<ExportFile> {
+async function buildExport(sessions: ChatSession[], now = new Date()): Promise<ExportFile> {
   const attachments: StoredAttachment[] = []
   for (const id of attachmentIds(sessions)) {
     // A missing file (cleared storage, private window) just stays missing.
@@ -41,13 +41,13 @@ export async function buildExport(sessions: ChatSession[], now = new Date()): Pr
 }
 
 /** Named for the local date, the day the person sees on their clock. */
-export function exportFileName(now = new Date()): string {
+function exportFileName(now = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `treechat-chats-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`
 }
 
 /** Save a JSON file through the browser's download. */
-export function downloadJson(filename: string, value: unknown) {
+function downloadJson(filename: string, value: unknown) {
   downloadText(filename, JSON.stringify(value, null, 2), 'application/json')
 }
 

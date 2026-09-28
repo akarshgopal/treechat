@@ -1,6 +1,6 @@
 import type { TreeState } from '@/types'
 import { compactTranscript } from './compaction.ts'
-import { branchTakeaway, childThreads, clipText, descendantIds, threadTitle } from './tree.ts'
+import { branchTakeaway, childThreads, clipText, threadTitle } from './tree.ts'
 
 /**
  * "What did I learn?": a Markdown summary of an exploration. On the main
@@ -70,11 +70,6 @@ export function learnPrompt(state: TreeState, scope: LearnScope): string {
     'Exploration:',
     ...sections,
   ].join('\n\n')
-}
-
-/** Whether a scope has any branches to talk about. */
-export function scopeBranchCount(state: TreeState, threadId: string): number {
-  return descendantIds(state, threadId).length - 1
 }
 
 /** A file name for the summary, from its title. */

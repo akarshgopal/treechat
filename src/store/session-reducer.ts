@@ -8,7 +8,7 @@ import { reducer as treeReducer, type Action as TreeAction } from './tree-reduce
 import { readThreads } from '../lib/unread.ts'
 import type { ChatSession, SessionLibrary } from '@/types'
 
-export type SessionAction =
+type SessionAction =
   | { type: 'create-session' }
   | { type: 'switch-session'; sessionId: string }
   | { type: 'rename-session'; sessionId: string; title: string }

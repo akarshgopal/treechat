@@ -203,7 +203,7 @@ function parseV2(record: Record<string, unknown>): TreeState | null {
 }
 
 /** Parse a v2-shaped tree blob (also the `treeState` of a v3 session). */
-export function parseTreeState(value: unknown): TreeState | null {
+function parseTreeState(value: unknown): TreeState | null {
   if (!value || typeof value !== 'object') return null
   return parseV2(value as Record<string, unknown>)
 }
@@ -365,7 +365,7 @@ export async function loadLibrary(): Promise<SessionLibrary> {
 }
 
 /** `full`: the browser refused the write (quota); nothing was dropped. */
-export type SaveResult = 'saved' | 'full' | 'unavailable'
+type SaveResult = 'saved' | 'full' | 'unavailable'
 
 let lastSave: SaveResult = 'saved'
 const saveListeners = new Set<() => void>()

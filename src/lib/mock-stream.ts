@@ -1,4 +1,5 @@
 import { EventType, type StreamChunk } from '@tanstack/ai'
+import type { Citation } from '@/types'
 
 type MockInput = {
   messages: unknown[]
@@ -15,24 +16,22 @@ type MockInput = {
 }
 
 /**
- * CUSTOM stream event carrying a reply's sources. It survives the local API's
- * SSE hop as well as the in-browser mock; `runChat` records it for the thread
- * and keeps it out of the chat engine.
+ * CUSTOM stream event carrying the demo reply's sources; `runChat` records it
+ * for the thread and keeps it out of the chat engine.
  */
 export const CITATIONS_EVENT = 'treechat.citations'
 
-/** Shaped like `Citation` in src/types.ts (shared code does not import the app). */
-export const MOCK_WEB_CITATIONS = [
+const MOCK_WEB_CITATIONS: Citation[] = [
   {
     id: '1',
-    kind: 'web' as const,
+    kind: 'web',
     title: 'Branching conversations keep tangents in place',
     url: 'https://example.com/branching-conversations',
     snippet: 'A branch stays attached to the passage that prompted it',
   },
   {
     id: '2',
-    kind: 'web' as const,
+    kind: 'web',
     title: 'Bringing takeaways back',
     url: 'https://example.com/takeaways',
     locator: 'Section 2',

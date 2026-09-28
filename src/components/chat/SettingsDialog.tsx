@@ -2,7 +2,6 @@ import { useRef, useState, type FormEvent } from 'react'
 import { newIssueUrl } from '@/lib/links'
 import { KeyUsagePanel } from '@/components/chat/KeyUsage'
 import { ModelPicker } from '@/components/chat/ModelPicker'
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -257,23 +256,17 @@ function SettingsBody({
           </details>
           <DialogFooter className="gap-2 sm:justify-between">
             {hasKey ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={removeKey}
-                data-testid="settings-clear"
-              >
+              <button type="button" className="btn" onClick={removeKey} data-testid="settings-clear">
                 Remove key
-              </Button>
+              </button>
             ) : <span />}
             <div className="flex items-center gap-2">
               {saved ? (
                 <span className="text-[11px] text-muted-foreground">Saved in this browser</span>
               ) : null}
-              <Button type="submit" size="sm" data-testid="settings-save" disabled={!modelValid || !backgroundValid}>
+              <button type="submit" className="btn btn-primary" data-testid="settings-save" disabled={!modelValid || !backgroundValid}>
                 Save
-              </Button>
+              </button>
             </div>
           </DialogFooter>
         </form>
@@ -285,10 +278,10 @@ function SettingsBody({
             are not included.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={onExport} data-testid="settings-export">Export chats</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => importInput.current?.click()} data-testid="settings-import">
+            <button type="button" className="btn btn-outline" onClick={onExport} data-testid="settings-export">Export chats</button>
+            <button type="button" className="btn btn-outline" onClick={() => importInput.current?.click()} data-testid="settings-import">
               Import chats…
-            </Button>
+            </button>
             <input
               ref={importInput}
               type="file"
@@ -325,16 +318,15 @@ function SettingsBody({
           >
             Report a problem
           </a>
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="sm"
+            className="btn"
             onClick={onRestoreDemo}
             data-testid="settings-restore-demo"
             title="Replace this chat with the “What is TreeChat?” walkthrough"
           >
             Show walkthrough here
-          </Button>
+          </button>
         </div>
     </>
   )

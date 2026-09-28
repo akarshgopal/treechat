@@ -119,7 +119,7 @@ export function clipText(text: string, max: number): string {
  * The run of messages up to (and including) `messageId`, as a transcript.
  * The anchor message is never truncated — it is the one holding the quote.
  */
-export function transcriptUpTo(
+function transcriptUpTo(
   messages: ChatMessage[],
   messageId: string,
   turns = CONTEXT_TURNS,
@@ -166,7 +166,7 @@ type SummaryWindow = { summaryChars: number; levelChars: number }
  * anchor itself. Null when the summary does not end at or before the anchor —
  * it would describe turns after the passage this branch grew from.
  */
-export function summarizedTranscriptUpTo(
+function summarizedTranscriptUpTo(
   thread: Thread,
   messageId: string,
   turns: number,

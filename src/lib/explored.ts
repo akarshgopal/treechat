@@ -67,7 +67,7 @@ export type ExploredPassage = {
   sourceKey?: string
 }
 
-export type ExploredQuery = {
+type ExploredQuery = {
   /** The question being typed; may be empty. */
   text?: string
   passage?: ExploredPassage
@@ -90,7 +90,7 @@ export type ExploredMatch = {
   score: number
 }
 
-export const EXPLORED_LIMIT = 2
+const EXPLORED_LIMIT = 2
 
 /** Threads are replaced, never changed, on every edit: their terms can be kept. */
 const termsCache = new WeakMap<Thread, Set<string>>()

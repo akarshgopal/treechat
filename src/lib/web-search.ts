@@ -9,7 +9,7 @@ import { safeHttpUrl } from './citation-markers.ts'
  * models, so ordinary messages never search. The demo mock fakes a searched
  * reply instead.
  */
-export const WEB_SEARCH_MAX_RESULTS = 5
+const WEB_SEARCH_MAX_RESULTS = 5
 
 /** Longest snippet kept from a result; enough to find it on the page. */
 const SNIPPET_CHARS = 280
@@ -23,7 +23,7 @@ export function isWebSearch(forwardedProps: Record<string, unknown> | undefined)
  * links) so replies use `[n]` markers that line up with the results — the
  * annotations come back in that order and become citations 1, 2, …
  */
-export function webSearchPrompt(quote?: string): string {
+function webSearchPrompt(quote?: string): string {
   const focus = quote?.trim() ? ` The reader is asking about this passage: “${quote.trim()}”.` : ''
   return (
     'A web search was conducted. Incorporate the following web search results into your response.' +
@@ -47,7 +47,7 @@ export function applyWebSearch<T extends object>(
   }
 }
 
-export type WebSource = { url: string; title: string; snippet?: string }
+type WebSource = { url: string; title: string; snippet?: string }
 
 function clipSnippet(content: unknown): string | undefined {
   if (typeof content !== 'string') return undefined

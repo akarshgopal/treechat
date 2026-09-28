@@ -31,7 +31,7 @@ function hash(token: string) {
   return value >>> 0
 }
 
-export function normalizeVector(vector: Float32Array) {
+function normalizeVector(vector: Float32Array) {
   let norm = 0
   for (const value of vector) norm += value * value
   norm = Math.sqrt(norm)

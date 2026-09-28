@@ -22,7 +22,7 @@ type Suggestion = { id: string; label: string }
 type Row = { id: string; label: string; info?: ModelInfo; empty?: boolean; custom?: boolean }
 
 /** One line about a model: context, price per million tokens, images. */
-export function ModelFacts({ info, className }: { info: ModelInfo; className?: string }) {
+function ModelFacts({ info, className }: { info: ModelInfo; className?: string }) {
   return (
     <span className={cn('flex shrink-0 items-center gap-2 text-[11px] tabular-nums text-muted-foreground', className)}>
       {info.free ? <span className="rounded-sm bg-foreground/10 px-1 text-foreground">free</span> : (

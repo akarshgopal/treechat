@@ -4,7 +4,7 @@ import { modelReadsImages } from '../model-capabilities.ts'
 import { backgroundModelFor, loadProviderConfig } from '../provider.ts'
 import { getAttachment, setAttachmentDescription } from './store.ts'
 
-export const DESCRIBE_PROMPT =
+const DESCRIBE_PROMPT =
   'Describe this image for someone who cannot see it, in 1–3 sentences. Transcribe short visible text (headings, labels, error messages) exactly; for code or long text, say what it is and quote the key lines. No preamble.'
 
 const started = new Set<string>()

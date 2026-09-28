@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@tanstack/ai-react'
-import { chatConnection } from '@/lib/chat-connection'
+import { treeChatConnection } from '@/lib/client-chat'
 import { takeRunCitations } from '@/lib/citations'
 import { fromUIMessages, sameTranscript, textOf, toUIMessages } from '@/lib/messages'
 import { refreshSummary } from '@/lib/summarize'
@@ -59,7 +59,7 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
     : thread?.anchor?.source ? undefined : anchorFiles
   const chat = useChat({
     threadId,
-    connection: chatConnection,
+    connection: treeChatConnection,
     initialMessages,
     forwardedProps: {
       ...(state ? branchForwardedProps(state, threadId) : {}),

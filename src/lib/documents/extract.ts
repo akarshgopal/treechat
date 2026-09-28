@@ -18,7 +18,7 @@ function normalize(text: string) {
   return text.replace(/^﻿/, '').replace(/\r\n?/g, '\n')
 }
 
-export function extractPlainText(text: string): ExtractedDocument {
+function extractPlainText(text: string): ExtractedDocument {
   const body = normalize(text).trim()
   return { format: 'text', blocks: body ? [{ text: body }] : [] }
 }
@@ -27,7 +27,7 @@ export function extractPlainText(text: string): ExtractedDocument {
  * One block per heading section, so each chunk knows the heading it sits
  * under. `#` inside fenced code is code, not a heading.
  */
-export function extractMarkdown(text: string): ExtractedDocument {
+function extractMarkdown(text: string): ExtractedDocument {
   const lines = normalize(text).split('\n')
   const blocks: TextBlock[] = []
   let heading: string | undefined

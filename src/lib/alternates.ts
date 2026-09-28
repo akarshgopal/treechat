@@ -9,7 +9,7 @@ import { parseUsage, sameUsage } from './usage.ts'
  */
 
 /** A message's current answer, as an alternate. */
-export function asAlternate(message: ChatMessage): AnswerAlternate {
+function asAlternate(message: ChatMessage): AnswerAlternate {
   return {
     content: message.content,
     createdAt: message.createdAt,

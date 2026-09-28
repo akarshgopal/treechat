@@ -1,4 +1,4 @@
-export const PROVIDER_STORAGE_KEY = 'treechat:provider:v1'
+const PROVIDER_STORAGE_KEY = 'treechat:provider:v1'
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-5.6-luna'
 
 export const OPENROUTER_MODEL_OPTIONS = [
@@ -28,7 +28,7 @@ export type ClientProviderConfig = {
   backgroundModel?: string
 }
 
-export function defaultProviderConfig(): ClientProviderConfig {
+function defaultProviderConfig(): ClientProviderConfig {
   return {
     provider: 'openrouter',
     apiKey: '',
@@ -36,7 +36,7 @@ export function defaultProviderConfig(): ClientProviderConfig {
   }
 }
 
-export function parseTemperature(value: unknown): number | undefined {
+function parseTemperature(value: unknown): number | undefined {
   if (value === undefined || value === null || value === '') return undefined
   const n =
     typeof value === 'number'
@@ -48,7 +48,7 @@ export function parseTemperature(value: unknown): number | undefined {
   return Math.round(Math.min(2, Math.max(0, n)) * 100) / 100
 }
 
-export function parseMaxTokens(value: unknown): number | undefined {
+function parseMaxTokens(value: unknown): number | undefined {
   if (value === undefined || value === null || value === '') return undefined
   const n =
     typeof value === 'number'
@@ -144,7 +144,7 @@ export function isModelId(value: string): boolean {
 
 /**
  * The model to try first for background work, when it differs from the main
- * one. Needs a key: without one requests go to the local API or the mock.
+ * one. Needs a key: without one, replies come from the in-page demo.
  */
 export function backgroundModelFor(config: ClientProviderConfig | null): string | undefined {
   if (!config?.apiKey || !config.backgroundModel) return undefined

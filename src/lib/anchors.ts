@@ -7,7 +7,7 @@ import { parseAttachments } from './attachments/parse.ts'
  */
 
 /** Characters of source text on each side of a passage sent with it. */
-export const SOURCE_CONTEXT_CHARS = 600
+const SOURCE_CONTEXT_CHARS = 600
 
 /** Anchored in the message's own text (so its offsets underline it). */
 export function isTextAnchor(anchor: Anchor | null | undefined): anchor is Anchor {
@@ -88,10 +88,10 @@ export function anchorAttachmentIds(anchor: Anchor | null | undefined): string[]
 }
 
 export type Point = { x: number; y: number }
-export type Box = { left: number; top: number; width: number; height: number }
+type Box = { left: number; top: number; width: number; height: number }
 
 /** Smallest region worth asking about, in pixels on screen. */
-export const MIN_REGION_PX = 8
+const MIN_REGION_PX = 8
 
 /** A drag from `a` to `b` over `bounds`, as a rectangle in fractions; null when too small. */
 export function regionFromDrag(a: Point, b: Point, bounds: Box): Pick<AnchorRegion, 'x' | 'y' | 'w' | 'h'> | null {

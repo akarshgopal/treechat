@@ -1,7 +1,7 @@
 import { collectAssistantText, runChat } from './client-chat.ts'
 import { backgroundModelFor, loadProviderConfig } from './provider.ts'
 
-export type AssistantRequestOptions = {
+type AssistantRequestOptions = {
   /** Background work (summaries, takeaway drafts): try the background model first. */
   background?: boolean
   /** The reply so far, as it streams (starts over if a fallback model takes over). */

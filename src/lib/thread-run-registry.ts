@@ -7,7 +7,7 @@ import { runKeyOf } from './run-key.ts'
  * the runners that own them (`ThreadRunners`) and the lanes that show them.
  */
 
-export type ThreadChat = ReturnType<typeof useChat>
+type ThreadChat = ReturnType<typeof useChat>
 
 /** The same key the transport records a run's sources and cost under. */
 export const runKey = runKeyOf

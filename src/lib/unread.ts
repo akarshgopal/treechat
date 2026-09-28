@@ -10,7 +10,7 @@ export function hasUnread(session: ChatSession): boolean {
 }
 
 /** A copy of `thread` without the unread flag, or the same one when it had none. */
-export function markRead(thread: Thread): Thread {
+function markRead(thread: Thread): Thread {
   if (!thread.unread) return thread
   const { unread: _seen, ...rest } = thread
   return rest

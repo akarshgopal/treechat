@@ -9,7 +9,7 @@ import { selectionClientRect } from '@/lib/selection'
 import { useAutosize } from '@/lib/use-autosize'
 import { branchShortcutLabel, cn } from '@/lib/utils'
 
-export type PopoverAnchor = { top: number; left: number; bottom: number }
+type PopoverAnchor = { top: number; left: number; bottom: number }
 
 type BranchPopoverProps = {
   /** Where the passage sits on screen when the popover opened. */

@@ -50,7 +50,7 @@ function withMessages(thread: Thread, messages: ChatMessage[]): Thread {
  * Drop a set of thread ids (and leave expansion / the frame consistent).
  * `fallbackActiveId` is used when the framed thread itself was removed.
  */
-export function removeThreads(
+function removeThreads(
   state: TreeState,
   doomed: Set<string>,
   fallbackActiveId: string,

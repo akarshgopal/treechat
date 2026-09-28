@@ -64,7 +64,7 @@ export function BranchHeader({ thread, onMerge, onDiscard, onReturn, onLearn, on
 }
 
 /** The chat as a whole: its map, a summary of what it found, a copy to share. */
-export type ChatOverview = {
+type ChatOverview = {
   /** Branches with a reply not yet seen. */
   newCount: number
   onMap: () => void

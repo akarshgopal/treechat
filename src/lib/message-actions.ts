@@ -2,7 +2,7 @@ import { childThreads, descendantIds } from './tree.ts'
 import type { ChatMessage, TreeState } from '@/types'
 
 /** Keep messages through `messageId` inclusive. `null` if the id is missing. */
-export function truncateAfterMessage(
+function truncateAfterMessage(
   messages: ChatMessage[],
   messageId: string,
 ): ChatMessage[] | null {
@@ -65,7 +65,7 @@ export function droppedMessageIds(
  * Edit/retry discards these (and their descendants) so stale offsets never
  * underline a rewritten passage.
  */
-export function childIdsAnchoredToMessages(
+function childIdsAnchoredToMessages(
   state: TreeState,
   threadId: string,
   messageIds: Iterable<string>,

@@ -19,7 +19,7 @@ export const LENSES: readonly Lens[] = [
   { id: 'deeper', label: 'Deeper', ask: (q) => `Go deeper on “${q}”` },
 ]
 
-export const LENS_QUOTE_CHARS = 60
+const LENS_QUOTE_CHARS = 60
 
 /** Quote marks already around the passage would double up inside ours. */
 const EDGE_QUOTES = /^[“”"'‘’«»\s]+|[“”"'‘’«»\s]+$/g

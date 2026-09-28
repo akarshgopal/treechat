@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mockChatStream } from '../../shared/mock-stream.ts'
+import { mockChatStream } from './mock-stream.ts'
 import { collectAssistantText } from './client-chat.ts'
 import { LEARN_REQUEST, learnFileName, learnPrompt, learnScope } from './learn.ts'
 import { createSeedState } from './seed.ts'

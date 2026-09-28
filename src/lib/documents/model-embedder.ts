@@ -1,7 +1,7 @@
 import type { EmbedProgress, Embedder } from './embedder.ts'
 import type { WorkerRequest, WorkerResponse } from './embed.worker.ts'
 
-export const DEFAULT_EMBEDDING_MODEL = 'Xenova/all-MiniLM-L6-v2'
+const DEFAULT_EMBEDDING_MODEL = 'Xenova/all-MiniLM-L6-v2'
 /** Rough size of the quantized model, shown before the first download. */
 export const DEFAULT_EMBEDDING_MODEL_MB = 23
 

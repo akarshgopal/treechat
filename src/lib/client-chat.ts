@@ -5,8 +5,8 @@ import {
   loadProviderConfig,
   type ClientProviderConfig,
 } from './provider.ts'
-import { CITATIONS_EVENT, mockChatStream, textFromMessage } from '../../shared/mock-stream.ts'
-import { buildSystemPrompts } from '../../shared/system-prompts.ts'
+import { CITATIONS_EVENT, mockChatStream, textFromMessage } from './mock-stream.ts'
+import { buildSystemPrompts } from './system-prompts.ts'
 import { clearRunCitations, parseCitations, recordRunCitations } from './citations.ts'
 import { clearRunUsage, recordRunUsage, usageFromOpenRouterChunk } from './usage.ts'
 import { applyWebSearch, createWebCitationCollector, isWebSearch } from './web-search.ts'
@@ -19,16 +19,16 @@ import { claimNextModel } from './alternates.ts'
 import { runKeyForRequest } from './run-key.ts'
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
-export const OPENROUTER_APP_TITLE = 'TreeChat'
+const OPENROUTER_APP_TITLE = 'TreeChat'
 
 /** Replies come from OpenRouter with a saved key, else from the in-page demo. */
-export type ChatBackend = 'openrouter' | 'mock'
+type ChatBackend = 'openrouter' | 'mock'
 
-export type OpenAIContentPart =
+type OpenAIContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
-export type OpenAIChatMessage = {
+type OpenAIChatMessage = {
   role: 'system' | 'user' | 'assistant'
   /** Parts only when a user turn carries images. */
   content: string | OpenAIContentPart[]
@@ -49,7 +49,7 @@ export function resolveChatBackend(config: ClientProviderConfig | null = loadPro
   return config?.apiKey ? 'openrouter' : 'mock'
 }
 
-export function openRouterHeaders(
+function openRouterHeaders(
   config: ClientProviderConfig,
   origin = defaultOrigin(),
 ): Record<string, string> {
@@ -61,7 +61,7 @@ export function openRouterHeaders(
   }
 }
 
-export function openRouterRequestBody(
+function openRouterRequestBody(
   config: ClientProviderConfig,
   messages: OpenAIChatMessage[],
   sessionId?: string,
@@ -102,7 +102,7 @@ function defaultOrigin(): string {
   return 'https://akarshgopal.github.io/treechat'
 }
 
-export function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
+function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
   const out: OpenAIChatMessage[] = []
   for (const message of messages) {
     if (!message || typeof message !== 'object') continue
@@ -125,7 +125,7 @@ export function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
   return out
 }
 
-export function buildOpenRouterMessages(
+function buildOpenRouterMessages(
   messages: unknown[],
   forwardedProps: Record<string, unknown> = {},
 ): OpenAIChatMessage[] {
@@ -136,7 +136,7 @@ export function buildOpenRouterMessages(
   return [...system, ...toOpenAIChatMessages(messages)]
 }
 
-export function contentDeltaFromOpenAIData(payload: string): string | null {
+function contentDeltaFromOpenAIData(payload: string): string | null {
   const trimmed = payload.trim()
   if (!trimmed || trimmed === '[DONE]') return null
   try {
@@ -360,7 +360,7 @@ export async function* runChat(input: RunChatInput): AsyncGenerator<StreamChunk>
   const key = runKeyForRequest(input.threadId, input.forwardedProps)
   clearRunCitations(key)
   clearRunUsage(key)
-  // Sources arrive as a CUSTOM event (mock, local API); they belong to the
+  // The demo's sources arrive as a CUSTOM event; they belong to the
   // thread's run, not to the chat engine's message stream.
   for await (const chunk of routeChat(input)) {
     if (chunk.type === EventType.CUSTOM && chunk.name === CITATIONS_EVENT) {
