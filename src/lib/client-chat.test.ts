@@ -340,3 +340,20 @@ test('a custom server error names the server, and an unreachable one mentions CO
   globalThis.fetch = (async () => { throw new TypeError('Failed to fetch') }) as typeof fetch
   await assert.rejects(collectAssistantText(providerChatStream(input)), /Could not reach localhost:11434.*CORS/)
 })
+
+test('an assistant turn with no text is not sent to the provider', async () => {
+  const calls = captureFetch()
+  await collectAssistantText(providerChatStream({
+    messages: [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: '' },
+      { role: 'user', content: 'second' },
+    ],
+    config: { provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-4.1-mini' },
+    forwardedProps: {},
+    threadId: 't1',
+    runId: 'r1',
+  }))
+  const sent = (calls[0]!.body.messages as Array<{ role: string; content: string }>).filter((message) => message.role !== 'system')
+  assert.deepEqual(sent.map((message) => message.role), ['user', 'user'])
+})

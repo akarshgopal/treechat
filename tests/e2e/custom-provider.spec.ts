@@ -100,3 +100,29 @@ test('saved headers are not sent to a different server, and a preset with an edi
   await expect(page.getByTestId('settings-dialog')).toHaveCount(0)
   await expect(page.getByTestId('provider-mode')).toBeVisible()
 })
+
+test('a first reply that fails leaves the message with a way to try again, even after a reload', async ({ page }) => {
+  let calls = 0
+  await page.route('https://openrouter.ai/api/v1/chat/completions', (route) => {
+    calls += 1
+    return calls === 1
+      ? route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Provider returned error' } }) })
+      : route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"choices":[{"delta":{"content":"Second time lucky."}}]}\n\ndata: [DONE]\n\n' })
+  })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-5.6-luna' })))
+  await page.reload()
+  await page.getByTestId('thread-composer').fill('My first message')
+  await page.getByTestId('thread-composer').press('Enter')
+  await expect(page.getByRole('alert')).toContainText('Provider returned error')
+
+  // The error goes with the page, but a blank reply must not take its place.
+  await expect(page.locator('article')).toHaveCount(1)
+  await page.reload()
+  await expect(page.locator('article')).toHaveCount(1)
+  await expect(page.getByTestId('unanswered-notice')).toBeVisible()
+  await page.getByTestId('unanswered-notice').getByRole('button', { name: 'Try again' }).click()
+  await expect(page.locator('article').last()).toContainText('Second time lucky.')
+  await expect(page.getByTestId('unanswered-notice')).toHaveCount(0)
+  expect(calls).toBe(2)
+})

@@ -315,6 +315,12 @@ export function ThreadView({
         <div className="mx-auto w-full max-w-3xl">
           {guide}
           {error ? <div role="alert" className="mb-2 flex items-center gap-2 text-[13px] text-destructive">{error} <button type="button" className="btn" onClick={onRetryError}>Try again</button></div> : null}
+          {/* The error is gone after a reload, but the missing reply is not. */}
+          {!error && !isLoading && lastMessage?.role === 'user' && lastMessage.kind !== 'drop-summary' && onRetryError ? (
+            <div className="mb-2 flex items-center gap-2 text-[13px] text-muted-foreground" data-testid="unanswered-notice">
+              No reply came back for this message. <button type="button" className="btn" onClick={onRetryError}>Try again</button>
+            </div>
+          ) : null}
           {composerAbove ? <div className="mb-2">{composerAbove}</div> : null}
           {composer}
         </div>

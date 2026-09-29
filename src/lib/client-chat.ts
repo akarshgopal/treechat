@@ -127,6 +127,9 @@ function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
     const role = (message as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant' && role !== 'system') continue
     const text = textFromMessage(message)
+    // A reply that failed before its first word leaves an empty assistant
+    // turn in the engine; providers reject it or answer oddly.
+    if (role === 'assistant' && !text.trim()) continue
     const images = (message as { requestImages?: RequestImage[] }).requestImages
     if (role === 'user' && images?.length) {
       out.push({
