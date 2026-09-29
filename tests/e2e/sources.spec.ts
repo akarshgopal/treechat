@@ -169,7 +169,7 @@ test('with a key, Source? asks OpenRouter to search and renders its URL citation
 
   const branch = await askForSource(page)
   expect(requests).toHaveLength(1)
-  expect(requests[0]!.plugins).toEqual([expect.objectContaining({ id: 'web', max_results: 5, search_prompt: expect.stringContaining('[1]') })])
+  expect(requests[0]!.plugins).toEqual([expect.objectContaining({ id: 'web', engine: 'exa', max_results: 5, search_prompt: expect.stringContaining('[1]') })])
   await expect(branch.getByRole('button', { name: 'Source 1: Selecting passages' })).toBeVisible()
   await expect(branch.getByRole('button', { name: 'Source 2: Passage marks' })).toBeVisible()
   await expect(branch.getByTestId('source-entry')).toHaveCount(2)

@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThreadSummary } from '@/types'
+import { MessageMarkdown } from './MessageMarkdown'
 
 /**
  * Sits before the first message still sent to the model in full, so it is
@@ -27,8 +28,8 @@ export function SummaryDivider({ summary }: { summary: ThreadSummary }) {
         <span aria-hidden className="h-px flex-1 bg-border" />
       </div>
       {open ? (
-        <div id={panelId} className="whitespace-pre-wrap rounded-md border border-border bg-foreground/[0.025] px-3 py-2 text-[13px] leading-relaxed text-muted-foreground" data-testid="summary-text">
-          {summary.content}
+        <div id={panelId} className="rounded-md border border-border bg-foreground/[0.025] px-3 py-2 text-[13px] leading-relaxed text-muted-foreground" data-testid="summary-text">
+          <MessageMarkdown content={summary.content} />
         </div>
       ) : null}
     </div>

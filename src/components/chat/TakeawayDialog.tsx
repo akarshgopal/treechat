@@ -67,7 +67,7 @@ export function TakeawayDialog({ thread, state, onClose, onConfirm }: {
             readOnly={loading}
             aria-busy={loading}
             rows={5}
-            className="mt-2 text-[15px] leading-relaxed"
+            className="mt-2 max-h-[60svh] min-h-32 text-[15px] leading-relaxed field-sizing-content"
             placeholder={loading ? 'Drafting a takeaway…' : 'Write a takeaway…'}
           />
           {loading ? (
