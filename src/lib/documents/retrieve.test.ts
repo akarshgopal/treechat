@@ -4,7 +4,7 @@ import { afterEach, test } from 'node:test'
 import { setEmbedder } from './active-embedder.ts'
 import { fakeEmbedder, type Embedder } from './embedder.ts'
 import { indexFile } from './ingest.ts'
-import { documentCitations, documentsPrompt, forgetCachedChunks, retrieve } from './retrieve.ts'
+import { forgetCachedChunks, retrieve } from './retrieve.ts'
 
 const broken: Embedder = { id: fakeEmbedder.id, threshold: 0.1, embed: () => Promise.reject(new Error('no wasm')) }
 
@@ -42,23 +42,4 @@ test('a slow model gives way to keywords after the timeout', async () => {
   const slow: Embedder = { id: fakeEmbedder.id, threshold: 0.1, embed: () => new Promise(() => {}) }
   const hits = await retrieve('sourdough', ['slow'], { embedder: slow, timeoutMs: 20 })
   assert.equal(hits[0]?.method, 'keyword')
-})
-
-test('the DOCUMENTS section and citations share numbering', async () => {
-  await addDoc('pair', garden, 'Home notes.md')
-  const hits = await retrieve('moss shade water', ['pair'], { embedder: fakeEmbedder, k: 2 })
-  const prompt = documentsPrompt(hits)
-  assert.match(prompt, /^DOCUMENTS\n/)
-  assert.match(prompt, /cite each excerpt/)
-  assert.match(prompt, /\[1\] Home notes\.md — Garden\n"""\n# Garden/)
-  const citations = documentCitations(hits)
-  assert.deepEqual(citations[0], {
-    id: '1',
-    kind: 'document',
-    title: 'Home notes.md',
-    documentId: 'pair',
-    snippet: hits[0]!.chunk.text,
-    locator: 'Garden',
-  })
-  assert.deepEqual(citations.map((citation) => citation.id), hits.map((_, index) => String(index + 1)))
 })

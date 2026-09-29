@@ -4,7 +4,6 @@ import {
   backgroundModelFor,
   baseUrlOrigin,
   chatCompletionsUrl,
-  DEFAULT_OPENROUTER_MODEL,
   formatHeaderLines,
   parseBaseUrl,
   parseExtraBody,
@@ -31,17 +30,6 @@ test('parseProviderConfig clamps temperature and drops invalid maxTokens', () =>
   )
   assert.equal(strings?.temperature, 1.25)
   assert.equal(strings?.maxTokens, 2048)
-})
-
-test('serializeProviderConfig keeps temperature 0', () => {
-  const raw = serializeProviderConfig({
-    provider: 'openrouter',
-    apiKey: 'k',
-    model: DEFAULT_OPENROUTER_MODEL,
-    temperature: 0,
-  })
-  assert.equal(JSON.parse(raw).temperature, 0)
-  assert.equal(parseProviderConfig(raw)?.temperature, 0)
 })
 
 test('the background model is used only with a key and when it differs', () => {

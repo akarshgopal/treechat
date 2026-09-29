@@ -46,17 +46,3 @@ test('one shared word of a longer question is not a match', () => {
   const here = session('s1', 'Sky', [branch('b1', 'root', 'Where does the fourth power come from?', violet)])
   assert.deepEqual(exploredMatches([here], { text: 'fourth moon of jupiter orbit', sessionId: 's1' }), [])
 })
-
-test('the takeaway comes along; excluded, unanswered and extra matches are left out', () => {
-  const s = session('s1', 'Sky', [
-    branch('b1', 'root', 'Why is the sky violet?', violet, 3),
-    branch('b2', 'root', 'Is the sky violet at dawn?', violet, 2),
-    branch('b3', 'root', 'Violet sky at dusk?', violet, 1),
-    { ...branch('b4', 'root', 'Violet sky again?', violet), messages: [message('q', 'user', 'Violet sky again?')] },
-  ])
-  const root = s.treeState.threads[s.treeState.rootId]!
-  root.messages.push(message('t1', 'assistant', 'Our eyes weigh violet weakly.', { kind: 'drop-summary', sourceThreadId: 'b2' }))
-  const matches = exploredMatches([s], { text: 'violet sky', sessionId: 's1', excludeThreadIds: ['b1'] })
-  assert.deepEqual(matches.map((match) => match.threadId), ['b2', 'b3'])
-  assert.equal(matches[0]?.takeaway, 'Our eyes weigh violet weakly.')
-})

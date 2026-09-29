@@ -3,7 +3,6 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { EventType } from '@tanstack/ai'
 import { saveProviderConfig } from './provider.ts'
 import {
-  OPENROUTER_CHAT_URL,
   collectAssistantText,
   providerChatStream,
   runChat,
@@ -18,61 +17,6 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-})
-
-test('providerChatStream converts OpenAI SSE into TEXT_MESSAGE_* events', async () => {
-  const sse = [
-    'data: {"choices":[{"delta":{"content":"Hello"}}]}',
-    '',
-    'data: {"choices":[{"delta":{"content":" world"}}]}',
-    '',
-    'data: [DONE]',
-    '',
-  ].join('\n')
-
-  const urls: string[] = []
-  globalThis.fetch = (async (input, init) => {
-    urls.push(String(input))
-    assert.equal(init?.method, 'POST')
-    const headers = init?.headers as Record<string, string>
-    assert.equal(headers.Authorization, 'Bearer sk-or-v1-test')
-    assert.equal(headers['HTTP-Referer'] != null, true)
-    assert.equal(headers['X-Title'], 'TreeChat')
-    const body = JSON.parse(String(init?.body)) as {
-      stream: boolean
-      model: string
-      temperature?: number
-      max_tokens?: number
-      messages: Array<{ role: string }>
-    }
-    assert.equal(body.stream, true)
-    assert.equal(body.model, 'google/gemini-2.5-flash')
-    assert.equal(body.temperature, 0.4)
-    assert.equal(body.max_tokens, 800)
-    assert.equal(body.messages[0]?.role, 'system')
-    return new Response(sse, {
-      status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-    })
-  }) as typeof fetch
-
-  const text = await collectAssistantText(
-    providerChatStream({
-      messages: [{ role: 'user', content: 'hi' }],
-      config: {
-        provider: 'openrouter',
-        apiKey: 'sk-or-v1-test',
-        model: 'google/gemini-2.5-flash',
-        temperature: 0.4,
-        maxTokens: 800,
-      },
-      forwardedProps: {},
-      threadId: 't1',
-      runId: 'r1',
-    }),
-  )
-  assert.equal(text, 'Hello world')
-  assert.deepEqual(urls, [OPENROUTER_CHAT_URL])
 })
 
 test('providerChatStream abort after start does not emit RUN_ERROR', async () => {

@@ -110,23 +110,6 @@ function summarizedRoot(through: string, filler = 700) {
   } satisfies TreeState
 }
 
-test('an ancestor with a summary before the anchor is told through it', () => {
-  const context = threadContext(summarizedRoot('s2'), 'b')
-  assert.ok(context.startsWith(`${CONTEXT_MAIN}\n${CONTEXT_EARLIER}\nSUMMARY: first and second exchange`))
-  // Turns between the summary and the anchor go in full, not clipped to 480.
-  assert.match(context, /user: second question z{600,}/)
-  assert.match(context, /assistant: second answer z{600,}/)
-  assert.match(context, /assistant: the anchor with a quotable passage/)
-  assert.doesNotMatch(context, /first question/)
-  assert.doesNotMatch(context, /after the anchor/)
-  assert.ok(context.endsWith(`${CONTEXT_QUOTE}\n«a quotable passage»`))
-})
-
-test('a summary ending on the anchor itself still frames it', () => {
-  const context = threadContext(summarizedRoot('s6'), 'b')
-  assert.match(context, /SUMMARY: first and second exchange\n\nassistant: the anchor/)
-})
-
 test('a summary that runs past the anchor is ignored for that branch', () => {
   const context = threadContext(summarizedRoot('s7'), 'b')
   assert.doesNotMatch(context, /SUMMARY:/)

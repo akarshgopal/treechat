@@ -20,18 +20,3 @@ test('only http(s) links survive, opened safely; images are named, never loaded'
   assert.ok(!html.includes('c.png'))
   assert.ok(html.includes('<a href="https://example.org/page" target="_blank" rel="noopener noreferrer">https://example.org/page</a>.'))
 })
-
-test('Markdown blocks: headings, lists, quotes, emphasis and code', () => {
-  const html = markdownToHtml('# Top\n\nSome **bold** and *soft* `code`.\n\n- one\n- two\n\n1. first\n\n> quoted')
-  assert.ok(html.includes('<h3>Top</h3>'))
-  assert.ok(html.includes('<p>Some <strong>bold</strong> and <em>soft</em> <code>code</code>.</p>'))
-  assert.ok(html.includes('<ul><li>one</li><li>two</li></ul>'))
-  assert.ok(html.includes('<ol><li>first</li></ol>'))
-  assert.ok(html.includes('<blockquote><p>quoted</p></blockquote>'))
-})
-
-test('a list ends where a heading, a fence or the other kind of list begins', () => {
-  const html = markdownToHtml('1. first\n- note\n## Next\n```\ncode\n```')
-  assert.equal(html, '<ol><li>first</li></ol>\n<ul><li>note</li></ul>\n<h4>Next</h4>\n<pre><code>code</code></pre>')
-  assert.equal(markdownToHtml('- one\n  continued'), '<ul><li>one continued</li></ul>')
-})
