@@ -44,6 +44,8 @@ const SOURCE_PATTERNS = [
   /at least (three|four) satellites/i,
   /(three|four) satellites/i,
 ]
+const ASK_PATTERNS = [/phones do not need atomic clocks/i, /atomic clocks?/i]
+const OWN_QUESTION = 'Why not just put an atomic clock in phones?'
 
 // ---------------------------------------------------------------- in-page hooks
 
@@ -433,13 +435,28 @@ async function scene(d, picks, mark) {
   await wait(300)
   const chip = app.locator('[data-testid="citation-chip"]')
   if (await chip.count()) await d.move(await d.centerOf(chip), 700)
+  await wait(700)
+
+  // Deeper still: select, then just type a question of your own.
+  await d.caption('Keep going. <em>Ask your own.</em>')
+  const sourced = lanes.last()
+  picks.ask ??= pick(await d.lastText(messages(sourced)), ASK_PATTERNS)
+  await d.select(messages(sourced).filter({ hasText: picks.ask }).last(), picks.ask)
+  await wait(350)
+  await page.keyboard.type(OWN_QUESTION, { delay: 34 })
+  await wait(250)
+  await page.keyboard.press('Enter')
+  await wait(350)
+  await d.focus(lanes.last(), 1.28, 750)
+  await d.replied()
   await wait(900)
   await d.camera(1, 0, 0, 600)
 
-  // Bring the finding back to the main conversation.
+  // Bring the first branch's finding back to the main conversation; the
+  // sidebar tree jumps straight to it.
   await d.caption('Bring back <em>what you learned.</em>')
-  await d.click(await d.centerOf(lanes.last().locator('[data-testid="back-to-spine"]')), 650)
-  await wait(400)
+  await d.click(await d.centerOf(app.locator('[data-testid="tree-rail"] [role="treeitem"]').filter({ hasText: 'Explain' })), 800)
+  await wait(500)
   await d.click(await d.centerOf(lanes.last().locator('[data-testid="drop-summary"]')), 700)
   const confirm = app.locator('[data-testid="confirm-takeaway"]')
   await confirm.waitFor({ state: 'visible' })
