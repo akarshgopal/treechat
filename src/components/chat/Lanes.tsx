@@ -446,7 +446,12 @@ function useLaneGeometry(track: RefObject<HTMLDivElement | null>, links: LaneLin
         const content = (inner?.offsetHeight ?? childViewport.scrollHeight) - spacer
         const desired = Math.max(0, y - view.top - head.height / 2 - headNatural)
         const room = Math.max(0, childViewport.clientHeight - content)
-        const target = childViewport.scrollTop > 1 ? 0 : Math.round(Math.min(desired, room))
+        // A new line overflows the lane for a frame and the thread follows it
+        // down; a scroll no deeper than the spacer is that, not the reader
+        // (the spacer is sized so nothing else overflows). Treating it as the
+        // reader dropped the spacer, and the branch dipped and rose every line.
+        const readerScrolled = childViewport.scrollTop > Math.max(1, spacer)
+        const target = readerScrolled ? 0 : Math.round(Math.min(desired, room))
         const previous = offsetsRef.current[link.to] ?? 0
         const settled = Math.abs(target - previous) <= 1 ? previous : target
         lead[link.to] = settled

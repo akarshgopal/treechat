@@ -1,5 +1,6 @@
 import { expect, test, type Page } from './fixtures'
 import { afterSaves, savedLibrary, tree } from './library'
+import { selectText } from './helpers'
 
 /** Select `length` characters of a message's first text node from `from`. */
 async function select(page: Page, messageId: string, from: number, length: number) {
@@ -110,6 +111,30 @@ test('a short branch starts level with its passage', async ({ page }, testInfo) 
     const passage = document.querySelector('[data-testid="main-lane"] mark[data-open="true"]')!.getClientRects()[0]!
     return Math.abs((anchor.top + anchor.height / 2) - (passage.top + passage.height / 2))
   }), { timeout: 10_000 }).toBeLessThan(12)
+})
+
+test('a branch that outgrows its place slides up without dipping', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'phones show one lane at a time')
+  // Short enough that the demo reply outgrows the room below its passage.
+  await page.setViewportSize({ width: 1280, height: 640 })
+  await selectText(page, '[data-message-id="msg-root-4"]', 'Closed branches keep a quiet underline')
+  await page.evaluate(() => {
+    const heights: number[] = ((window as unknown as { leads: number[] }).leads = [])
+    const tick = () => {
+      const lead = document.querySelector('[data-testid="branch-lane"] .lane-lead')
+      if (lead) heights.push(lead.getBoundingClientRect().height)
+      if (heights.length < 1500) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+  await page.locator('[data-lens="explain"]').click()
+  await expect(page.getByTestId('composer-stop')).toHaveCount(0, { timeout: 15_000 })
+  const leads = await page.evaluate(() => (window as unknown as { leads: number[] }).leads)
+  const peak = leads.indexOf(Math.max(...leads))
+  // Once level with its passage the spacer only gives way. It used to drop
+  // and grow back on every new line, so the branch bounced as it streamed.
+  expect(leads[leads.length - 1]).toBeLessThan(leads[peak]! - 20)
+  expect(leads.slice(peak + 1).filter((height, i) => height > leads[peak + i]! + 2)).toEqual([])
 })
 
 test('panes collapse to strips, expand again, and resize from the gutter', async ({ page }, testInfo) => {
