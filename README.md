@@ -70,7 +70,7 @@ The app is a static `dist/` site. Hosting is GitHub Pages (no Cloudflare Pages F
 Project site URL: `https://akarshgopal.github.io/treechat/` (Vite `base` `/treechat/`).
 
 1. In the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-2. Push to `main` (or run the **Deploy GitHub Pages** workflow). `.github/workflows/pages.yml` runs `pnpm test`, the Playwright suite (Chromium; a failure blocks the deploy and uploads the report and traces as the `playwright-report` artifact), `pnpm build`, and uploads `dist`.
+2. Push to `main` (or run the **Deploy GitHub Pages** workflow). `.github/workflows/pages.yml` only builds (`pnpm build`, which also type-checks) and uploads `dist`; pushes that touch only docs or tests skip it. Tests are not run in CI, so run them locally before pushing (see below).
 3. Vite base is `/treechat/` when `GITHUB_REPOSITORY` is `*/treechat`. Override with `VITE_BASE=/` for `https://<user>.github.io/`.
 4. Local production build meant for Pages: `VITE_BASE=/treechat/ pnpm build`.
 
@@ -123,7 +123,7 @@ pnpm test:e2e
 
 Playwright builds the production app and serves it on `127.0.0.1:5180`. A second Vite server on `127.0.0.1:5190` verifies branch requests under development StrictMode. Tests cover desktop and mobile Chromium, settings-key branch and nested-branch context, user-message regeneration, delayed responses and stream errors, branch cancellation and creation, reply destinations, takeaway review and undo, failed generation, source-link persistence, drafts across chats, and documents (add, attach, cited retrieval, remove). Provider requests are intercepted; no real API keys or model calls are used, and documents use a deterministic fake embedder (`localStorage["treechat:fake-embedder"] = "1"`) instead of downloading the model.
 
-Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. `E2E_CROSS_BROWSER=1 pnpm test:e2e --project=firefox --project=webkit --project=iphone` also runs the suite in Firefox, desktop Safari's engine and an iPhone 15 profile (`pnpm exec playwright install firefox webkit` first); CI runs Chromium only. Screenshots are written to `test-results/`; failed runs also retain Playwright traces.
+Set `CHROME_PATH=/absolute/path/to/chromium` to use an existing browser. `E2E_CROSS_BROWSER=1 pnpm test:e2e --project=firefox --project=webkit --project=iphone` also runs the suite in Firefox, desktop Safari's engine and an iPhone 15 profile (`pnpm exec playwright install firefox webkit` first). Screenshots are written to `test-results/`; failed runs also retain Playwright traces.
 
 ## Stop, retry, and edit
 

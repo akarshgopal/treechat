@@ -6,8 +6,8 @@ const DEV_PORT = Number(process.env.E2E_DEV_PORT ?? 5190)
 
 export default defineConfig({
   testDir: './tests/e2e',
-  fullyParallel: false,
-  workers: 1,
+  // Each test has its own browser context and storage, so they run in parallel.
+  fullyParallel: true,
   timeout: 30_000,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
