@@ -293,6 +293,8 @@ button:focus-visible, summary:focus-visible, [role="button"]:focus-visible {
 
 /* Branches in the margin beside the line they grew from. */
 .margin-branch-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+/* A bigger tap area on touch, kept off the text to its right. */
+@media (pointer: coarse) { .margin-branch::before { content: ''; position: absolute; inset: -8px 0 -8px -8px; } }
 .margin-branch[data-open="true"] .margin-branch-dot { box-shadow: 0 0 0 3px color-mix(in oklch, var(--branch) 25%, transparent); }
 .lane-lead { transition: height 180ms cubic-bezier(0.22, 0.9, 0.24, 1); }
 body.col-resizing { cursor: col-resize; user-select: none; }
@@ -478,6 +480,9 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 
 .tc-md th,
 .tc-md td {
+  /* Break between words only; a table too wide scrolls in its wrapper. */
+  overflow-wrap: normal;
+  word-break: normal;
   border: 1px solid var(--border);
   padding: 0.35em 0.6em;
   text-align: left;

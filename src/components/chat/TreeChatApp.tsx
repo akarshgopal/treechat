@@ -694,7 +694,7 @@ function TreeChatShell({
               status={demoStatus}
             />
           )}
-          <div className="relative flex min-w-0 flex-1 flex-col" onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd}>
+          <main className="relative flex min-w-0 flex-1 flex-col" onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd}>
             {asking ? (
               <BranchPopover
                 key={`${asking.passage.messageId}:${asking.passage.start}:${asking.passage.end}`}
@@ -760,7 +760,7 @@ function TreeChatShell({
                 }}
               />
             </div>
-          </div>
+          </main>
         </div>
       </ShellContext.Provider>
 

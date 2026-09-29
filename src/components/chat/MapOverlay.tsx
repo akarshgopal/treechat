@@ -1,6 +1,6 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import { branchTakeaway, childThreads, clipText, threadTitle } from '@/lib/tree'
+import { branchTakeaway, childThreads, clipText, markdownToPlain, threadTitle } from '@/lib/tree'
 import { unreadCount } from '@/lib/unread'
 import { cn } from '@/lib/utils'
 import type { Thread, TreeState } from '@/types'
@@ -54,7 +54,7 @@ export function MapOverlay({ state, title, narrow, onOpen, onClose }: {
                   aria-current={state.activeThreadId === root.id ? 'true' : undefined}
                 >
                   <span className="text-[15px] font-semibold">{title}</span>
-                  {gist ? <span className="line-clamp-3 text-muted-foreground">{clipText(gist, 220)}</span> : null}
+                  {gist ? <span className="line-clamp-3 text-muted-foreground">{clipText(markdownToPlain(gist), 220)}</span> : null}
                 </button>
               ) : null}
               {branches.length > 0 ? (
@@ -105,7 +105,7 @@ function MapBranch({ thread, state, narrow, onOpen }: {
           <span className="min-w-0 text-[14px] font-semibold">{threadTitle(thread)}</span>
         </span>
         {thread.anchor ? <span className="line-clamp-3 italic leading-snug text-muted-foreground">“{clipText(thread.anchor.quote, 180)}”</span> : null}
-        {takeaway ? <span className="line-clamp-4 border-t border-border pt-2 leading-normal" data-testid="map-takeaway">{takeaway}</span> : null}
+        {takeaway ? <span className="line-clamp-4 border-t border-border pt-2 leading-normal" data-testid="map-takeaway">{markdownToPlain(takeaway)}</span> : null}
       </button>
       {children.length > 0 ? (
         <div className="ml-3.5 flex flex-col gap-3 border-l border-border pl-3.5 pt-3">

@@ -247,7 +247,8 @@ function CodeFence({
           {copied ? <Check size={13} strokeWidth={2.2} /> : <Copy size={13} strokeWidth={2.2} />}
         </button>
       </div>
-      <pre ref={preRef} className={cn('tc-md-pre', className)} {...props}>
+      {/* Focusable so a keyboard can scroll long lines. */}
+      <pre ref={preRef} tabIndex={0} className={cn('tc-md-pre', className)} {...props}>
         {children}
       </pre>
     </div>
