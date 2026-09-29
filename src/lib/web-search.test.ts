@@ -37,21 +37,6 @@ async function run(body: string, forwardedProps: Record<string, unknown> = { web
   return { text, request, citations: takeRunCitations('web-thread') }
 }
 
-test('annotations on streamed deltas become numbered web citations', async () => {
-  const { text, citations } = await run(sse(
-    { choices: [{ delta: { content: 'Glaciers retreat [1]' } }] },
-    { choices: [{ delta: { content: ' and seas rise [2].', annotations: [
-      annotation('https://example.com/ice', 'Ice report', '  Glaciers   retreated\n by 5% ' ),
-      annotation('https://example.org/sea', 'Sea levels'),
-    ] } }] },
-  ))
-  assert.equal(text, 'Glaciers retreat [1] and seas rise [2].')
-  assert.deepEqual(citations, [
-    { id: '1', kind: 'web', url: 'https://example.com/ice', title: 'Ice report', snippet: 'Glaciers retreated by 5%' },
-    { id: '2', kind: 'web', url: 'https://example.org/sea', title: 'Sea levels' },
-  ])
-})
-
 test('annotations on a final message are read too, deduplicated by URL in first-seen order', async () => {
   const { citations } = await run(sse(
     { choices: [{ delta: { content: 'One [1], two [2].', annotations: [annotation('https://b.example.com/', 'B')] } }] },

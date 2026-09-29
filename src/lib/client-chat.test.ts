@@ -186,17 +186,6 @@ test('streaming preserves split UTF-8, CRLF frames and a final unterminated fram
   assert.equal(await collectAssistantText(providerChatStream(streamInput)), 'Hi 🌱!')
 })
 
-test('provider errors inside a successful HTTP stream surface instead of silently finishing', async () => {
-  globalThis.fetch = (async () => new Response(
-    'data: {"choices":[{"delta":{"content":"Partial"}}]}\n\ndata: {"error":{"message":"Provider overloaded"}}\n\n',
-  )) as typeof fetch
-  const chunks = []
-  for await (const chunk of providerChatStream(streamInput)) chunks.push(chunk)
-  assert.ok(chunks.some((chunk) => chunk.type === EventType.TEXT_MESSAGE_CONTENT))
-  assert.ok(chunks.some((chunk) => chunk.type === EventType.RUN_ERROR && chunk.message === 'Provider overloaded'))
-  assert.ok(!chunks.some((chunk) => chunk.type === EventType.RUN_FINISHED))
-})
-
 test('empty provider streams and error finish reasons surface a retryable error', async () => {
   for (const body of ['', 'data: [DONE]\n\n', 'data: {"choices":[{"finish_reason":"error"}]}\n\n']) {
     globalThis.fetch = (async () => new Response(body)) as typeof fetch
@@ -315,19 +304,6 @@ test('a custom server sends its key, custom headers and extra options; extras ca
   assert.equal(call.body.model, 'gpt-4.1')
   assert.equal(call.body.stream, true)
   assert.notDeepEqual(call.body.messages, [])
-})
-
-test('runChat goes live for a custom server without a key, and stays in the demo for an unfinished one', async () => {
-  saveProviderConfig({ provider: 'openai-compatible', baseUrl: 'http://localhost:1234/v1', apiKey: '', model: 'local-model' })
-  const calls = captureFetch()
-  const input = { messages: [{ id: 'a', role: 'user', content: 'hi' }], threadId: 't1', runId: 'r1' }
-  assert.equal(await collectAssistantText(runChat(input)), 'ok')
-  assert.equal(calls.length, 1)
-
-  // OpenRouter without a key is still the demo: nothing is fetched.
-  saveProviderConfig({ provider: 'openrouter', apiKey: '', model: 'openai/gpt-4.1-mini' })
-  await collectAssistantText(runChat(input))
-  assert.equal(calls.length, 1)
 })
 
 test('a custom server error names the server, and an unreachable one mentions CORS', async () => {

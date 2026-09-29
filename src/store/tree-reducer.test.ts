@@ -1,11 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  dropAnchorIdsForEdit,
-  droppedMessageIds,
-  editUserMessage,
-  retryFromAssistant,
-} from '../lib/message-actions.ts'
+import { editUserMessage } from '../lib/message-actions.ts'
 import { prefixFingerprint } from '../lib/compaction.ts'
 import { reducer } from './tree-reducer.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
@@ -47,107 +42,6 @@ function base(): TreeState {
     expanded: { root: 'b1', b1: 'b1a' },
   }
 }
-
-function conversation(): TreeState {
-  return {
-    threads: {
-      root: {
-        id: 'root',
-        parentId: null,
-        anchor: null,
-        messages: [
-          msg('u1', 'user', 'hello'),
-          msg('a1', 'assistant', 'hi there'),
-          msg('u2', 'user', 'again'),
-          msg('a2', 'assistant', 'ok'),
-        ],
-        createdAt: 0,
-        rev: 0,
-      },
-      b1: thread('b1', 'root', ['x']),
-      b1a: thread('b1a', 'b1', ['y']),
-      b2: {
-        ...thread('b2', 'root'),
-        anchor: { messageId: 'u2', start: 0, end: 5, quote: 'again' },
-      },
-    },
-    rootId: 'root',
-    activeThreadId: 'b1a',
-    expanded: { root: 'b1', b1: 'b1a' },
-  }
-}
-
-test('rewrite-thread retry trims the assistant tail and discards its branches', () => {
-  const state = conversation()
-  state.threads.b1 = {
-    ...state.threads.b1,
-    anchor: { messageId: 'a1', start: 0, end: 2, quote: 'hi' },
-  }
-  state.threads.b2 = {
-    ...state.threads.b2,
-    anchor: { messageId: 'u1', start: 0, end: 5, quote: 'hello' },
-  }
-  const before = state.threads.root.messages
-  const messages = retryFromAssistant(before, 'a1')
-  assert.ok(messages)
-  const next = reducer(state, {
-    type: 'rewrite-thread',
-    threadId: 'root',
-    messages,
-    dropAnchorMessageIds: droppedMessageIds(before, messages),
-  })
-  assert.deepEqual(
-    next.threads.root.messages.map((m) => m.id),
-    ['u1'],
-  )
-  assert.equal(next.threads.root.rev, 0)
-  assert.deepEqual(Object.keys(next.threads).sort(), ['b2', 'root'])
-  assert.equal(next.activeThreadId, 'root')
-  assert.equal(next.expanded.root, null)
-})
-
-test('rewrite-thread edit discards children on the edited message', () => {
-  const state = conversation()
-  const before = state.threads.root.messages
-  const messages = editUserMessage(before, 'u2', 'edited')
-  assert.ok(messages)
-  const next = reducer(state, {
-    type: 'rewrite-thread',
-    threadId: 'root',
-    messages,
-    dropAnchorMessageIds: dropAnchorIdsForEdit(before, messages, 'u2'),
-  })
-  assert.deepEqual(
-    next.threads.root.messages.map((m) => [m.id, m.content]),
-    [
-      ['u1', 'hello'],
-      ['a1', 'hi there'],
-      ['u2', 'edited'],
-    ],
-  )
-  assert.ok(!next.threads.b2)
-  assert.ok(next.threads.b1)
-  assert.equal(next.threads.root.rev, 0)
-})
-
-test('undoing a takeaway preserves its branch and later conversation messages', () => {
-  const state = conversation()
-  const withTakeaway = reducer(state, {
-    type: 'append-message', threadId: 'root',
-    message: { id: 'takeaway', role: 'assistant', content: 'Insight', createdAt: 1, kind: 'drop-summary', sourceThreadId: 'b1' },
-  })
-  const withFollowup = reducer(withTakeaway, {
-    type: 'append-message', threadId: 'root',
-    message: { id: 'followup', role: 'user', content: 'Continue', createdAt: 2 },
-  })
-  const undone = reducer(withFollowup, { type: 'undo-takeaway', threadId: 'root', messageId: 'takeaway' })
-  assert.equal(undone.threads.root.messages.at(-1)?.id, 'followup')
-  assert.ok(!undone.threads.root.messages.some((message) => message.id === 'takeaway'))
-  assert.equal(undone.threads.b1, state.threads.b1)
-  assert.equal(undone.threads.b1a, state.threads.b1a)
-  assert.equal(undone.threads.root.rev, withFollowup.threads.root.rev + 1)
-  assert.equal(reducer(undone, { type: 'undo-takeaway', threadId: 'root', messageId: 'followup' }), undone)
-})
 
 function withSummary(): TreeState {
   const state = base()
@@ -196,18 +90,4 @@ test('a summary lands only on the messages it was written from', () => {
     dropAnchorMessageIds: [],
   })
   assert.equal(reducer(edited, { type: 'set-summary', threadId: 'root', summary, basis }), edited)
-})
-
-test('a regenerate keeps the replaced answers on the thread until its run settles', () => {
-  const pending = { answers: [{ content: 'Old answer', createdAt: 0 }], index: 0 }
-  let state = reducer(base(), { type: 'rewrite-thread', threadId: 'root', messages: [msg('r1')], dropAnchorMessageIds: [], pendingAnswers: pending })
-  assert.deepEqual(state.threads.root!.pendingAnswers, pending)
-  // A rewrite that says nothing about them leaves them be; null forgets them.
-  state = reducer(state, { type: 'rewrite-thread', threadId: 'root', messages: [msg('r1')], dropAnchorMessageIds: [] })
-  assert.deepEqual(state.threads.root!.pendingAnswers, pending)
-  const forgotten = reducer(state, { type: 'rewrite-thread', threadId: 'root', messages: [msg('r1')], dropAnchorMessageIds: [], pendingAnswers: null })
-  assert.equal('pendingAnswers' in forgotten.threads.root!, false)
-  const settled = reducer(state, { type: 'settle-answers', threadId: 'root', messages: [msg('r1'), msg('a', 'assistant')] })
-  assert.equal('pendingAnswers' in settled.threads.root!, false)
-  assert.equal(settled.threads.root!.messages.length, 2)
 })

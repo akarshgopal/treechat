@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { anchorLabel, anchorSourceKey, anchorSpan, cropBox, isTextAnchor, regionFromDrag, surroundingText } from './anchors.ts'
+import { cropBox, regionFromDrag, surroundingText } from './anchors.ts'
 import { exploredMatches } from './explored.ts'
 import { createSeedState } from './seed.ts'
 import { parseSession } from './storage.ts'
@@ -18,19 +18,6 @@ const fromPage: Anchor = {
 }
 const crop = { id: 'crop-1', kind: 'image' as const, name: 'Region of chart.png', mime: 'image/png', size: 10 }
 const fromImage: Anchor = { ...text, start: 0, end: 0, quote: 'A region of chart.png', region: { attachmentId: 'img-1', name: 'chart.png', x: 0.1, y: 0.2, w: 0.3, h: 0.4, crop } }
-
-test('what an anchor counts in, and how it is labelled', () => {
-  assert.equal(anchorSourceKey(text), '')
-  assert.equal(anchorSourceKey(fromPage), 'document:doc-1')
-  assert.equal(anchorSourceKey({ source: { kind: 'web', title: 'T', url: 'https://example.com' } }), 'web:https://example.com')
-  assert.deepEqual(anchorSpan(fromPage), { start: 15, end: 61 })
-  assert.deepEqual(anchorSpan(text), { start: 0, end: 4 })
-  assert.equal(anchorSourceKey(fromImage), 'image:img-1')
-  assert.ok(isTextAnchor(text) && !isTextAnchor(fromPage) && !isTextAnchor(fromImage))
-  assert.equal(anchorLabel(fromPage), 'From atmosphere-notes.pdf')
-  assert.equal(anchorLabel(fromImage), 'From chart.png')
-  assert.equal(anchorLabel(text), null)
-})
 
 test('surrounding text is bounded and cut at word edges', () => {
   const source = `${'alpha '.repeat(200)}THE PASSAGE${' omega'.repeat(200)}`

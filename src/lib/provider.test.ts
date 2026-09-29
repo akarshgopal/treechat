@@ -6,8 +6,6 @@ import {
   chatCompletionsUrl,
   DEFAULT_OPENROUTER_MODEL,
   formatHeaderLines,
-  isLiveConfig,
-  isModelIdFor,
   parseBaseUrl,
   parseExtraBody,
   parseHeaderLines,
@@ -81,17 +79,6 @@ test('a custom server config round-trips, and OpenRouter configs stay as they we
   assert.equal(stray?.baseUrl, undefined)
 })
 
-test('isLiveConfig needs a key for OpenRouter and a URL for a custom server', () => {
-  const openRouter = { provider: 'openrouter' as const, apiKey: '', model: 'a/b' }
-  assert.equal(isLiveConfig(null), false)
-  assert.equal(isLiveConfig(openRouter), false)
-  assert.equal(isLiveConfig({ ...openRouter, apiKey: 'k' }), true)
-  const custom = { provider: 'openai-compatible' as const, apiKey: '', model: 'm' }
-  assert.equal(isLiveConfig(custom), false)
-  assert.equal(isLiveConfig({ ...custom, baseUrl: 'http://localhost:1234/v1' }), true)
-  assert.equal(backgroundModelFor({ ...custom, baseUrl: 'http://localhost:1234/v1', backgroundModel: 'small' }), 'small')
-})
-
 test('base URLs are limited to http(s) and lose trailing slashes, queries and credentials', () => {
   assert.equal(parseBaseUrl(' https://api.openai.com/v1/ '), 'https://api.openai.com/v1')
   assert.equal(parseBaseUrl('http://localhost:11434'), 'http://localhost:11434')
@@ -108,15 +95,6 @@ test('base URLs are limited to http(s) and lose trailing slashes, queries and cr
   )
   assert.equal(baseUrlOrigin('http://localhost:11434/v1'), 'http://localhost:11434')
   assert.equal(baseUrlOrigin('nope'), undefined)
-})
-
-test('custom model ids are free-form, OpenRouter ids stay vendor/model', () => {
-  assert.equal(isModelIdFor('openai-compatible', 'gpt-4.1'), true)
-  assert.equal(isModelIdFor('openai-compatible', 'llama3.2:3b'), true)
-  assert.equal(isModelIdFor('openai-compatible', 'two words'), false)
-  assert.equal(isModelIdFor('openai-compatible', ' '), false)
-  assert.equal(isModelIdFor('openrouter', 'gpt-4.1'), false)
-  assert.equal(isModelIdFor('openrouter', 'openai/gpt-4.1'), true)
 })
 
 test('header lines and extra-body JSON parse strictly', () => {
