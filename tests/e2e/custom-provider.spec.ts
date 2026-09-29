@@ -73,3 +73,30 @@ test('switching provider never carries a key to another server', async ({ page }
   await page.getByTestId('settings-provider').selectOption('openrouter')
   await expect(page.getByTestId('settings-api-key')).toHaveValue('sk-or-secret')
 })
+
+test('saved headers are not sent to a different server, and a preset with an edited URL can still be disconnected', async ({ page }, testInfo) => {
+  test.skip(Boolean(testInfo.project.use.isMobile), 'same components on phones')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({
+    provider: 'openai-compatible', baseUrl: 'http://localhost:11434/v1', apiKey: 'sk-local', model: 'llama3.2', headers: { 'api-key': 'gateway-secret' },
+  })))
+  await page.reload()
+  await page.getByTestId('settings-button').click()
+  // Advanced opens by itself when headers are saved.
+  await page.getByTestId('settings-base-url').fill('http://localhost:9999/v1?api-version=1')
+  // Same key and headers, new host: Save waits.
+  await expect(page.getByTestId('settings-secrets-warning')).toBeVisible()
+  await expect(page.getByTestId('settings-save')).toBeDisabled()
+  await page.getByTestId('settings-api-key').fill('')
+  await page.getByTestId('settings-headers').fill('')
+  await expect(page.getByTestId('settings-save')).toBeEnabled()
+  await page.getByTestId('settings-save').click()
+  await expect(page.getByText('Saved in this browser')).toBeVisible()
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('treechat:provider:v1') ?? '{}').baseUrl)).toBe('http://localhost:9999/v1?api-version=1')
+
+  // The URL no longer matches the preset, yet Disconnect is still there.
+  await page.getByTestId('settings-clear').click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('settings-dialog')).toHaveCount(0)
+  await expect(page.getByTestId('provider-mode')).toBeVisible()
+})

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   backgroundModelFor,
+  baseUrlOrigin,
   chatCompletionsUrl,
   DEFAULT_OPENROUTER_MODEL,
   formatHeaderLines,
@@ -94,12 +95,19 @@ test('isLiveConfig needs a key for OpenRouter and a URL for a custom server', ()
 test('base URLs are limited to http(s) and lose trailing slashes, queries and credentials', () => {
   assert.equal(parseBaseUrl(' https://api.openai.com/v1/ '), 'https://api.openai.com/v1')
   assert.equal(parseBaseUrl('http://localhost:11434'), 'http://localhost:11434')
-  assert.equal(parseBaseUrl('https://gw.example/v1?key=1#x'), 'https://gw.example/v1')
+  assert.equal(parseBaseUrl('https://gw.example/v1/?api-version=2024-10-21#x'), 'https://gw.example/v1?api-version=2024-10-21')
   for (const bad of ['', 'localhost:11434/v1', 'ftp://x.example', 'javascript:alert(1)', 'https://user:pw@x.example/v1', 42]) {
     assert.equal(parseBaseUrl(bad), undefined, String(bad))
   }
   assert.equal(chatCompletionsUrl('https://api.openai.com/v1'), 'https://api.openai.com/v1/chat/completions')
   assert.equal(chatCompletionsUrl('https://gw.example/chat/completions'), 'https://gw.example/chat/completions')
+  // The query stays at the end, after the path that is added.
+  assert.equal(
+    chatCompletionsUrl('https://gw.example/openai/deployments/x?api-version=2024-10-21'),
+    'https://gw.example/openai/deployments/x/chat/completions?api-version=2024-10-21',
+  )
+  assert.equal(baseUrlOrigin('http://localhost:11434/v1'), 'http://localhost:11434')
+  assert.equal(baseUrlOrigin('nope'), undefined)
 })
 
 test('custom model ids are free-form, OpenRouter ids stay vendor/model', () => {

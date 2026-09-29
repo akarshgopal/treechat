@@ -44,7 +44,7 @@ Requests in one chat share an OpenRouter `session_id` to support sticky provider
 
 ## Other providers and your own server
 
-Settings' **Provider** list also offers OpenAI, Groq, Ollama and LM Studio, and **Custom server…** for anything that speaks OpenAI's `/chat/completions` (vLLM, LiteLLM, an Azure or corporate gateway, …). Pick one, check the **Base URL** (a full `…/chat/completions` URL is used as typed) and type the model id the server uses. The key is optional for local servers. Under **Advanced**:
+Settings' **Provider** list also offers OpenAI, Groq, Ollama and LM Studio, and **Custom server…** for anything that speaks OpenAI's `/chat/completions` (vLLM, LiteLLM, an Azure or corporate gateway, …). Pick one, check the **Base URL** (a full `…/chat/completions` URL is used as typed; a query string such as Azure's `?api-version=…` is kept) and type the model id the server uses. The key is optional for local servers. Under **Advanced**:
 
 - **Extra headers** (`Name: value`, one per line) for gateways that want something other than `Authorization: Bearer`, e.g. `api-key: …`. They are stored like the key.
 - **Extra request options** (a JSON object) merged into every request body, e.g. `{ "reasoning_effort": "low" }`. The model, messages and streaming cannot be replaced.

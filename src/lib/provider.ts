@@ -103,9 +103,10 @@ export function isLiveConfig(config: ClientProviderConfig | null | undefined): c
 }
 
 /**
- * A base URL as it is stored: http(s) only, no trailing slash, no query or
- * fragment. `undefined` for anything else. A full `…/chat/completions` URL is
- * kept as typed, for servers with a non-standard path.
+ * A base URL as it is stored: http(s) only, no trailing slash, no fragment.
+ * The query string stays (gateways such as Azure need `?api-version=…`).
+ * `undefined` for anything else. A full `…/chat/completions` URL is kept as
+ * typed, for servers with a non-standard path.
  */
 export function parseBaseUrl(value: unknown): string | undefined {
   if (typeof value !== 'string' || !value.trim()) return undefined
@@ -113,7 +114,7 @@ export function parseBaseUrl(value: unknown): string | undefined {
     const url = new URL(value.trim())
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
     if (url.username || url.password) return undefined
-    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+    return `${url.origin}${url.pathname.replace(/\/+$/, '')}${url.search}`
   } catch {
     return undefined
   }
@@ -121,7 +122,18 @@ export function parseBaseUrl(value: unknown): string | undefined {
 
 /** Where chat requests go for an openai-compatible config. */
 export function chatCompletionsUrl(baseUrl: string): string {
-  return /\/chat\/completions$/.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`
+  const url = new URL(baseUrl)
+  if (!/\/chat\/completions$/.test(url.pathname)) url.pathname = `${url.pathname.replace(/\/+$/, '')}/chat/completions`
+  return url.toString()
+}
+
+/** Where a saved key and headers are sent: two URLs on one origin share them. */
+export function baseUrlOrigin(baseUrl: string | undefined): string | undefined {
+  try {
+    return baseUrl ? new URL(baseUrl).origin : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** "localhost:11434", "api.openai.com": what to call the server in messages. */

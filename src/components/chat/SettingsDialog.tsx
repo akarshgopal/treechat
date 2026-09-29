@@ -15,6 +15,8 @@ import {
   OPENROUTER_MODEL_OPTIONS,
   DEFAULT_OPENROUTER_MODEL,
   PROVIDER_PRESETS,
+  baseUrlOrigin,
+  chatCompletionsUrl,
   formatHeaderLines,
   isLiveConfig,
   isModelIdFor,
@@ -115,11 +117,23 @@ function SettingsBody({
   const urlValid = openRouter || parseBaseUrl(baseUrl) !== undefined
   const headersValid = openRouter || parseHeaderLines(headers) !== undefined
   const extraBodyValid = openRouter || parseExtraBody(extraBody) !== undefined
-  const formValid = modelValid && backgroundValid && urlValid && headersValid && extraBodyValid
+  /**
+   * A saved key or header belongs to the server it was saved for. Pointing the
+   * URL somewhere else while they are unchanged would send them to a new host,
+   * so Save waits until they are re-entered or cleared.
+   */
+  const storedNow = loadProviderConfig()
+  const parsedUrl = parseBaseUrl(baseUrl)
+  const newOrigin = baseUrlOrigin(parsedUrl)
+  const oldOrigin = storedNow?.provider === 'openai-compatible' ? baseUrlOrigin(storedNow.baseUrl) : undefined
+  const sameHeaders = headers.trim() !== '' && formatHeaderLines(storedNow?.headers) === headers.trim()
+  const sameKey = apiKey !== '' && apiKey === storedNow?.apiKey
+  const carriesSecrets = !openRouter && oldOrigin !== undefined && newOrigin !== undefined && newOrigin !== oldOrigin && (sameKey || sameHeaders)
+  const formValid = modelValid && backgroundValid && urlValid && headersValid && extraBodyValid && !carriesSecrets
   /** What is stored now (read each render, so it follows Save, Remove key and Disconnect). */
   const stored = loadProviderConfig()
   const storedOpenRouter = !stored || stored.provider === 'openrouter'
-  const storedCustom = isLiveConfig(stored) && stored.provider === 'openai-compatible' && choiceFor(stored) === choice
+  const storedCustom = isLiveConfig(stored) && stored.provider === 'openai-compatible'
   const changed = () => setSaved(false)
 
   /**
@@ -134,6 +148,10 @@ function SettingsBody({
     setBaseUrl(next === initialChoice && initial?.baseUrl ? initial.baseUrl : nextPreset?.baseUrl ?? '')
     setModel(next === 'openrouter' ? DEFAULT_OPENROUTER_MODEL : nextPreset?.models[0]?.id ?? '')
     setBackgroundModel('')
+    // Headers often hold a gateway secret, so they follow the key's rule.
+    const back = next === initialChoice
+    setHeaders(back ? formatHeaderLines(initial?.headers) : '')
+    setExtraBody(back && initial?.extraBody ? JSON.stringify(initial.extraBody, null, 2) : '')
     changed()
   }
 
@@ -172,11 +190,12 @@ function SettingsBody({
   const removeKey = () => {
     // A custom server is live without a key, so forgetting the key alone would
     // not go back to the demo: "Disconnect" drops the server too.
-    const next = normalizeProviderConfig(openRouter ? { ...(loadProviderConfig() ?? {}), apiKey: '' } : {})
+    const wasOpenRouter = (loadProviderConfig()?.provider ?? 'openrouter') === 'openrouter'
+    const next = normalizeProviderConfig(wasOpenRouter ? { ...(loadProviderConfig() ?? {}), apiKey: '' } : {})
     saveProviderConfig(next)
     setApiKey('')
     setSavedKey('')
-    if (!openRouter) {
+    if (!wasOpenRouter) {
       setChoice('openrouter')
       setBaseUrl('')
       setHeaders('')
@@ -232,9 +251,13 @@ function SettingsBody({
                 data-testid="settings-base-url"
                 className={fieldClass}
               />
-              {urlValid ? (
+              {carriesSecrets ? (
+                <span className="text-[11px] text-destructive" role="alert" data-testid="settings-secrets-warning">
+                  This is a different server from the one your saved key or headers are for. Enter the key and headers again (or clear them) to save.
+                </span>
+              ) : urlValid ? (
                 <span className="text-[11px] text-muted-foreground">
-                  Requests go to <span className="font-mono">{baseUrl.trim() ? `${parseBaseUrl(baseUrl)}/chat/completions` : '…/chat/completions'}</span>. The server must allow requests from this page (CORS).
+                  Requests go to <span className="font-mono">{parsedUrl ? chatCompletionsUrl(parsedUrl) : '…/chat/completions'}</span>. The server must allow requests from this page (CORS).
                 </span>
               ) : (
                 <span className="text-[11px] text-destructive" role="alert" data-testid="settings-base-url-error">
