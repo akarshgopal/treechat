@@ -34,3 +34,8 @@ package-lock.json
 test-results/
 playwright-report/
 .claude/worktrees/
+
+# Launch video output (tools/launch-video.mjs)
+launch-video.mp4
+launch-video.gif
+launch-video-error.png
