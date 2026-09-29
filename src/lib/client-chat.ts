@@ -1,14 +1,18 @@
 import type { ConnectConnectionAdapter } from '@tanstack/ai-react'
 import { EventType, type StreamChunk } from '@tanstack/ai'
 import {
+  chatCompletionsUrl,
   DEFAULT_OPENROUTER_MODEL,
+  isLiveConfig,
+  isOpenRouter,
   loadProviderConfig,
+  providerName,
   type ClientProviderConfig,
 } from './provider.ts'
 import { CITATIONS_EVENT, mockChatStream, textFromMessage } from './mock-stream.ts'
 import { buildSystemPrompts } from './system-prompts.ts'
 import { clearRunCitations, parseCitations, recordRunCitations } from './citations.ts'
-import { clearRunUsage, recordRunUsage, usageFromOpenRouterChunk } from './usage.ts'
+import { clearRunUsage, recordRunUsage, usageFromChunk } from './usage.ts'
 import { applyWebSearch, createWebCitationCollector, isWebSearch } from './web-search.ts'
 import { applySummaryToRequest } from './compaction.ts'
 import { withDocumentNote, withDocuments } from './documents/rag.ts'
@@ -21,8 +25,8 @@ import { runKeyForRequest } from './run-key.ts'
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_APP_TITLE = 'TreeChat'
 
-/** Replies come from OpenRouter with a saved key, else from the in-page demo. */
-type ChatBackend = 'openrouter' | 'mock'
+/** Replies come from the configured provider (OpenRouter or a custom server), else from the in-page demo. */
+type ChatBackend = 'live' | 'mock'
 
 type OpenAIContentPart =
   | { type: 'text'; text: string }
@@ -41,57 +45,71 @@ type RunChatInput = {
   threadId: string
   runId: string
   signal?: AbortSignal
-  /** OpenRouter model override for this one request (the background model). */
+  /** Model override for this one request (the background model). */
   model?: string
 }
 
 export function resolveChatBackend(config: ClientProviderConfig | null = loadProviderConfig()): ChatBackend {
-  return config?.apiKey ? 'openrouter' : 'mock'
+  return isLiveConfig(config) ? 'live' : 'mock'
 }
 
-function openRouterHeaders(
+function requestUrl(config: ClientProviderConfig): string {
+  return isOpenRouter(config) || !config.baseUrl ? OPENROUTER_CHAT_URL : chatCompletionsUrl(config.baseUrl)
+}
+
+function requestHeaders(
   config: ClientProviderConfig,
   origin = defaultOrigin(),
 ): Record<string, string> {
+  if (isOpenRouter(config)) {
+    return {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': origin,
+      'X-Title': OPENROUTER_APP_TITLE,
+    }
+  }
+  // Local servers take no key. Custom headers come last so a gateway that
+  // wants `api-key: …` instead of a Bearer token can replace Authorization.
   return {
-    Authorization: `Bearer ${config.apiKey}`,
     'Content-Type': 'application/json',
-    'HTTP-Referer': origin,
-    'X-Title': OPENROUTER_APP_TITLE,
+    ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+    ...(config.headers ?? {}),
   }
 }
 
-function openRouterRequestBody(
-  config: ClientProviderConfig,
-  messages: OpenAIChatMessage[],
-  sessionId?: string,
-): {
+type ChatRequestBody = {
   model: string
   messages: OpenAIChatMessage[]
   stream: true
   temperature?: number
   max_tokens?: number
   session_id?: string
-  usage: { include: true }
-} {
-  const body: {
-    model: string
-    messages: OpenAIChatMessage[]
-    stream: true
-    temperature?: number
-    max_tokens?: number
-    session_id?: string
-    usage: { include: true }
-  } = {
+  usage?: { include: true }
+  stream_options?: { include_usage: true }
+  [extra: string]: unknown
+}
+
+function requestBody(
+  config: ClientProviderConfig,
+  messages: OpenAIChatMessage[],
+  sessionId?: string,
+): ChatRequestBody {
+  const openRouter = isOpenRouter(config)
+  const body: ChatRequestBody = {
+    // A custom server's body starts from the user's extras, so they can add
+    // options but never replace the model, the messages or streaming.
+    ...(openRouter ? {} : { stream_options: { include_usage: true as const }, ...(config.extraBody ?? {}) }),
     model: config.model.trim() || DEFAULT_OPENROUTER_MODEL,
     messages,
     stream: true,
-    // Tokens and cost on the last chunk, shown beside the reply.
-    usage: { include: true },
+    // OpenRouter: tokens and cost on the last chunk, shown beside the reply.
+    ...(openRouter ? { usage: { include: true as const } } : {}),
   }
   if (typeof config.temperature === 'number') body.temperature = config.temperature
   if (typeof config.maxTokens === 'number') body.max_tokens = config.maxTokens
-  if (sessionId) body.session_id = sessionId.slice(0, 256)
+  // Sticky routing is an OpenRouter feature; other servers may reject the field.
+  if (sessionId && openRouter) body.session_id = sessionId.slice(0, 256)
   return body
 }
 
@@ -109,6 +127,9 @@ function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
     const role = (message as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant' && role !== 'system') continue
     const text = textFromMessage(message)
+    // A reply that failed before its first word leaves an empty assistant
+    // turn in the engine; providers reject it or answer oddly.
+    if (role === 'assistant' && !text.trim()) continue
     const images = (message as { requestImages?: RequestImage[] }).requestImages
     if (role === 'user' && images?.length) {
       out.push({
@@ -125,7 +146,7 @@ function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {
   return out
 }
 
-function buildOpenRouterMessages(
+function buildChatMessages(
   messages: unknown[],
   forwardedProps: Record<string, unknown> = {},
 ): OpenAIChatMessage[] {
@@ -215,7 +236,7 @@ async function* readSseDataLines(
   }
 }
 
-function errorMessageFromOpenRouter(status: number, body: string): string {
+function errorMessageFromProvider(status: number, body: string, provider = 'OpenRouter'): string {
   try {
     const parsed = JSON.parse(body) as {
       error?: { message?: string } | string
@@ -238,10 +259,17 @@ function errorMessageFromOpenRouter(status: number, body: string): string {
   }
   const trimmed = body.trim()
   if (trimmed && trimmed.length < 280) return trimmed
-  return `OpenRouter request failed (${status})`
+  return `${provider} request failed (${status})`
 }
 
-export async function* openRouterChatStream(input: {
+/** A failed `fetch` says only "Failed to fetch"; for a custom server, say what usually causes it. */
+function networkErrorMessage(config: ClientProviderConfig, error: unknown): string {
+  if (isOpenRouter(config)) return error instanceof Error ? error.message : 'OpenRouter request failed'
+  const name = providerName(config)
+  return `Could not reach ${name}. Check the URL and that the server is running; it must also allow requests from this page (CORS), and an https page cannot call plain http on another machine.`
+}
+
+export async function* providerChatStream(input: {
   messages: unknown[]
   config: ClientProviderConfig
   forwardedProps?: Record<string, unknown>
@@ -250,9 +278,10 @@ export async function* openRouterChatStream(input: {
   signal?: AbortSignal
 }): AsyncGenerator<StreamChunk> {
   const { config, threadId, runId, signal } = input
+  const name = providerName(config)
   const key = runKeyForRequest(threadId, input.forwardedProps)
   const messageId = crypto.randomUUID()
-  const openaiMessages = buildOpenRouterMessages(
+  const openaiMessages = buildChatMessages(
     input.messages,
     input.forwardedProps ?? {},
   )
@@ -261,19 +290,21 @@ export async function* openRouterChatStream(input: {
 
   let response: Response
   try {
-    response = await fetch(OPENROUTER_CHAT_URL, {
+    const body = requestBody(config, openaiMessages,
+      typeof input.forwardedProps?.cacheSessionId === 'string' ? input.forwardedProps.cacheSessionId : threadId,
+    )
+    response = await fetch(requestUrl(config), {
       method: 'POST',
-      headers: openRouterHeaders(config),
-      body: JSON.stringify(applyWebSearch(openRouterRequestBody(config, openaiMessages,
-        typeof input.forwardedProps?.cacheSessionId === 'string' ? input.forwardedProps.cacheSessionId : threadId,
-      ), input.forwardedProps)),
+      headers: requestHeaders(config),
+      // Web search is OpenRouter's plugin; other servers get a plain request.
+      body: JSON.stringify(isOpenRouter(config) ? applyWebSearch(body, input.forwardedProps) : body),
       signal,
     })
   } catch (error) {
     if (isAbortError(error, signal)) return
     yield {
       type: EventType.RUN_ERROR,
-      message: error instanceof Error ? error.message : 'OpenRouter request failed',
+      message: networkErrorMessage(config, error),
       code: 'network',
       timestamp: now(),
     }
@@ -284,7 +315,7 @@ export async function* openRouterChatStream(input: {
     const body = await response.text().catch(() => '')
     yield {
       type: EventType.RUN_ERROR,
-      message: errorMessageFromOpenRouter(response.status, body),
+      message: errorMessageFromProvider(response.status, body, name),
       code: String(response.status),
       timestamp: now(),
     }
@@ -312,11 +343,11 @@ export async function* openRouterChatStream(input: {
       let event: { error?: unknown; choices?: Array<{ finish_reason?: string }> } | undefined
       try { event = JSON.parse(payload) } catch { /* Ignore non-JSON heartbeat frames. */ }
       if (event?.error || event?.choices?.[0]?.finish_reason === 'error') {
-        yield { type: EventType.RUN_ERROR, message: event.error ? errorMessageFromOpenRouter(response.status, payload) : 'The provider stopped with an error. Try regenerating.', code: 'provider', timestamp: now() }
+        yield { type: EventType.RUN_ERROR, message: event.error ? errorMessageFromProvider(response.status, payload, name) : 'The provider stopped with an error. Try regenerating.', code: 'provider', timestamp: now() }
         return
       }
       if (webCitations.add(event)) recordRunCitations(key, webCitations.citations())
-      const usage = usageFromOpenRouterChunk(event)
+      const usage = usageFromChunk(event)
       if (usage) recordRunUsage(key, usage)
       const delta = contentDeltaFromOpenAIData(payload)
       if (!delta) continue
@@ -335,7 +366,7 @@ export async function* openRouterChatStream(input: {
     }
     yield {
       type: EventType.RUN_ERROR,
-      message: error instanceof Error ? error.message : 'OpenRouter stream failed',
+      message: error instanceof Error ? error.message : `${name} stream failed`,
       code: 'stream',
       timestamp: now(),
     }
@@ -391,8 +422,8 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   const { messages, forwardedProps } = applySummaryToRequest(input.messages, retrieved.forwardedProps)
   const backend = resolveChatBackend(config)
   // Attachments are resolved from IndexedDB last, per backend: only the
-  // browser's OpenRouter path sends images; the others get them by name.
-  const imagesInline = backend === 'openrouter'
+  // browser's live path sends images; the demo gets them by name.
+  const imagesInline = backend === 'live'
   const prepared = await prepareRequestMessages(messages, {
     imagesInline,
     anchorAttachments: parseAttachments(forwardedProps.anchorAttachments),
@@ -400,8 +431,8 @@ async function* routeChat(input: RunChatInput): AsyncGenerator<StreamChunk> {
   if (imagesInline && forwardedProps.describing !== true) describeImagesInBackground(prepared.sentImages)
   const requestMessages = prepared.messages
 
-  if (backend === 'openrouter' && config) {
-    yield* openRouterChatStream({
+  if (backend === 'live' && config) {
+    yield* providerChatStream({
       messages: requestMessages,
       config: model ? { ...config, model } : config,
       forwardedProps,

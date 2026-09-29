@@ -18,10 +18,10 @@ export function parseUsage(value: unknown): MessageUsage | undefined {
 }
 
 /**
- * The `usage` OpenRouter adds to the last streamed chunk (tokens, and `cost`
- * in USD credits), with the model that actually answered.
+ * The `usage` on the last streamed chunk (tokens; OpenRouter adds `cost` in
+ * USD credits), with the model that actually answered.
  */
-export function usageFromOpenRouterChunk(event: unknown): MessageUsage | undefined {
+export function usageFromChunk(event: unknown): MessageUsage | undefined {
   if (!event || typeof event !== 'object') return undefined
   const record = event as { usage?: Record<string, unknown>; model?: unknown }
   if (!record.usage) return undefined

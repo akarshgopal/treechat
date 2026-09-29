@@ -26,7 +26,8 @@ type CommandPaletteProps = {
   onSwitchChat: (sessionId: string) => void
   onFocusThread: (threadId: string) => void
   onNewChat: () => void
-  onToggleWebSearch: () => void
+  /** Absent when the provider cannot search the web. */
+  onToggleWebSearch?: () => void
   webSearch: boolean
   onOpenDocuments: () => void
   onOpenSettings: () => void
@@ -78,7 +79,7 @@ function PaletteBody({
   const commands = useMemo<Command[]>(() => {
     const actions: Command[] = [
       { id: 'new-chat', label: 'New chat', group: 'Actions', icon: <SquarePen size={15} />, run: onNewChat },
-      { id: 'web-search', label: webSearch ? 'Stop searching the web here' : 'Search the web in this thread', group: 'Actions', icon: <Globe size={15} />, run: onToggleWebSearch },
+      ...(onToggleWebSearch ? [{ id: 'web-search', label: webSearch ? 'Stop searching the web here' : 'Search the web in this thread', group: 'Actions' as const, icon: <Globe size={15} />, run: onToggleWebSearch }] : []),
       { id: 'documents', label: 'Documents', group: 'Actions', icon: <FileText size={15} />, run: onOpenDocuments },
       { id: 'settings', label: 'Settings', group: 'Actions', icon: <Settings size={15} />, run: onOpenSettings },
       { id: 'export', label: 'Export chats', group: 'Actions', icon: <Download size={15} />, run: onExport },

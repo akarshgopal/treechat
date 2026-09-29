@@ -209,7 +209,7 @@ export type SessionLibrary = {
 
 export type ProviderStatus = {
   mode: 'mock' | 'live'
-  provider: 'openrouter' | 'mock'
+  provider: 'openrouter' | 'openai-compatible' | 'mock'
   model: string
 }
 

@@ -76,6 +76,18 @@ export function fromUIMessages(messages: UIMessage[]): ChatMessage[] {
   })
 }
 
+/**
+ * The transcript without a trailing assistant message that has no text and no
+ * files: what a reply leaves behind when it fails, or is stopped, before its
+ * first word. Kept, it shows as a blank bubble with no error, and every later
+ * request sends an empty assistant turn to the model.
+ */
+export function withoutEmptyReply(messages: ChatMessage[]): ChatMessage[] {
+  const last = messages.at(-1)
+  if (last?.role !== 'assistant' || last.kind === 'drop-summary' || last.content.trim() || last.attachments?.length) return messages
+  return messages.slice(0, -1)
+}
+
 export function sameTranscript(a: ChatMessage[], b: ChatMessage[]) {
   if (a.length !== b.length) return false
   return a.every((message, index) => {

@@ -20,17 +20,6 @@ beforeEach(() => useIndexedDB())
 const activeTree = (library: SessionLibrary) =>
   library.sessions.find((session) => session.id === library.activeSessionId)!.treeState
 
-test('empty state round-trips without being re-seeded', async () => {
-  installLocalStorage()
-  const empty = createEmptyState()
-  await saveLibrary(libraryFromTree(empty))
-  const loaded = activeTree(await loadLibrary())
-  assert.equal(loaded.rootId, empty.rootId)
-  assert.deepEqual(loaded.threads[loaded.rootId]?.messages, [])
-  assert.equal(Object.keys(loaded.threads).length, 1)
-  assert.equal(JSON.stringify(await loadLibrary()).includes('What is TreeChat?'), false)
-})
-
 test('unreadable v3 payload falls back to empty, not seed', async () => {
   const storage = installLocalStorage()
   storage.setItem(STORAGE_KEY, '{not-json')

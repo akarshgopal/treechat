@@ -42,9 +42,22 @@ While waiting for the first visible token, the thread shows elapsed waiting time
 
 Requests in one chat share an OpenRouter `session_id` to support sticky provider routing. Prompt caching remains provider/model dependent and requires a matching prefix; this does not guarantee cache hits or a specific response time. See [OpenRouter prompt caching](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
 
+## Other providers and your own server
+
+Settings' **Provider** list also offers OpenAI, Groq, Ollama and LM Studio, and **Custom server…** for anything that speaks OpenAI's `/chat/completions` (vLLM, LiteLLM, an Azure or corporate gateway, …). Pick one, check the **Base URL** (a full `…/chat/completions` URL is used as typed; a query string such as Azure's `?api-version=…` is kept) and type the model id the server uses. The key is optional for local servers. Under **Advanced**:
+
+- **Extra headers** (`Name: value`, one per line) for gateways that want something other than `Authorization: Bearer`, e.g. `api-key: …`. They are stored like the key.
+- **Extra request options** (a JSON object) merged into every request body, e.g. `{ "reasoning_effort": "low" }`. The model, messages and streaming cannot be replaced.
+
+A key belongs to the provider it was typed for: switching provider in Settings never carries it to another server. **Disconnect** returns to the demo.
+
+The browser calls the server directly, so two things must hold. The server has to allow requests from this page (CORS; for Ollama set `OLLAMA_ORIGINS`), and an https page such as GitHub Pages can reach `http://localhost` but not plain http on another machine (serve that one over https, or run TreeChat locally).
+
+OpenRouter-only features are switched off for other servers: the model catalog with prices, key usage and cost per reply (tokens still show when the server reports them), the web-search globe and the Source? lens's search, and the image warning (images are sent as-is; a text-only model will say so).
+
 ## Demo mode (no key)
 
-Without a key, replies come from a demo stream generated in the page, locally and on GitHub Pages alike, so every feature can be tried and nothing is sent anywhere. There is no server: TreeChat is a static site, and the only way to real answers is your own OpenRouter key in Settings.
+Without a key (or a server), replies come from a demo stream generated in the page, locally and on GitHub Pages alike, so every feature can be tried and nothing is sent anywhere. There is no TreeChat server: it is a static site, and the only way to real answers is your own OpenRouter key, or another provider or server, in Settings.
 
 ## Configuration
 

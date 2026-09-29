@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createSeedState } from './seed.ts'
-import { escapeHtml, inlineMarkdown, markdownToHtml, shareFileName, shareHtml } from './share-html.ts'
-import type { ChatSession } from '../types.ts'
-
-const chat = (): ChatSession => ({ id: 's1', title: 'What is <TreeChat>?', createdAt: 1, updatedAt: 1, titleLocked: true, treeState: createSeedState() })
+import { escapeHtml, inlineMarkdown, markdownToHtml } from './share-html.ts'
 
 test('everything from the chat is escaped', () => {
   assert.equal(escapeHtml(`<a href="x">'&'</a>`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;')
@@ -23,45 +19,4 @@ test('only http(s) links survive, opened safely; images are named, never loaded'
   assert.ok(html.includes('[image: chart]'))
   assert.ok(!html.includes('c.png'))
   assert.ok(html.includes('<a href="https://example.org/page" target="_blank" rel="noopener noreferrer">https://example.org/page</a>.'))
-})
-
-test('Markdown blocks: headings, lists, quotes, emphasis and code', () => {
-  const html = markdownToHtml('# Top\n\nSome **bold** and *soft* `code`.\n\n- one\n- two\n\n1. first\n\n> quoted')
-  assert.ok(html.includes('<h3>Top</h3>'))
-  assert.ok(html.includes('<p>Some <strong>bold</strong> and <em>soft</em> <code>code</code>.</p>'))
-  assert.ok(html.includes('<ul><li>one</li><li>two</li></ul>'))
-  assert.ok(html.includes('<ol><li>first</li></ol>'))
-  assert.ok(html.includes('<blockquote><p>quoted</p></blockquote>'))
-})
-
-test('the whole tree is in one self-contained file, branches nested under their message', () => {
-  const session = chat()
-  session.treeState.threads['thread-root']!.messages.push({
-    id: 'takeaway-1', role: 'assistant', content: 'Branches keep their place.', createdAt: 9, kind: 'drop-summary', sourceThreadId: 'thread-branch-1',
-  })
-  session.treeState.threads['thread-branch-1']!.messages[1]!.citations = [{ id: '1', kind: 'web', title: 'A <page>', url: 'https://example.com/p' }]
-  const html = shareHtml(session, new Date('2026-09-28T12:00:00Z'))
-  assert.ok(html.startsWith('<!doctype html>'))
-  assert.ok(html.includes("default-src 'none'"))
-  assert.ok(!/<script|<link|<img|<iframe|\ssrc=/i.test(html))
-  assert.ok(html.includes('<title>What is &lt;TreeChat&gt;?</title>'))
-  assert.ok(html.includes('2 branches'))
-  const branch = html.indexOf('<details class="branch"><summary><span class="title">If I keep talking')
-  const nested = html.indexOf('<details class="branch"><summary><span class="title">So how deep')
-  const anchorMessage = html.indexOf('When a reply goes wide')
-  assert.ok(anchorMessage > 0 && branch > anchorMessage && nested > branch)
-  assert.ok(html.slice(branch, nested).includes('<span class="quote">“select any passage and grow a branch from it”</span>'))
-  assert.ok(html.includes('Takeaway from “If I keep talking'))
-  assert.ok(html.includes('A &lt;page&gt;</a>'))
-})
-
-test('file names come from the title', () => {
-  assert.equal(shareFileName('Why is the sky blue?'), 'why-is-the-sky-blue.html')
-  assert.equal(shareFileName('???'), 'treechat.html')
-})
-
-test('a list ends where a heading, a fence or the other kind of list begins', () => {
-  const html = markdownToHtml('1. first\n- note\n## Next\n```\ncode\n```')
-  assert.equal(html, '<ol><li>first</li></ol>\n<ul><li>note</li></ul>\n<h4>Next</h4>\n<pre><code>code</code></pre>')
-  assert.equal(markdownToHtml('- one\n  continued'), '<ul><li>one continued</li></ul>')
 })

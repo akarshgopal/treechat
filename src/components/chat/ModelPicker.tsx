@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Check, ChevronDown, Image as ImageIcon, Search } from 'lucide-react'
-import { isModelId } from '@/lib/provider'
+import { isModelIdFor, isOpenRouter, loadProviderConfig, type ProviderKind } from '@/lib/provider'
 import {
   contextLabel,
   loadModelCapabilities,
@@ -38,7 +38,8 @@ function ModelFacts({ info, className }: { info: ModelInfo; className?: string }
  * Choose a model: a button naming the current one opens a panel with a
  * search box and OpenRouter's whole list (suggestions first). Search by name
  * or id; a full id that is not listed can still be used, from a "Use …" row.
- * The list loads from OpenRouter's public endpoint (no key).
+ * The list loads from OpenRouter's public endpoint (no key). A custom
+ * server has no such list: only the suggestions, plus any id typed in.
  */
 export function ModelPicker({
   id,
@@ -49,6 +50,7 @@ export function ModelPicker({
   suggestions,
   empty,
   testId,
+  provider,
 }: {
   id: string
   label: string
@@ -59,8 +61,13 @@ export function ModelPicker({
   /** An option meaning "no model of its own", e.g. "Same as the main model". */
   empty?: string
   testId?: string
+  /** Which provider the id is for; defaults to the saved one. Settings passes its unsaved choice. */
+  provider?: ProviderKind
 }) {
-  const catalog = useModelCatalog()
+  const kind = provider ?? loadProviderConfig()?.provider ?? 'openrouter'
+  const listed = isOpenRouter({ provider: kind })
+  const openRouterCatalog = useModelCatalog()
+  const catalog = listed ? openRouterCatalog : null
   const failed = useModelCatalogFailed()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -73,7 +80,7 @@ export function ModelPicker({
 
   useEffect(() => {
     if (!open) return
-    void loadModelCapabilities()
+    if (listed) void loadModelCapabilities()
     search.current?.focus()
     // Clicking anywhere else closes the panel.
     const onPointer = (event: PointerEvent) => {
@@ -81,7 +88,7 @@ export function ModelPicker({
     }
     document.addEventListener('pointerdown', onPointer)
     return () => document.removeEventListener('pointerdown', onPointer)
-  }, [open])
+  }, [open, listed])
 
   const rows = useMemo<Row[]>(() => {
     const trimmed = query.trim()
@@ -95,17 +102,21 @@ export function ModelPicker({
         .map((model) => ({ id: model.id, label: model.name, info: model }))
       return [...(empty ? [{ id: '', label: empty, empty: true }] : []), ...suggested, ...rest].slice(0, MAX_ROWS)
     }
-    const matches = (catalog ?? [])
-      .filter((model) => words.every((word) => `${model.name} ${model.id}`.toLowerCase().includes(word)))
-      .sort(newestFirst)
-      .slice(0, MAX_ROWS)
-      .map((model) => ({ id: model.id, label: model.name, info: model }))
-    // A full id OpenRouter does not list (new, private, or the list failed).
-    const custom = isModelId(trimmed) && !matches.some((row) => row.id === trimmed)
+    const matches: Row[] = listed
+      ? (catalog ?? [])
+        .filter((model) => words.every((word) => `${model.name} ${model.id}`.toLowerCase().includes(word)))
+        .sort(newestFirst)
+        .slice(0, MAX_ROWS)
+        .map((model) => ({ id: model.id, label: model.name, info: model }))
+      : suggestions
+        .filter((option) => words.every((word) => `${option.label} ${option.id}`.toLowerCase().includes(word)))
+        .map((option) => ({ id: option.id, label: option.label }))
+    // A full id the list does not have (new, private, the list failed, or a custom server).
+    const custom = isModelIdFor(kind, trimmed) && !matches.some((row) => row.id === trimmed)
       ? [{ id: trimmed, label: `Use “${trimmed}”`, custom: true }]
       : []
     return [...custom, ...matches]
-  }, [catalog, empty, query, suggestions])
+  }, [catalog, empty, kind, listed, query, suggestions])
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' })
@@ -138,7 +149,7 @@ export function ModelPicker({
     }
   }
 
-  const selected = value.trim() ? modelInfo(value) : undefined
+  const selected = value.trim() && listed ? modelInfo(value) : undefined
   const selectedLabel = value.trim()
     ? selected?.name ?? suggestions.find((option) => option.id === value.trim())?.label ?? value.trim()
     : empty ?? 'Choose a model'
@@ -234,10 +245,15 @@ export function ModelPicker({
               })}
               {searching && rows.length === 0 ? (
                 <li className="px-2 py-3 text-[13px] text-muted-foreground" role="presentation">
-                  {catalog || failed ? 'No model matches. Paste a full id (vendor/model) to use one that is not listed.' : 'Loading OpenRouter’s models…'}
+                  {!listed ? 'No suggestion matches. Type the model id your server uses to select it.' : catalog || failed ? 'No model matches. Paste a full id (vendor/model) to use one that is not listed.' : 'Loading OpenRouter’s models…'}
                 </li>
               ) : null}
-              {!catalog && !searching ? (
+              {!listed && !searching && rows.every((row) => row.empty) ? (
+                <li className="px-2 py-2 text-[11px] text-muted-foreground" role="presentation">
+                  Type the model id your server uses, then choose “Use …”.
+                </li>
+              ) : null}
+              {listed && !catalog && !searching ? (
                 <li className="px-2 py-2 text-[11px] text-muted-foreground" role="presentation">
                   {failed ? 'Could not load OpenRouter’s full list. Pick a suggestion, or paste a model id.' : 'Loading OpenRouter’s full list…'}
                 </li>

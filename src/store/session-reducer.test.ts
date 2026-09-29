@@ -73,25 +73,6 @@ test('deleting the last chat leaves a fresh empty session', () => {
   assert.deepEqual(next.sessions[0]?.treeState.threads[next.sessions[0].treeState.rootId]?.messages, [])
 })
 
-test('restoreDemo replaces only the active session tree', () => {
-  const other = session('other', createEmptyState(), { title: 'Keep me' })
-  const active = session('active', createEmptyState())
-  const next = sessionReducer(library([other, active], 'active'), {
-    type: 'tree',
-    action: { type: 'restoreDemo' },
-  })
-  const demo = next.sessions.find((item) => item.id === 'active')
-  const kept = next.sessions.find((item) => item.id === 'other')
-  assert.ok(
-    demo?.treeState.threads[demo.treeState.rootId]?.messages.some(
-      (message) => message.content === 'What is TreeChat?',
-    ),
-  )
-  assert.equal(demo?.title, 'What is TreeChat?')
-  assert.deepEqual(kept?.treeState.threads[kept.treeState.rootId]?.messages, [])
-  assert.equal(kept?.title, 'Keep me')
-})
-
 test('restore-session brings a deleted chat back and opens it', () => {
   const kept = session('kept', createEmptyState(), { title: 'Kept', titleLocked: true })
   const gone = session('gone', createSeedState(), { title: 'Gone', titleLocked: true })

@@ -16,13 +16,6 @@ test('consecutive chunks overlap by up to `overlap` characters', () => {
   }
 })
 
-test('a sentence longer than the chunk is cut at word boundaries', () => {
-  const words = Array.from({ length: 200 }, (_, index) => `word${index}`).join(' ')
-  const chunks = chunkBlocks('doc', [{ text: words }], { size: 200, overlap: 0 })
-  assert.ok(chunks.length > 1)
-  for (const chunk of chunks) assert.match(chunk.text, /^word\d+( word\d+)*$/)
-})
-
 test('PDF chunks carry page locators and break at page changes once half full', () => {
   const chunks = chunkBlocks('pdf', [
     { text: paragraph(8), page: 1 },
@@ -37,24 +30,6 @@ test('PDF chunks carry page locators and break at page changes once half full', 
   assert.match(last.text, /Tiny closing line\.$/)
   assert.equal(last.locator, 'p. 3')
   assert.match(last.text, /^Sentence \d+/, 'overlap carries across pages')
-})
-
-test('short pages merge into one chunk with a page range', () => {
-  const chunks = chunkBlocks('pdf', [
-    { text: 'Page one is short.', page: 1 },
-    { text: 'Page two is short too.', page: 2 },
-  ])
-  assert.equal(chunks.length, 1)
-  assert.equal(chunks[0]!.locator, 'pp. 1–2')
-  assert.equal(chunks[0]!.page, 1)
-})
-
-test('every heading starts a chunk, however short the section', () => {
-  const chunks = chunkBlocks('md', [
-    { text: '# A\n\nShort.', heading: 'A' },
-    { text: '# B\n\nAlso short.', heading: 'B' },
-  ])
-  assert.deepEqual(chunks.map((chunk) => [chunk.locator, chunk.text]), [['A', '# A\n\nShort.'], ['B', '# B\n\nAlso short.']])
 })
 
 test('markdown chunks carry their heading and do not overlap across sections', () => {

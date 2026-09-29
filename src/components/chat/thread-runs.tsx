@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useChat } from '@tanstack/ai-react'
 import { treeChatConnection } from '@/lib/client-chat'
 import { takeRunCitations } from '@/lib/citations'
-import { fromUIMessages, sameTranscript, textOf, toUIMessages } from '@/lib/messages'
+import { fromUIMessages, sameTranscript, textOf, toUIMessages, withoutEmptyReply } from '@/lib/messages'
 import { refreshSummary } from '@/lib/summarize'
 import { branchForwardedProps, pathTo } from '@/lib/tree'
 import { hasQuestion, parseKey, publishChat, runKey, setBusy, takeQuestion, useRunningKeys } from '@/lib/thread-run-registry'
@@ -98,10 +98,13 @@ function ThreadRunner({ sessionId, threadId }: { sessionId: string; threadId: st
 
   const saved = useMemo(() => thread?.messages ?? [], [thread])
   useEffect(() => {
-    const next = fromUIMessages(chat.messages)
+    const all = fromUIMessages(chat.messages)
+    // While a reply streams, its message starts out empty. Once the run has
+    // ended, a reply that never got text is not kept (see withoutEmptyReply).
+    const next = chat.isLoading || sending.current ? all : withoutEmptyReply(all)
     if (next.length === 0 && saved.length > 0) return
     if (!sameTranscript(next, saved)) replaceMessages(threadId, next, sessionId)
-  }, [chat.messages, replaceMessages, saved, sessionId, threadId])
+  }, [chat.isLoading, chat.messages, replaceMessages, saved, sessionId, threadId])
 
   // When a reply finishes: attach its sources and usage, save that at once
   // (the runner may unmount right after if its lane is closed), and refresh

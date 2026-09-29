@@ -37,7 +37,8 @@ import { unreadCount } from '@/lib/unread'
 import { dropNextModel, pendingAnswersOf, runKeyOf, setNextModel, switchAnswer } from '@/lib/alternates'
 import type { PendingAnswers } from '@/types'
 import {
-  OPENROUTER_MODEL_OPTIONS,
+  loadProviderConfig,
+  modelSuggestions,
   shortModelName,
 } from '@/lib/provider'
 import { useTree } from '@/store/tree-store'
@@ -65,7 +66,7 @@ function useVisionNotice(files: Attachment[], status: ProviderStatus, onSwitch: 
     }
   }, [hasImage, live])
   if (!hasImage || !live || modelReadsImages(status.model) !== false) return null
-  const alternative = OPENROUTER_MODEL_OPTIONS.find((option) => modelReadsImages(option.id) === true)
+  const alternative = modelSuggestions(loadProviderConfig()).find((option) => modelReadsImages(option.id) === true)
   return (
     <span className="text-amber-300/90" data-testid="vision-warning">
       {shortModelName(status.model)} can’t read images.{' '}
@@ -304,7 +305,7 @@ export function ThreadLane({ threadId, openChildId, frame }: { threadId: string;
         </span>
       ) : undefined}
       composerAbove={explored.matches.length > 0 ? <ExploredBefore matches={explored.matches} onOpen={explored.open} onDismiss={explored.dismiss} /> : undefined}
-      composerWebSearch={{
+      composerWebSearch={shell.status.provider === 'openai-compatible' ? undefined : {
         on: Boolean(thread.webSearch),
         paid: shell.status.mode === 'live',
         onToggle: () => {
