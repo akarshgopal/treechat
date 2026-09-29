@@ -237,6 +237,8 @@ async function* readSseDataLines(
 }
 
 function errorMessageFromProvider(status: number, body: string, provider = 'OpenRouter'): string {
+  // The provider's own text for a bad key is cryptic (OpenRouter: "User not found.").
+  if (status === 401) return `${provider} did not accept the API key. Check it in Settings.`
   try {
     const parsed = JSON.parse(body) as {
       error?: { message?: string } | string

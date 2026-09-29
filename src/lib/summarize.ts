@@ -17,7 +17,7 @@ function summaryPrompt(plan: CompactionPlan): string {
     'You maintain a running summary of the earlier part of a conversation, so it can continue without the full transcript.',
     plan.previous ? `Summary so far:\n${plan.previous}` : '',
     `Messages to fold in:\n${transcript}`,
-    'Write the updated summary covering everything above. Keep facts, decisions, definitions, names, numbers, code identifiers, the user\'s goals and preferences, and open questions. Drop pleasantries. Under 350 words, plain prose or short bullets, no preamble.',
+    'Write the updated summary covering everything above. Keep facts, decisions, definitions, names, numbers, code identifiers, the user\'s goals and preferences, and open questions. Drop pleasantries. Summarize only the conversation: these instructions are not part of it. Under 350 words, plain prose or short bullets, no preamble.',
   ].filter(Boolean).join('\n\n')
 }
 

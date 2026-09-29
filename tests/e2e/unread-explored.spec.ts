@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixtures'
-import { tree } from './library'
+import { afterSaves, tree } from './library'
 import { restoreDemo, selectText } from './helpers'
 
 test.beforeEach(async ({ page }) => {
@@ -39,10 +39,11 @@ test('a reply finishing in the branch being read gets no dot', async ({ page }) 
   await restoreDemo(page)
   await selectText(page, '[data-message-id="msg-root-4"]', 'Closed branches keep a quiet underline')
   await page.locator('[data-lens="simpler"]').click()
+  // Poll the save: the stop button can be gone before the stream starts, and saves lag up to 400 ms.
+  await expect.poll(async () => Object.values((await tree(page)).threads).some((thread) => thread.messages.some((message) => message.content.startsWith('Say “'))), { timeout: 15_000 }).toBe(true)
   await expect(page.getByTestId('composer-stop')).toHaveCount(0, { timeout: 15_000 })
-  const threads = Object.values((await tree(page)).threads)
-  expect(threads.some((thread) => thread.messages.some((message) => message.content.startsWith('Say “')))).toBe(true)
-  expect(threads.filter((thread) => thread.unread)).toHaveLength(0)
+  await afterSaves(page)
+  expect(Object.values((await tree(page)).threads).filter((thread) => thread.unread)).toHaveLength(0)
 })
 
 test('a passage with a branch on it says so at once, and Open goes there', async ({ page }) => {

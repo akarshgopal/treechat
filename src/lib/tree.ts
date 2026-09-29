@@ -116,6 +116,21 @@ export function clipText(text: string, max: number): string {
 }
 
 /**
+ * Markdown as the words it shows, for one-line previews: links keep their
+ * text, and emphasis, code ticks, headings, list and quote markers go.
+ * ponytail: inline regexes, not a parser; fine for previews, never for rendering.
+ */
+export function markdownToPlain(markdown: string): string {
+  return markdown
+    .replace(/```[^\n]*\n?/g, '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])[*_]([^*_\s][^*_]*?)[*_](?![\w*])/g, '$1$2')
+    .replace(/`([^`]*)`/g, '$1')
+}
+
+/**
  * The run of messages up to (and including) `messageId`, as a transcript.
  * The anchor message is never truncated — it is the one holding the quote.
  */

@@ -33,7 +33,12 @@ function webSearchPrompt(quote?: string): string {
   )
 }
 
-type WebPlugin = { id: 'web'; max_results: number; search_prompt: string }
+/**
+ * Exa, not the model's native search: native search (OpenAI, Anthropic, …)
+ * ignores `search_prompt`, so replies cite with domain links instead of
+ * `[n]`, and its results carry no snippets to highlight in the source lane.
+ */
+type WebPlugin = { id: 'web'; engine: 'exa'; max_results: number; search_prompt: string }
 
 export function applyWebSearch<T extends object>(
   requestBody: T,
@@ -43,7 +48,7 @@ export function applyWebSearch<T extends object>(
   const quote = typeof forwardedProps?.quote === 'string' ? forwardedProps.quote : undefined
   return {
     ...requestBody,
-    plugins: [{ id: 'web', max_results: WEB_SEARCH_MAX_RESULTS, search_prompt: webSearchPrompt(quote) }],
+    plugins: [{ id: 'web', engine: 'exa', max_results: WEB_SEARCH_MAX_RESULTS, search_prompt: webSearchPrompt(quote) }],
   }
 }
 

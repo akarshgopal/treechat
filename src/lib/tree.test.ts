@@ -6,6 +6,7 @@ import {
   CONTEXT_QUOTE,
   contextBranchLabel,
   contextOmittedLabel,
+  markdownToPlain,
   threadContext,
 } from './tree.ts'
 import type { ChatMessage, Thread, TreeState } from '../types.ts'
@@ -125,4 +126,11 @@ test('summarized ancestor context stays within its budget', () => {
   assert.match(huge, /the anchor with a quotable passage/)
   // Turns too long to fit whole fall back to clipped fragments.
   assert.match(huge, /user: second question z+…\n/)
+})
+
+test('markdownToPlain keeps the words and drops the markup', () => {
+  assert.equal(
+    markdownToPlain('## Tip\nTap **Explain**, *Example* or `Source?` — see [the docs](https://x.y).\n- one\n> quoted\n2 * 3 * 4 and snake_case_name'),
+    'Tip\nTap Explain, Example or Source? — see the docs.\none\nquoted\n2 * 3 * 4 and snake_case_name',
+  )
 })

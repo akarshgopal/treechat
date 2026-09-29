@@ -137,6 +137,11 @@ test('empty provider streams and error finish reasons surface a retryable error'
   }
 })
 
+test('a rejected key says so instead of the provider\'s cryptic text', async () => {
+  globalThis.fetch = (async () => new Response('{"error":{"message":"User not found.","code":401}}', { status: 401 })) as typeof fetch
+  await assert.rejects(collectAssistantText(providerChatStream(streamInput)), /did not accept the API key/)
+})
+
 test('runChat sends a summarized thread as its summary plus the later messages', async () => {
   saveProviderConfig({ provider: 'openrouter', apiKey: 'sk-or-v1-live', model: 'openai/gpt-4.1-mini' })
   let sent: Array<{ role: string; content: string }> = []

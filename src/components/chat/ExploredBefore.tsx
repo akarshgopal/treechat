@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import type { ExploredMatch } from '@/lib/explored'
+import { markdownToPlain } from '@/lib/tree'
 
 /** One compact line per match: where it was, its takeaway, Open and ×. */
 export function ExploredBefore({ matches, onOpen, onDismiss }: {
@@ -21,7 +22,7 @@ export function ExploredBefore({ matches, onOpen, onDismiss }: {
               Explored before: <b className="font-medium text-foreground">{match.title}</b>
               <span className="ml-1.5 text-xs">{match.chatTitle ? `in “${match.chatTitle}”` : 'this chat'}</span>
             </span>
-            {match.takeaway ? <span className="truncate text-xs text-muted-foreground" data-testid="explored-takeaway">{match.takeaway}</span> : null}
+            {match.takeaway ? <span className="truncate text-xs text-muted-foreground" data-testid="explored-takeaway">{markdownToPlain(match.takeaway)}</span> : null}
           </span>
           <button type="button" className="btn btn-outline h-7" onClick={() => onOpen(match)} data-testid="explored-open">Open</button>
           <button type="button" className="icon-button icon-button-sm" onClick={() => onDismiss(match)} aria-label="Dismiss" title="Dismiss">
