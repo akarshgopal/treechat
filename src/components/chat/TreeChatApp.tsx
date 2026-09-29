@@ -648,7 +648,7 @@ function TreeChatShell({
       {/* Phones only: there is no sidebar, so the chat and its actions live here. */}
       {narrow ? (
         <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-2">
-          <span className="accent-glow mx-2 size-[7px] shrink-0 rounded-sm bg-branch" aria-hidden />
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="mx-1.5 size-[18px] shrink-0 rounded-[4px]" />
           <button
             type="button"
             onClick={() => setLibraryOpen(true)}

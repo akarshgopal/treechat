@@ -39,3 +39,5 @@ playwright-report/
 launch-video.mp4
 launch-video.gif
 launch-video-error.png
+launch-video-*.mp4
+launch-video-*.gif

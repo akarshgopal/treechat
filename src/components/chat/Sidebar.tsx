@@ -139,7 +139,7 @@ export function Sidebar({ chats, documents, status, onHome, onNewChat, onOpenSet
     >
       <div className="flex h-12 shrink-0 items-center gap-1 px-2">
         <button type="button" onClick={onHome} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-[13px] font-medium text-foreground" title="Back to the main conversation">
-          <span className="accent-glow size-[7px] shrink-0 rounded-sm bg-branch" aria-hidden />
+          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="size-[18px] shrink-0 rounded-[4px]" />
           TreeChat
         </button>
         <button type="button" className={iconButton} onClick={toggle} aria-label="Collapse sidebar" aria-expanded title={`Collapse sidebar · ${toggleLabel()}`} data-testid="sidebar-toggle">

@@ -23,9 +23,9 @@ const MODE = process.argv[2] === 'record' ? 'record' : 'film'
 const URL = process.env.TREECHAT_URL ?? 'http://localhost:5174/'
 const REC_FILE = 'tools/launch-video.json'
 const OUT = process.env.TREECHAT_VIDEO_OUT ?? 'launch-video'
-const MUSIC = process.env.TREECHAT_MUSIC ?? '../pdfdiff/tools/fassounds-upbeat-advertising-funk-412226.mp3'
-// The track's drop (measured for the pdfdiff video); it should land as the app appears.
-const DROP_AT = 7.1
+const MUSIC = process.env.TREECHAT_MUSIC ?? 'tools/launch-music.mp3'
+// Seconds into the track where its energy lifts; it lands as the app appears.
+const DROP_AT = Number(process.env.TREECHAT_MUSIC_DROP ?? 2.8)
 const SIZE = { width: 1920, height: 1080 }
 // The app renders at a laptop size and is shown 1.2x, so its text reads on video.
 const APP = { w: 1280, h: 720, zoom: 1.2 }
@@ -538,8 +538,8 @@ execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', raw, '-ss', String(mar
   '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '16', '-preset', 'slow', silent])
 
 if (existsSync(MUSIC)) {
-  // The drop lands as the app card settles, about 3.2s in.
-  const musicStart = Math.max(0, DROP_AT - 3.2)
+  // The app card lands about 2.8s in.
+  const musicStart = Math.max(0, DROP_AT - 2.8)
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silent, '-ss', String(musicStart), '-t', String(length), '-i', MUSIC,
     '-filter_complex', `[1:a]volume=-1dB,afade=t=in:st=0:d=0.3,afade=t=out:st=${(length - 1.5).toFixed(2)}:d=1.5[a]`,
     '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', `${OUT}.mp4`])
