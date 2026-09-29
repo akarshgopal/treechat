@@ -265,8 +265,9 @@ function errorMessageFromProvider(status: number, body: string, provider = 'Open
 }
 
 /** A failed `fetch` says only "Failed to fetch"; for a custom server, say what usually causes it. */
-function networkErrorMessage(config: ClientProviderConfig, error: unknown): string {
-  if (isOpenRouter(config)) return error instanceof Error ? error.message : 'OpenRouter request failed'
+function networkErrorMessage(config: ClientProviderConfig): string {
+  // The browser's own text ("Failed to fetch", "network error") says nothing useful.
+  if (isOpenRouter(config)) return 'Could not reach OpenRouter. Check your connection and try again.'
   const name = providerName(config)
   return `Could not reach ${name}. Check the URL and that the server is running; it must also allow requests from this page (CORS), and an https page cannot call plain http on another machine.`
 }
@@ -306,7 +307,7 @@ export async function* providerChatStream(input: {
     if (isAbortError(error, signal)) return
     yield {
       type: EventType.RUN_ERROR,
-      message: networkErrorMessage(config, error),
+      message: networkErrorMessage(config),
       code: 'network',
       timestamp: now(),
     }

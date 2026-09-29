@@ -137,9 +137,11 @@ test('empty provider streams and error finish reasons surface a retryable error'
   }
 })
 
-test('a rejected key says so instead of the provider\'s cryptic text', async () => {
+test('a rejected key or a dropped connection says what happened, not the raw error', async () => {
   globalThis.fetch = (async () => new Response('{"error":{"message":"User not found.","code":401}}', { status: 401 })) as typeof fetch
   await assert.rejects(collectAssistantText(providerChatStream(streamInput)), /did not accept the API key/)
+  globalThis.fetch = (async () => { throw new TypeError('network error') }) as typeof fetch
+  await assert.rejects(collectAssistantText(providerChatStream(streamInput)), /Could not reach OpenRouter/)
 })
 
 test('runChat sends a summarized thread as its summary plus the later messages', async () => {

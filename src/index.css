@@ -466,6 +466,14 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   padding: 0.12em 0.38em;
 }
 
+/* A fence with no language has no class to tell it from inline code. */
+.tc-md-pre .tc-md-inline {
+  font-size: inherit;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+}
+
 .tc-md-table-wrap {
   overflow-x: auto;
   margin: 0.6em 0;
