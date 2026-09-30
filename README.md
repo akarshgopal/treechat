@@ -8,7 +8,7 @@ A branching AI chat. Select any passage in a reply to explore it in a side **bra
 
 Found a bug or have an idea? [Open an issue](https://github.com/akarshgopal/treechat/issues/new) (also under **Report a problem** in Settings and the command palette).
 
-Built with Vite, React, TypeScript, Tailwind CSS, shadcn/ui, and TanStack AI (`useChat`). Production is a **static GitHub Pages** app: paste an **OpenRouter API key** in Settings (gear). The key stays in `localStorage` and the browser calls OpenRouter directly (BYOK). With no key, a polished mock stream keeps the whole UX clickable — including on Pages, with no API server.
+Built with Vite, React, TypeScript, Tailwind CSS, shadcn/ui, and TanStack AI (`useChat`). Production is a **static site on Cloudflare** ([treechat.cc](https://treechat.cc/)): paste an **OpenRouter API key** in Settings (gear). The key stays in `localStorage` and the browser calls OpenRouter directly (BYOK). With no key, a polished mock stream keeps the whole UX clickable — including on Pages, with no API server.
 
 ## Setup
 
@@ -51,29 +51,27 @@ Settings' **Provider** list also offers OpenAI, Groq, Ollama and LM Studio, and 
 
 A key belongs to the provider it was typed for: switching provider in Settings never carries it to another server. **Disconnect** returns to the demo.
 
-The browser calls the server directly, so two things must hold. The server has to allow requests from this page (CORS; for Ollama set `OLLAMA_ORIGINS`), and an https page such as GitHub Pages can reach `http://localhost` but not plain http on another machine (serve that one over https, or run TreeChat locally).
+The browser calls the server directly, so two things must hold. The server has to allow requests from this page (CORS; for Ollama set `OLLAMA_ORIGINS`), and an https page such as treechat.cc can reach `http://localhost` but not plain http on another machine (serve that one over https, or run TreeChat locally).
 
 OpenRouter-only features are switched off for other servers: the model catalog with prices, key usage and cost per reply (tokens still show when the server reports them), the web-search globe and the Source? lens's search, and the image warning (images are sent as-is; a text-only model will say so).
 
 ## Demo mode (no key)
 
-Without a key (or a server), replies come from a demo stream generated in the page, locally and on GitHub Pages alike, so every feature can be tried and nothing is sent anywhere. There is no TreeChat server: it is a static site, and the only way to real answers is your own OpenRouter key, or another provider or server, in Settings.
+Without a key (or a server), replies come from a demo stream generated in the page, locally and on treechat.cc alike, so every feature can be tried and nothing is sent anywhere. There is no TreeChat server: it is a static site, and the only way to real answers is your own OpenRouter key, or another provider or server, in Settings.
 
 ## Configuration
 
 The only build setting is `VITE_BASE`, the public path (in `.env` or the environment). It defaults to `/`, for the site at the root of treechat.cc and for local dev; set it (e.g. `VITE_BASE=/sub/`) to build for a subpath.
 
-## Deploy to GitHub Pages
+## Deploy (Cloudflare)
 
-The app is a static `dist/` site. Hosting is GitHub Pages (no Cloudflare Pages Functions).
+The app is a static `dist/` site served by Cloudflare at `https://treechat.cc/`, a domain that serves nothing else, so no other site shares its origin (and so the saved key).
 
-Site URL: `https://treechat.cc/`, a custom domain on GitHub Pages (DNS on Cloudflare), so the app has an origin of its own rather than one shared by every `*.github.io` site of the account.
+1. In Cloudflare: **Workers & Pages → Create → Import a repository**, pick this repo. Build command `pnpm build`, deploy command `npx wrangler deploy` (it reads `wrangler.jsonc`: `dist/` as static assets).
+2. On the new Worker: **Settings → Domains & Routes → Add → Custom domain** `treechat.cc` (Cloudflare creates the DNS record and certificate).
+3. Every push to `main` builds and deploys on Cloudflare; nothing runs on GitHub Actions. `pnpm build` type-checks, but tests are not run on deploy, so run them locally before pushing (see below).
 
-1. In the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**, and **Custom domain** `treechat.cc` with **Enforce HTTPS**.
-2. Push to `main` (or run the **Deploy GitHub Pages** workflow). `.github/workflows/pages.yml` only builds (`pnpm build`, which also type-checks) and uploads `dist`; pushes that touch only docs or tests skip it. Tests are not run in CI, so run them locally before pushing (see below).
-3. DNS for `treechat.cc` (Cloudflare, **DNS only**): `A` records to `185.199.108.153`, `185.199.109.153`, `185.199.110.153` and `185.199.111.153`, `AAAA` records to `2606:50c0:8000::153` through `2606:50c0:8003::153`, and `www` as a `CNAME` to `akarshgopal.github.io`.
-
-No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
+No secrets belong in the build. Users paste OpenRouter keys in Settings.
 
 ## How branching works
 
@@ -165,7 +163,7 @@ Without a key, replies are demo text generated in the page and nothing is sent a
 - Vite + React + TypeScript
 - Tailwind CSS + shadcn/ui-style primitives on Radix (Dialog, AlertDialog, DropdownMenu, ScrollArea)
 - TanStack AI: `@tanstack/ai`, `@tanstack/ai-react` (`useChat`)
-- GitHub Pages (static) + in-browser OpenRouter BYOK
+- Cloudflare static assets + in-browser OpenRouter BYOK
 
 Product decisions, ground rules for changes and tests, and the checks to do by hand before a release are in [docs/decisions.md](docs/decisions.md).
 

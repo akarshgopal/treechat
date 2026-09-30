@@ -61,8 +61,8 @@ aren't lost. Each point says what the code does; the code says how.
 - Unit tests for pure logic, an end-to-end test for each flow.
 - Before merging: `npm run lint` (only its one standing warning), `npm test`
   and `npx playwright test` pass.
-- CI only builds and deploys, to save Actions minutes; nothing else runs
-  these checks, so run them before every push to `main`.
+- Deploys build on Cloudflare and run no tests (and nothing runs on GitHub
+  Actions), so run these checks before every push to `main`.
 - The `development` Playwright project runs `branch-request.spec.ts` against
   the dev server on purpose: dev mode runs React StrictMode, which mounts the
   chat engine twice, and that has broken sending before.
