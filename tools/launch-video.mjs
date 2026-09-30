@@ -24,9 +24,12 @@ const MODE = process.argv[2] === 'record' ? 'record' : 'film'
 const URL = process.env.TREECHAT_URL ?? 'http://localhost:5174/'
 const REC_FILE = 'tools/launch-video.json'
 const OUT = process.env.TREECHAT_VIDEO_OUT ?? 'launch-video'
-const MUSIC = process.env.TREECHAT_MUSIC ?? 'tools/launch-music.mp3'
+// Not committed: stock music licenses (this one is fassounds, via Pixabay)
+// don't allow redistributing the track on its own.
+const MUSIC = process.env.TREECHAT_MUSIC ?? 'fassounds-powerful-energy-upbeat-rock-advertising-music-245728.mp3'
 // Seconds into the track where its energy lifts; it lands as the app appears.
-const DROP_AT = Number(process.env.TREECHAT_MUSIC_DROP ?? 2.8)
+// 5.3s is where the full band comes in.
+const DROP_AT = Number(process.env.TREECHAT_MUSIC_DROP ?? 5.3)
 const SIZE = { width: 1920, height: 1080 }
 // Capture scale: 2x gives a 4K master and a supersampled 1080p cut.
 const SCALE = Number(process.env.TREECHAT_SCALE ?? 2)
