@@ -15,7 +15,8 @@
 // Needs `pnpm dev` running (TREECHAT_URL, default http://localhost:5174/) and ffmpeg.
 import { chromium } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -27,6 +28,8 @@ const MUSIC = process.env.TREECHAT_MUSIC ?? 'tools/launch-music.mp3'
 // Seconds into the track where its energy lifts; it lands as the app appears.
 const DROP_AT = Number(process.env.TREECHAT_MUSIC_DROP ?? 2.8)
 const SIZE = { width: 1920, height: 1080 }
+// Capture scale: 2x gives a 4K master and a supersampled 1080p cut.
+const SCALE = Number(process.env.TREECHAT_SCALE ?? 2)
 // The app renders at a laptop size and is shown 1.2x, so its text reads on video.
 const APP = { w: 1280, h: 720, zoom: 1.2 }
 const CARD = { x: 192, y: 44, w: APP.w * APP.zoom, h: APP.h * APP.zoom }
@@ -164,7 +167,7 @@ const STAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   #caption { position: fixed; left: 0; right: 0; top: ${CARD.y + CARD.h + 34}px; height: 90px;
     display: grid; place-items: center; pointer-events: none; }
   .cap { grid-area: 1 / 1; font-size: 44px; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap;
-    padding: 14px 34px; border-radius: 999px; background: rgb(15 17 19 / .82); backdrop-filter: blur(14px);
+    padding: 14px 34px; border-radius: 999px; background: rgb(15 17 19 / .9);
     box-shadow: 0 10px 40px rgba(0,0,0,.45);
     opacity: 0; transform: translateY(26px); transition: opacity 420ms var(--ease), transform 520ms var(--ease); }
   .cap.on { opacity: 1; transform: none; }
@@ -263,7 +266,9 @@ function makeDriver(page) {
       const k = ease(t)
       await page.mouse.move(from.x + (to.x - from.x) * k, from.y + (to.y - from.y) * k)
       if (t >= 1) break
-      await wait(12)
+      // The cursor graphic animates in CSS; the real mouse only needs ~30Hz,
+      // and every move is a hover event the app has to handle.
+      await wait(30)
     }
     Object.assign(cur, to)
   }
@@ -498,12 +503,13 @@ function apiKey() {
 // Edit a pick in the JSON and run `record` again to branch from a different passage.
 const saved = existsSync(REC_FILE) ? JSON.parse(readFileSync(REC_FILE, 'utf8')) : { picks: {}, responses: {} }
 const work = mkdtempSync(join(tmpdir(), 'treechat-video-'))
-const browser = await chromium.launch()
+// GPU compositing: headless Chrome otherwise blends layers in software, and a
+// fading card with a soft shadow alone drops capture from 60fps to ~40.
+const browser = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] })
 const context = await browser.newContext({
   viewport: SIZE,
-  deviceScaleFactor: 2,
+  deviceScaleFactor: SCALE,
   colorScheme: 'dark',
-  ...(MODE === 'film' ? { recordVideo: { dir: work, size: SIZE } } : {}),
 })
 await context.addInitScript(pageHooks, {
   mode: MODE,
@@ -522,6 +528,22 @@ await page.evaluate(() => document.fonts.ready.then(() => true))
 const d = makeDriver(page)
 await d.app.locator('textarea').waitFor({ state: 'visible' })
 await wait(800)
+
+// Frames straight from Chrome's compositor, at the 2x backing size, each with
+// its swap time. Playwright's recordVideo is ~1 Mbit/s VP8 in real time, which
+// smears text and drops frames; this gives a clean 4K master to encode from.
+const frames = []
+const cdp = MODE === 'film' ? await context.newCDPSession(page) : null
+if (cdp) {
+  cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+    // Ack first: Chrome sends no new frame until the last is acked, so a
+    // blocking 4K write here halved the frame rate.
+    cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {})
+    const file = join(work, `f${String(frames.length).padStart(5, '0')}.jpg`)
+    frames.push({ file, t: metadata.timestamp * 1000 - t0, written: writeFile(file, Buffer.from(data, 'base64')) })
+  })
+  await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 95, maxWidth: SIZE.width * SCALE, maxHeight: SIZE.height * SCALE })
+}
 
 const marks = { start: 0 }
 const picks = { ...saved.picks }
@@ -545,26 +567,59 @@ if (MODE === 'record') {
   process.exit(0)
 }
 
+await cdp.send('Page.stopScreencast')
+await Promise.all(frames.map((f) => f.written))
 await context.close()
 await browser.close()
-const raw = join(work, readdirSync(work).find((f) => f.endsWith('.webm')))
 const length = Number((marks.end - marks.start).toFixed(3))
-const silent = join(work, 'silent.mp4')
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', raw, '-ss', String(marks.start), '-t', String(length),
-  '-vf', `fps=60,scale=${SIZE.width}:${SIZE.height}:flags=lanczos,setsar=1`,
-  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '16', '-preset', 'slow', silent])
 
-if (existsSync(MUSIC)) {
+// Frames arrive only when the screen changes: each one holds until the next.
+// Start from the last frame at or before the mark.
+const startMs = marks.start * 1000
+const endMs = marks.end * 1000
+const first = frames.findLastIndex((f) => f.t <= startMs)
+const kept = frames.slice(Math.max(0, first)).filter((f) => f.t < endMs)
+const list = ['ffconcat version 1.0']
+kept.forEach((f, i) => {
+  const from = Math.max(f.t, startMs)
+  const to = i + 1 < kept.length ? kept[i + 1].t : endMs
+  list.push(`file '${f.file}'`, `duration ${((to - from) / 1000).toFixed(4)}`)
+})
+list.push(`file '${kept.at(-1).file}'`)
+const listFile = join(work, 'frames.txt')
+writeFileSync(listFile, `${list.join('\n')}\n`)
+const fps = (kept.length / length).toFixed(1)
+if (process.env.DEBUG) {
+  // Gaps between frames that are part of motion (<100ms apart); 60fps is ~17ms.
+  const gaps = kept.slice(1).map((f, i) => f.t - kept[i].t).filter((g) => g < 100)
+  console.log(`motion frames at 60fps: ${Math.round((100 * gaps.filter((g) => g < 20).length) / gaps.length)}%`)
+}
+
+// Straight from the frames: 1080p downscaled from the capture (supersampled,
+// so text edges stay smooth), and 4K when captured at 2x.
+const encode = (scale, crf, out) => execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile,
+  '-vf', `fps=60,scale=${scale}:flags=lanczos,format=yuv420p`, '-c:v', 'libx264', '-crf', String(crf), '-preset', 'slow', out])
+const master = join(work, 'master.mp4')
+const silent = join(work, 'silent.mp4')
+encode(`${SIZE.width}:${SIZE.height}`, 12, silent)
+if (SCALE >= 2) encode(`${SIZE.width * 2}:${SIZE.height * 2}`, 14, master)
+
+/** Adds the score, or copies the video as is when there is no track. */
+function score(video, out) {
+  if (!existsSync(MUSIC)) {
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-c', 'copy', '-movflags', '+faststart', out])
+    return
+  }
   // The app card lands about 2.8s in.
   const musicStart = Math.max(0, DROP_AT - 2.8)
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silent, '-ss', String(musicStart), '-t', String(length), '-i', MUSIC,
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-ss', String(musicStart), '-t', String(length), '-i', MUSIC,
     '-filter_complex', `[1:a]volume=-1dB,afade=t=in:st=0:d=0.3,afade=t=out:st=${(length - 1.5).toFixed(2)}:d=1.5[a]`,
-    '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', `${OUT}.mp4`])
-} else {
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silent, '-c', 'copy', `${OUT}.mp4`])
+    '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-shortest', '-movflags', '+faststart', out])
 }
+score(silent, `${OUT}.mp4`)
+if (SCALE >= 2) score(master, `${OUT}-4k.mp4`)
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silent, '-vf',
   'fps=12,scale=800:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
   `${OUT}.gif`])
 rmSync(work, { recursive: true, force: true })
-console.log(`wrote ${OUT}.mp4 and ${OUT}.gif (${length}s)`)
+console.log(`wrote ${OUT}.mp4 (1080p60)${SCALE >= 2 ? `, ${OUT}-4k.mp4` : ''} and ${OUT}.gif (${length}s, ${kept.length} frames captured, ~${fps} fps)`)
