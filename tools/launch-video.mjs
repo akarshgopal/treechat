@@ -1,7 +1,7 @@
 // Launch video, filmed from the real app.
 //
 // The app runs in an iframe at a laptop-sized viewport (1560x860) on a 1920x1080
-// stage, so its layout is genuine; captions, the cursor, the camera and the title
+// stage, so its layout is genuine; captions, the cursor and the title
 // cards are stage graphics around it.
 //
 // Two passes, same script and same clicks:
@@ -155,7 +155,6 @@ const STAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   #bg { position: fixed; inset: 0;
     background: radial-gradient(1100px 700px at 50% 38%, oklch(0.3 0.05 163 / .5), transparent 70%),
       radial-gradient(#1b1e21 1.4px, transparent 1.4px) 0 0 / 30px 30px; }
-  #cam { position: fixed; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
   #card { position: absolute; left: ${CARD.x}px; top: ${CARD.y}px; width: ${CARD.w}px; height: ${CARD.h}px;
     border-radius: 16px; overflow: hidden; border: 1px solid #2c3034;
     box-shadow: 0 40px 120px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.02);
@@ -208,7 +207,7 @@ const STAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   .url b { color: var(--fg); font-weight: 500; }
 </style></head><body>
   <div id="bg"></div>
-  <div id="cam"><div id="card"><iframe name="app" src="/"></iframe></div></div>
+  <div id="card"><iframe name="app" src="/"></iframe></div>
   <div id="caption"></div>
   <div id="intro" class="title">
     <div class="lockup">${LOGO}<span class="word rise" style="animation-delay:300ms">TreeChat</span></div>
@@ -229,27 +228,10 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 
 function makeDriver(page) {
-  const cam = { s: 1, tx: 0, ty: 0 }
   const cur = { x: 1180, y: 760 }
   const frame = () => page.frame({ name: 'app' })
   const app = page.frameLocator('iframe[name="app"]')
-  const toStage = (x, y) => ({ x: cam.tx + cam.s * (CARD.x + APP.zoom * x), y: cam.ty + cam.s * (CARD.y + APP.zoom * y) })
-
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
-  /** Push in on an app point (frame coords); the card keeps filling the frame. */
-  async function camera(s, fx = 0, fy = 0, ms = 900) {
-    Object.assign(cam, s === 1 ? { s: 1, tx: 0, ty: 0 } : {
-      s,
-      tx: clamp(960 - s * (CARD.x + APP.zoom * fx), SIZE.width - s * (CARD.x + CARD.w), -s * CARD.x),
-      ty: clamp(476 - s * (CARD.y + APP.zoom * fy), SIZE.height - s * (CARD.y + CARD.h), -s * CARD.y),
-    })
-    await page.evaluate(({ s, tx, ty, ms }) => {
-      const el = document.getElementById('cam')
-      el.style.transition = `transform ${ms}ms cubic-bezier(.45,0,.2,1)`
-      el.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`
-    }, { ...cam, ms })
-    await wait(ms)
-  }
+  const toStage = (x, y) => ({ x: CARD.x + APP.zoom * x, y: CARD.y + APP.zoom * y })
 
   /** Cursor graphic and real mouse travel together, on the same easing. */
   async function move(to, ms = 650) {
@@ -286,19 +268,6 @@ function makeDriver(page) {
     await page.mouse.down()
     await wait(70)
     await page.mouse.up()
-  }
-
-  /** Push in on everything `locator` matches. */
-  async function focus(locator, s, ms) {
-    const r = await locator.evaluateAll((els) => {
-      const bs = els.map((el) => el.getBoundingClientRect())
-      const top = Math.min(...bs.map((b) => b.top))
-      const bottom = Math.min(Math.max(...bs.map((b) => b.bottom)), top + 720)
-      const left = Math.min(...bs.map((b) => b.left))
-      const right = Math.max(...bs.map((b) => b.right))
-      return { x: (left + right) / 2, y: (top + bottom) / 2 }
-    })
-    await camera(s, r.x, r.y, ms)
   }
 
   async function centerOf(locator) {
@@ -373,7 +342,7 @@ function makeDriver(page) {
   const lastText = (locator) => locator.last().evaluate((el) => el.innerText)
   const cls = (id, name, on = true) => page.evaluate(({ id, name, on }) => document.getElementById(id).classList.toggle(name, on), { id, name, on })
 
-  return { page, app, frame, camera, focus, move, click, centerOf, select, caption, replied, lastText, cls }
+  return { page, app, frame, move, click, centerOf, select, caption, replied, lastText, cls }
 }
 
 function pick(text, patterns) {
@@ -414,16 +383,9 @@ async function scene(d, picks, mark) {
   // Branch: select a passage, one tap on Explain.
   await d.caption('Select any passage. <em>Branch it.</em>')
   const reply = messages(main).filter({ hasText: picks.explain }).last()
-  const at = await reply.evaluate((el) => {
-    const b = el.getBoundingClientRect()
-    return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
-  })
-  await d.camera(1.32, at.x, at.y, 700)
   await d.select(reply, picks.explain)
   await wait(450)
   await d.click(await d.centerOf(app.locator('[data-lens="explain"]')), 600)
-  await wait(100)
-  await d.camera(1, 0, 0, 700)
   await d.replied()
   const branch = lanes.nth(1)
   picks.source ??= pick(await d.lastText(messages(branch)), SOURCE_PATTERNS)
@@ -434,8 +396,6 @@ async function scene(d, picks, mark) {
   await d.select(messages(branch).filter({ hasText: picks.source }).last(), picks.source)
   await wait(400)
   await d.click(await d.centerOf(app.locator('[data-lens="source"]')), 600)
-  await wait(250)
-  await d.focus(lanes.last(), 1.28, 750)
   await d.replied()
   await wait(300)
   const chip = app.locator('[data-testid="citation-chip"]')
@@ -451,11 +411,8 @@ async function scene(d, picks, mark) {
   await page.keyboard.type(OWN_QUESTION, { delay: 34 })
   await wait(250)
   await page.keyboard.press('Enter')
-  await wait(350)
-  await d.focus(lanes.last(), 1.28, 750)
   await d.replied()
-  await wait(900)
-  await d.camera(1, 0, 0, 600)
+  await wait(1100)
 
   // Bring the first branch's finding back to the main conversation; the
   // sidebar tree jumps straight to it.
@@ -468,17 +425,12 @@ async function scene(d, picks, mark) {
   await app.locator('[data-testid="confirm-takeaway"]:not([disabled])').waitFor({ timeout: 120_000 })
   await wait(700)
   await d.click(await d.centerOf(confirm), 550)
-  await wait(400)
-  await d.focus(messages(main).last(), 1.3, 700)
-  await wait(1300)
-  await d.camera(1, 0, 0, 600)
+  await wait(1800)
 
   // The whole exploration at a glance.
   await d.caption('See the <em>whole tree.</em>')
   await d.click(await d.centerOf(app.locator('[data-testid="open-map"]')), 800)
-  await wait(300)
-  await d.focus(app.locator('[data-testid="map-card"]'), 1.45, 800)
-  await wait(1600)
+  await wait(2200)
 
   // End card.
   await d.caption('')
