@@ -167,6 +167,10 @@ Without a key, replies are demo text generated in the page and nothing is sent a
 
 Product decisions, ground rules for changes and tests, and the checks to do by hand before a release are in [docs/decisions.md](docs/decisions.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the checks to run before a pull request, and [SECURITY.md](SECURITY.md) to report a vulnerability privately.
+
 ## License
 
 Created by Akarsh Gopal. Released under the [MIT License](LICENSE) — © 2026 Akarsh Gopal.

@@ -4,6 +4,9 @@
   "license": "MIT",
   "author": "Akarsh Gopal",
   "version": "0.0.0",
+  "homepage": "https://treechat.cc",
+  "repository": "github:akarshgopal/treechat",
+  "bugs": "https://github.com/akarshgopal/treechat/issues",
   "type": "module",
   "scripts": {
     "dev": "vite",
