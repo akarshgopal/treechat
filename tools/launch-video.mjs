@@ -220,7 +220,7 @@ const STAGE_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
     <div class="lockup">${LOGO}<span class="word rise" style="animation-delay:250ms">TreeChat</span></div>
     <p class="tag rise" style="animation-delay:550ms">Follow every tangent. <em>Keep your place.</em></p>
     <div class="chips">${CHIPS.map((c, i) => `<span class="chip rise" style="animation-delay:${900 + i * 110}ms"><i></i>${c}</span>`).join('')}</div>
-    <p class="url rise" style="animation-delay:1500ms">Free and open source · your key, your browser · <b>akarshgopal.github.io/treechat</b></p>
+    <p class="url rise" style="animation-delay:1500ms">Free and open source · your key, your browser · <b>treechat.cc</b></p>
   </div>
   <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2.5 19.5 13l-7 1.2 4 7.3-3 1.6-4-7.4L4 20.5Z" fill="#fff" stroke="#111" stroke-width="1.3" stroke-linejoin="round"/></svg>
 </body></html>`

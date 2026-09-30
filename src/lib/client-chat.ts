@@ -117,7 +117,7 @@ function defaultOrigin(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin
   }
-  return 'https://akarshgopal.github.io/treechat'
+  return 'https://treechat.cc'
 }
 
 function toOpenAIChatMessages(messages: unknown[]): OpenAIChatMessage[] {

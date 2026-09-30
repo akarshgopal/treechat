@@ -76,5 +76,6 @@ aren't lost. Each point says what the code does; the code says how.
   the lens sheet in iOS Safari, and dragging an image region on iOS and
   Android. The e2e suite covers these only with an emulated phone and
   synthetic touch.
-- **Hosting:** serving from a custom domain would stop other `*.github.io`
-  sites of the same account sharing the origin (and so the saved key).
+- **Hosting:** the site is served from treechat.cc so that no other site
+  shares its origin (and so the saved key), as every `*.github.io` site of
+  one account does. Keep it that way: nothing else on that domain.

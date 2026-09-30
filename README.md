@@ -2,7 +2,7 @@
 
 A branching AI chat. Select any passage in a reply to explore it in a side **branch** that opens in its own lane beside the passage, then bring the takeaway back to the conversation it came from.
 
-**Try it:** [akarshgopal.github.io/treechat](https://akarshgopal.github.io/treechat/). It works straight away with demo replies; add your own [OpenRouter](https://openrouter.ai/) key in Settings for real answers. There is no TreeChat server and no account: everything runs and stays in your browser.
+**Try it:** [treechat.cc](https://treechat.cc/). It works straight away with demo replies; add your own [OpenRouter](https://openrouter.ai/) key in Settings for real answers. There is no TreeChat server and no account: everything runs and stays in your browser.
 
 ![TreeChat: a reply on the left, with a branch about one of its passages open in a lane on the right](docs/screenshot.png)
 
@@ -34,7 +34,7 @@ pnpm preview    # serve the build
 
 **Usage.** With a key saved, Settings shows what the key has spent (today, this month, in total), its credit limit and what is left, straight from OpenRouter. Each reply shows the model that answered, its tokens and its cost; hover it for input and output tokens separately. Costs of background work (summaries, takeaway drafts, image descriptions) count toward the key but are not shown per reply.
 
-Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**, and prefer a key with a [credit limit](https://openrouter.ai/settings/keys): anyone with access to this browser profile can read it, and so could any script running on this site's address (on `*.github.io`, that address is shared by every Pages site of the same account). Every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`); TreeChat's host never sees it.
+Stored under `treechat:provider:v1` in `localStorage`. **Treat the key like a password**, and prefer a key with a [credit limit](https://openrouter.ai/settings/keys): anyone with access to this browser profile can read it, and so could any script running on this site's address (`treechat.cc`, which serves nothing but TreeChat). Every chat request sends it from this page to OpenRouter (`Authorization: Bearer …`); TreeChat's host never sees it.
 
 When a key is set, chat streams from `https://openrouter.ai/api/v1/chat/completions` in the browser (`stream: true`, plus `HTTP-Referer` and `X-Title`). It does **not** call `/api/chat`.
 
@@ -61,18 +61,17 @@ Without a key (or a server), replies come from a demo stream generated in the pa
 
 ## Configuration
 
-The only build setting is `VITE_BASE`, the public path (in `.env` or the environment). It defaults to `/` locally; in GitHub Actions, `GITHUB_REPOSITORY` (`akarshgopal/treechat`) sets `/treechat/`. Use `VITE_BASE=/` for a user or org site at the domain root.
+The only build setting is `VITE_BASE`, the public path (in `.env` or the environment). It defaults to `/`, for the site at the root of treechat.cc and for local dev; set it (e.g. `VITE_BASE=/sub/`) to build for a subpath.
 
 ## Deploy to GitHub Pages
 
 The app is a static `dist/` site. Hosting is GitHub Pages (no Cloudflare Pages Functions).
 
-Project site URL: `https://akarshgopal.github.io/treechat/` (Vite `base` `/treechat/`).
+Site URL: `https://treechat.cc/`, a custom domain on GitHub Pages (DNS on Cloudflare), so the app has an origin of its own rather than one shared by every `*.github.io` site of the account.
 
-1. In the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+1. In the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**, and **Custom domain** `treechat.cc` with **Enforce HTTPS**.
 2. Push to `main` (or run the **Deploy GitHub Pages** workflow). `.github/workflows/pages.yml` only builds (`pnpm build`, which also type-checks) and uploads `dist`; pushes that touch only docs or tests skip it. Tests are not run in CI, so run them locally before pushing (see below).
-3. Vite base is `/treechat/` when `GITHUB_REPOSITORY` is `*/treechat`. Override with `VITE_BASE=/` for `https://<user>.github.io/`.
-4. Local production build meant for Pages: `VITE_BASE=/treechat/ pnpm build`.
+3. DNS for `treechat.cc` (Cloudflare, **DNS only**): `A` records to `185.199.108.153`, `185.199.109.153`, `185.199.110.153` and `185.199.111.153`, `AAAA` records to `2606:50c0:8000::153` through `2606:50c0:8003::153`, and `www` as a `CNAME` to `akarshgopal.github.io`.
 
 No secrets belong in the workflow. Users paste OpenRouter keys in Settings.
 
