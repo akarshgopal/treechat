@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { newIssueUrl } from '@/lib/links'
+import { newIssueUrl, REPO_URL } from '@/lib/links'
 import { KeyUsagePanel } from '@/components/chat/KeyUsage'
 import { ModelPicker } from '@/components/chat/ModelPicker'
 import {
@@ -510,15 +510,26 @@ function SettingsBody({
           </ul>
         </details>
         <div className="-mx-6 -mb-6 flex items-center justify-between gap-3 rounded-b-lg border-t border-border bg-foreground/[0.02] px-6 py-3">
-          <a
-            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            href={newIssueUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="report-problem"
-          >
-            Report a problem
-          </a>
+          <div className="flex gap-4">
+            <a
+              className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="source-code"
+            >
+              Source on GitHub
+            </a>
+            <a
+              className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              href={newIssueUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="report-problem"
+            >
+              Report a problem
+            </a>
+          </div>
           <button
             type="button"
             className="btn"

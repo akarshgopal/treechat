@@ -1,7 +1,7 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { Download, FileText, GitBranch, Globe, MessageSquare, Search, Settings, Sparkles, SquarePen, TriangleAlert, Upload } from 'lucide-react'
-import { newIssueUrl } from '@/lib/links'
+import { Code, Download, FileText, GitBranch, Globe, MessageSquare, Search, Settings, Sparkles, SquarePen, TriangleAlert, Upload } from 'lucide-react'
+import { newIssueUrl, REPO_URL } from '@/lib/links'
 import { sortSessions } from '@/lib/sessions'
 import { depthOf, threadTitle } from '@/lib/tree'
 import { cn } from '@/lib/utils'
@@ -85,6 +85,7 @@ function PaletteBody({
       { id: 'export', label: 'Export chats', group: 'Actions', icon: <Download size={15} />, run: onExport },
       { id: 'import', label: 'Import chats…', group: 'Actions', icon: <Upload size={15} />, run: onImport },
       { id: 'demo', label: 'Show the walkthrough in this chat', group: 'Actions', icon: <Sparkles size={15} />, run: onShowDemo },
+      { id: 'source', label: 'Source code on GitHub', group: 'Actions', icon: <Code size={15} />, run: () => window.open(REPO_URL, '_blank', 'noopener') },
       { id: 'report', label: 'Report a problem', group: 'Actions', icon: <TriangleAlert size={15} />, run: () => window.open(newIssueUrl(), '_blank', 'noopener') },
     ]
     const branches: Command[] = Object.values(state.threads)

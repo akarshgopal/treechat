@@ -1,4 +1,4 @@
-const REPO_URL = 'https://github.com/akarshgopal/treechat'
+export const REPO_URL = 'https://github.com/akarshgopal/treechat'
 const ISSUES_URL = `${REPO_URL}/issues`
 
 /**
