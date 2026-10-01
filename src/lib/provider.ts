@@ -1,9 +1,9 @@
 const PROVIDER_STORAGE_KEY = 'treechat:provider:v1'
-export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-5.6-luna'
+export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-6-luna'
 
 export const OPENROUTER_MODEL_OPTIONS = [
-  { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
-  { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5' },
+  { id: 'openai/gpt-6-luna', label: 'GPT-6 Luna' },
+  { id: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5' },
   { id: 'google/gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
   { id: 'x-ai/grok-4.7', label: 'Grok 4.7' },
 ] as const
@@ -14,7 +14,7 @@ export const OPENROUTER_MODEL_OPTIONS = [
  */
 export const BACKGROUND_MODEL_OPTIONS = [
   { id: 'qwen/qwen3.8-27b:free', label: 'Qwen3.8 27B (free)' },
-  { id: 'qwen/qwen3.7-flash', label: 'Qwen3.7 Flash' },
+  { id: 'qwen/qwen3.8-flash', label: 'Qwen3.8 Flash' },
   { id: 'google/gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
 ] as const
 
@@ -25,6 +25,10 @@ export const BACKGROUND_MODEL_OPTIONS = [
  * (Ollama, LM Studio, vLLM, a gateway), reached at `baseUrl`.
  */
 export type ProviderKind = 'openrouter' | 'openai-compatible'
+
+/** How hard a reasoning model thinks before answering; unset leaves it to the model. */
+export const REASONING_EFFORTS = ['low', 'medium', 'high'] as const
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
 
 export type ClientProviderConfig = {
   provider: ProviderKind
@@ -38,6 +42,7 @@ export type ClientProviderConfig = {
   extraBody?: Record<string, unknown>
   temperature?: number
   maxTokens?: number
+  reasoningEffort?: ReasoningEffort
   /** Used for summaries and takeaway drafts. Unset means the main model. */
   backgroundModel?: string
 }
@@ -61,8 +66,8 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     baseUrl: 'https://api.openai.com/v1',
     keyPlaceholder: 'sk-…',
     models: [
-      { id: 'gpt-4.1', label: 'GPT-4.1' },
-      { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
+      { id: 'gpt-6-luna', label: 'GPT-6 Luna' },
+      { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol' },
     ],
   },
   {
@@ -242,6 +247,7 @@ export function normalizeProviderConfig(
         : ''
   const temperature = parseTemperature(record.temperature)
   const maxTokens = parseMaxTokens(record.maxTokens)
+  const reasoningEffort = REASONING_EFFORTS.find((effort) => effort === record.reasoningEffort)
   const backgroundModel =
     typeof record.backgroundModel === 'string' && isModelIdFor(provider, record.backgroundModel)
       ? record.backgroundModel.trim()
@@ -261,6 +267,7 @@ export function normalizeProviderConfig(
   }
   if (temperature !== undefined) next.temperature = temperature
   if (maxTokens !== undefined) next.maxTokens = maxTokens
+  if (reasoningEffort !== undefined) next.reasoningEffort = reasoningEffort
   if (backgroundModel !== undefined) next.backgroundModel = backgroundModel
   return next
 }
@@ -288,6 +295,7 @@ export function serializeProviderConfig(config: ClientProviderConfig): string {
   if (next.extraBody !== undefined) payload.extraBody = next.extraBody
   if (next.temperature !== undefined) payload.temperature = next.temperature
   if (next.maxTokens !== undefined) payload.maxTokens = next.maxTokens
+  if (next.reasoningEffort !== undefined) payload.reasoningEffort = next.reasoningEffort
   if (next.backgroundModel !== undefined) payload.backgroundModel = next.backgroundModel
   return JSON.stringify(payload)
 }

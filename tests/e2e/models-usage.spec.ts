@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto'
 import { expect, test, type Page } from './fixtures'
 
 const MODELS = { data: [
-  { id: 'openai/gpt-5.6-luna', name: 'OpenAI: GPT-5.6 Luna', context_length: 1050000, pricing: { prompt: '0.0000002', completion: '0.0000012' }, architecture: { input_modalities: ['text', 'image'] } },
-  { id: 'anthropic/claude-sonnet-5', name: 'Anthropic: Claude Sonnet 5', context_length: 1000000, pricing: { prompt: '0.000002', completion: '0.00001' }, architecture: { input_modalities: ['text', 'image'] } },
+  { id: 'openai/gpt-6-luna', name: 'OpenAI: GPT-6 Luna', context_length: 1050000, pricing: { prompt: '0.0000002', completion: '0.0000012' }, architecture: { input_modalities: ['text', 'image'] } },
+  { id: 'anthropic/claude-sonnet-5.5', name: 'Anthropic: Claude Sonnet 5.5', context_length: 1000000, pricing: { prompt: '0.000002', completion: '0.00001' }, architecture: { input_modalities: ['text', 'image'] } },
   { id: 'qwen/qwen3.8-27b:free', name: 'Qwen: Qwen3.8 27B (free)', context_length: 262144, pricing: { prompt: '0', completion: '0' }, architecture: { input_modalities: ['text', 'image'] } },
 ] }
 
@@ -16,20 +17,20 @@ test('the model picker is a search-select over OpenRouter’s list, and still ta
   await page.goto('/')
   await page.getByTestId('settings-button').click()
   const picker = page.getByTestId('settings-model')
-  await expect(picker).toHaveAttribute('data-value', 'openai/gpt-5.6-luna')
+  await expect(picker).toHaveAttribute('data-value', 'openai/gpt-6-luna')
   await picker.click()
   // Suggestions first, with price per million tokens, context and images.
   const options = page.getByTestId('settings-model-options')
-  await expect(options.locator('[data-model-id]').first()).toHaveAttribute('data-model-id', 'openai/gpt-5.6-luna')
+  await expect(options.locator('[data-model-id]').first()).toHaveAttribute('data-model-id', 'openai/gpt-6-luna')
   await page.getByTestId('settings-model-search').fill('sonnet 5')
-  const option = options.locator('[data-model-id="anthropic/claude-sonnet-5"]')
-  await expect(option).toContainText('Claude Sonnet 5')
+  const option = options.locator('[data-model-id="anthropic/claude-sonnet-5.5"]')
+  await expect(option).toContainText('Claude Sonnet 5.5')
   await expect(option).toContainText('$2.00 / $10')
   await expect(option).toContainText('1M')
   await page.getByTestId('settings-model-search').press('Enter')
   await expect(options).toHaveCount(0)
-  await expect(picker).toHaveAttribute('data-value', 'anthropic/claude-sonnet-5')
-  await expect(picker).toContainText('Claude Sonnet 5')
+  await expect(picker).toHaveAttribute('data-value', 'anthropic/claude-sonnet-5.5')
+  await expect(picker).toContainText('Claude Sonnet 5.5')
 
   // An id OpenRouter does not list can still be used; a half-typed one cannot.
   await picker.click()
@@ -64,15 +65,15 @@ test('with a key, Settings shows what it spent and each reply shows its tokens a
       status: 200,
       contentType: 'text/event-stream',
       body: [
-        'data: {"model":"openai/gpt-5.6-luna","choices":[{"delta":{"content":"Priced reply."}}]}',
-        'data: {"model":"openai/gpt-5.6-luna","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1100,"completion_tokens":150,"total_tokens":1250,"cost":0.00312}}',
+        'data: {"model":"openai/gpt-6-luna","choices":[{"delta":{"content":"Priced reply."}}]}',
+        'data: {"model":"openai/gpt-6-luna","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1100,"completion_tokens":150,"total_tokens":1250,"cost":0.00312}}',
         'data: [DONE]',
         '',
       ].join('\n\n'),
     })
   })
   await page.goto('/')
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-only-never-sent', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-only-never-sent', model: 'openai/gpt-6-luna' })))
   await page.reload()
 
   await page.getByTestId('settings-button').click()
@@ -86,8 +87,38 @@ test('with a key, Settings shows what it spent and each reply shows its tokens a
   await expect(page.locator('article').last()).toContainText('Priced reply.')
   expect(bodies[0]?.usage).toEqual({ include: true })
   const usage = page.getByTestId('message-usage')
-  await expect(usage).toHaveText('GPT-5.6 Luna · 1.3k tokens · $0.0031')
+  await expect(usage).toHaveText('GPT-6 Luna · 1.3k tokens · $0.0031')
   await expect(usage).toHaveAttribute('title', /1,100 in · 150 out/)
   await page.reload()
-  await expect(page.getByTestId('message-usage')).toHaveText('GPT-5.6 Luna · 1.3k tokens · $0.0031')
+  await expect(page.getByTestId('message-usage')).toHaveText('GPT-6 Luna · 1.3k tokens · $0.0031')
+})
+
+test('Connect OpenRouter logs in there and comes back with a saved key', async ({ page }) => {
+  let challenge = ''
+  let exchange: Record<string, string> = {}
+  // openrouter.ai/auth, faked: straight back to the callback with a code.
+  await page.route('https://openrouter.ai/auth?**', (route) => {
+    const auth = new URL(route.request().url())
+    challenge = auth.searchParams.get('code_challenge') ?? ''
+    expect(auth.searchParams.get('code_challenge_method')).toBe('S256')
+    const back = new URL(auth.searchParams.get('callback_url')!)
+    back.searchParams.set('code', 'one-time-code')
+    return route.fulfill({ status: 302, headers: { location: back.toString() } })
+  })
+  await page.route('https://openrouter.ai/api/v1/auth/keys', (route) => {
+    exchange = route.request().postDataJSON()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ key: 'sk-or-v1-connected' }) })
+  })
+  await page.goto('/')
+  await page.getByTestId('settings-button').click()
+  await page.getByTestId('settings-connect-openrouter').click()
+
+  await expect(page.getByTestId('toast')).toContainText('Connected to OpenRouter.')
+  expect(new URL(page.url()).searchParams.has('code')).toBe(false)
+  expect(exchange.code).toBe('one-time-code')
+  // The verifier proves this page started the login: it hashes to the challenge.
+  expect(createHash('sha256').update(exchange.code_verifier!).digest('base64url')).toBe(challenge)
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('treechat:provider:v1')!))
+  expect(saved).toMatchObject({ provider: 'openrouter', apiKey: 'sk-or-v1-connected', model: 'openai/gpt-6-luna' })
+  await expect(page.getByText('Demo · Add key')).toHaveCount(0)
 })

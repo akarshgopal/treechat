@@ -108,6 +108,11 @@ function requestBody(
   }
   if (typeof config.temperature === 'number') body.temperature = config.temperature
   if (typeof config.maxTokens === 'number') body.max_tokens = config.maxTokens
+  // Each API names it its own way. Unset, nothing is sent: some servers reject the field.
+  if (config.reasoningEffort) {
+    if (openRouter) body.reasoning = { effort: config.reasoningEffort }
+    else body.reasoning_effort = config.reasoningEffort
+  }
   // Sticky routing is an OpenRouter feature; other servers may reject the field.
   if (sessionId && openRouter) body.session_id = sessionId.slice(0, 256)
   return body

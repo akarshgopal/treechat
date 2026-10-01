@@ -64,7 +64,7 @@ test('a custom server can be connected in Settings, answers without a key, and c
 test('switching provider never carries a key to another server', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'same components on phones')
   await page.goto('/')
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'sk-or-secret', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'sk-or-secret', model: 'openai/gpt-6-luna' })))
   await page.reload()
   await page.getByTestId('settings-button').click()
   await expect(page.getByTestId('settings-api-key')).toHaveValue('sk-or-secret')
@@ -110,7 +110,7 @@ test('a first reply that fails leaves the message with a way to try again, even 
       : route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"choices":[{"delta":{"content":"Second time lucky."}}]}\n\ndata: [DONE]\n\n' })
   })
   await page.goto('/')
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-6-luna' })))
   await page.reload()
   await page.getByTestId('thread-composer').fill('My first message')
   await page.getByTestId('thread-composer').press('Enter')

@@ -27,10 +27,11 @@ pnpm preview    # serve the build
 ## Bring your own key (OpenRouter)
 
 1. Open **Settings** (bottom of the sidebar; the gear in the app bar on phones).
-2. Paste an [OpenRouter](https://openrouter.ai/) API key and pick a model (default `openai/gpt-5.6-luna`). The model picker opens a searchable list of OpenRouter's public models, newest first after a few suggestions, with each model's price per million tokens (input / output), context size, image support and free models marked. To use a model that is not listed, paste its full id and choose **Use “…”**.
-3. **Save**. The sidebar's `Demo · Add key` note disappears.
-4. **Remove key** forgets the key in this browser; the model and generation params stay saved.
-5. Optionally set a **Background model** for summaries and takeaway drafts — e.g. a free `:free` model. Free models may log prompts and have low rate limits; on an error TreeChat retries once with the main model.
+2. Choose **Connect OpenRouter** to log in at [OpenRouter](https://openrouter.ai/) and come back with a key (its OAuth PKCE flow, all in the browser), or paste an API key; then pick a model (default `openai/gpt-6-luna`). The model picker opens a searchable list of OpenRouter's public models, newest first after a few suggestions, with each model's price per million tokens (input / output), context size, image support and free models marked. To use a model that is not listed, paste its full id and choose **Use “…”**.
+3. Optionally set **Reasoning effort** (Low, Medium, High) for models that think before answering; **Model default** sends nothing and leaves it to the model. OpenRouter gets it as `reasoning.effort`, other providers as `reasoning_effort`.
+4. **Save**. The sidebar's `Demo · Add key` note disappears.
+5. **Remove key** forgets the key in this browser; the model and generation params stay saved.
+6. Optionally set a **Background model** for summaries and takeaway drafts — e.g. a free `:free` model. Free models may log prompts and have low rate limits; on an error TreeChat retries once with the main model.
 
 **Usage.** With a key saved, Settings shows what the key has spent (today, this month, in total), its credit limit and what is left, straight from OpenRouter. Each reply shows the model that answered, its tokens and its cost; hover it for input and output tokens separately. Costs of background work (summaries, takeaway drafts, image descriptions) count toward the key but are not shown per reply.
 
