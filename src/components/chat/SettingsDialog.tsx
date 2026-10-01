@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { newIssueUrl, REPO_URL } from '@/lib/links'
+import { startOpenRouterConnect } from '@/lib/openrouter-connect'
 import { KeyUsagePanel } from '@/components/chat/KeyUsage'
 import { ModelPicker } from '@/components/chat/ModelPicker'
 import {
@@ -270,6 +271,14 @@ function SettingsBody({
               )}
             </label>
           )}
+          {openRouter && !hasKey ? (
+            <div className="grid gap-1.5">
+              <button type="button" className="btn btn-outline w-full" onClick={() => void startOpenRouterConnect()} data-testid="settings-connect-openrouter">
+                Connect OpenRouter
+              </button>
+              <span className="text-[11px] text-muted-foreground">Log in at OpenRouter and come back with a key, or paste one below.</span>
+            </div>
+          ) : null}
           <label className="grid gap-1.5">
             <span className="text-xs font-medium text-foreground">
               {openRouter ? 'OpenRouter API key' : preset?.keyOptional || choice === 'custom' ? 'API key (optional)' : `${preset?.label ?? 'API'} key`}

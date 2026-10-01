@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { expect, test, type Page } from './fixtures'
 
 const MODELS = { data: [
@@ -90,4 +91,34 @@ test('with a key, Settings shows what it spent and each reply shows its tokens a
   await expect(usage).toHaveAttribute('title', /1,100 in · 150 out/)
   await page.reload()
   await expect(page.getByTestId('message-usage')).toHaveText('GPT-6 Luna · 1.3k tokens · $0.0031')
+})
+
+test('Connect OpenRouter logs in there and comes back with a saved key', async ({ page }) => {
+  let challenge = ''
+  let exchange: Record<string, string> = {}
+  // openrouter.ai/auth, faked: straight back to the callback with a code.
+  await page.route('https://openrouter.ai/auth?**', (route) => {
+    const auth = new URL(route.request().url())
+    challenge = auth.searchParams.get('code_challenge') ?? ''
+    expect(auth.searchParams.get('code_challenge_method')).toBe('S256')
+    const back = new URL(auth.searchParams.get('callback_url')!)
+    back.searchParams.set('code', 'one-time-code')
+    return route.fulfill({ status: 302, headers: { location: back.toString() } })
+  })
+  await page.route('https://openrouter.ai/api/v1/auth/keys', (route) => {
+    exchange = route.request().postDataJSON()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ key: 'sk-or-v1-connected' }) })
+  })
+  await page.goto('/')
+  await page.getByTestId('settings-button').click()
+  await page.getByTestId('settings-connect-openrouter').click()
+
+  await expect(page.getByTestId('toast')).toContainText('Connected to OpenRouter.')
+  expect(new URL(page.url()).searchParams.has('code')).toBe(false)
+  expect(exchange.code).toBe('one-time-code')
+  // The verifier proves this page started the login: it hashes to the challenge.
+  expect(createHash('sha256').update(exchange.code_verifier!).digest('base64url')).toBe(challenge)
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('treechat:provider:v1')!))
+  expect(saved).toMatchObject({ provider: 'openrouter', apiKey: 'sk-or-v1-connected', model: 'openai/gpt-6-luna' })
+  await expect(page.getByText('Demo · Add key')).toHaveCount(0)
 })

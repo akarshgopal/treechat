@@ -31,11 +31,14 @@ import {
 } from '@/components/ui/dialog'
 import { pruneAttachments } from '@/lib/attachments/store'
 import { createId } from '@/lib/ids'
+import { finishOpenRouterConnect } from '@/lib/openrouter-connect'
 import {
   DEFAULT_OPENROUTER_MODEL,
   isLiveConfig,
   loadProviderConfig,
+  normalizeProviderConfig,
   patchProviderConfig,
+  saveProviderConfig,
   type ClientProviderConfig,
 } from '@/lib/provider'
 import { lensQuestion, type Lens } from '@/lib/lenses'
@@ -981,6 +984,21 @@ export function TreeChatApp() {
 
   const onProviderConfigChange = useCallback((config: ClientProviderConfig | null) => {
     setClientConfig(config)
+  }, [])
+
+  // Back from "Connect OpenRouter": trade the code for a key and save it as if
+  // it had been pasted, keeping an OpenRouter model and settings already saved.
+  useEffect(() => {
+    finishOpenRouterConnect().then((apiKey) => {
+      if (!apiKey) return
+      const saved = loadProviderConfig()
+      const next = normalizeProviderConfig({ ...(saved?.provider === 'openrouter' ? saved : {}), provider: 'openrouter', apiKey })
+      saveProviderConfig(next)
+      setClientConfig(next)
+      setToast({ id: createId('toast'), text: 'Connected to OpenRouter.', actions: [] })
+    }, (error: unknown) => {
+      setToast({ id: createId('toast'), text: `Could not connect OpenRouter. ${error instanceof Error ? error.message : ''}`.trim(), actions: [] })
+    })
   }, [])
 
 
