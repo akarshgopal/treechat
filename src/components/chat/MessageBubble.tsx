@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { ArrowUpRight, ChevronLeft, ChevronRight, GitBranch, Pencil, RotateCw, Shuffle } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronLeft, ChevronRight, Copy, GitBranch, Pencil, RotateCw, Shuffle } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { answerModel, answersOf, currentIndex } from '@/lib/alternates'
@@ -224,6 +224,7 @@ export function MessageBubble({
       onRetry={onRetry ? () => onRetry(message.id) : undefined}
       onEdit={onEdit && isUser ? startEdit : undefined}
       onAsk={onAsk}
+      copyText={isUser ? undefined : message.content.trim() || undefined}
       messageId={message.id}
       unanswered={unanswered}
       latest={latest}
@@ -286,6 +287,7 @@ function MessageActions({
   onRetry,
   onEdit,
   onAsk,
+  copyText,
   messageId,
   unanswered,
   latest,
@@ -297,12 +299,14 @@ function MessageActions({
   onRetry?: () => void
   onEdit?: () => void
   onAsk?: () => void
+  /** The reply as markdown, for the copy button. */
+  copyText?: string
   messageId: string
   unanswered: boolean
   latest: boolean
   usage?: MessageUsage
 }) {
-  if (!onRetry && !onEdit && !onAsk && !usage && !tryModel) return null
+  if (!onRetry && !onEdit && !onAsk && !copyText && !usage && !tryModel) return null
   return (
     // Hangs in the gap below the message, so it never takes space of its own.
     // Invisible until hover or focus, but reachable: moving onto a button
@@ -319,6 +323,7 @@ function MessageActions({
       )}
     >
       {onAsk ? <button type="button" className={actionBtn} onClick={onAsk} data-ask-message={messageId} aria-label="Branch from this message" title="Branch from this message"><GitBranch size={14} /></button> : null}
+      {copyText ? <CopyButton text={copyText} /> : null}
       {onEdit ? (
         <button type="button" className={actionBtn} onClick={onEdit} data-testid="message-edit" aria-label="Edit message" title="Edit & resend">
           <Pencil size={14} />
@@ -339,6 +344,30 @@ function MessageActions({
       {tryModel}
       {usage ? <UsageLabel usage={usage} /> : null}
     </div>
+  )
+}
+
+/** Copies the whole reply, as the markdown the model wrote. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1600)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch {
+      /* clipboard may be blocked */
+    }
+  }
+  const label = copied ? 'Copied' : 'Copy response'
+  return (
+    <button type="button" className={actionBtn} onClick={() => void onCopy()} data-testid="message-copy" aria-label={label} title={label}>
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </button>
   )
 }
 
