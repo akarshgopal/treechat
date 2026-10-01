@@ -28,6 +28,7 @@ import {
   providerName,
   saveProviderConfig,
   type ClientProviderConfig,
+  type ReasoningEffort,
 } from '@/lib/provider'
 
 const fieldClass =
@@ -106,6 +107,7 @@ function SettingsBody({
     initial?.maxTokens !== undefined ? String(initial.maxTokens) : '',
   )
   const [backgroundModel, setBackgroundModel] = useState(initial?.backgroundModel ?? '')
+  const [reasoningEffort, setReasoningEffort] = useState(initial?.reasoningEffort ?? '')
   const [saved, setSaved] = useState(false)
   const [savedModel, setSavedModel] = useState(initial?.model || DEFAULT_OPENROUTER_MODEL)
   /** The key as saved; usage is looked up for this one, not a half-typed one. */
@@ -170,6 +172,7 @@ function SettingsBody({
       }),
       temperature: temperature.trim() === '' ? undefined : temperature,
       maxTokens: maxTokens.trim() === '' ? undefined : maxTokens,
+      reasoningEffort: reasoningEffort || undefined,
     })
     saveProviderConfig(next)
     onConfigChange(next)
@@ -181,6 +184,7 @@ function SettingsBody({
     setTemperature(next.temperature !== undefined ? String(next.temperature) : '')
     setMaxTokens(next.maxTokens !== undefined ? String(next.maxTokens) : '')
     setBackgroundModel(next.backgroundModel ?? '')
+    setReasoningEffort(next.reasoningEffort ?? '')
     setSavedModel(next.model)
     setSavedKey(next.apiKey)
     setSaved(true)
@@ -320,6 +324,23 @@ function SettingsBody({
               </p>
             )}
           </div>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-medium text-foreground">Reasoning effort</span>
+            <select
+              value={reasoningEffort}
+              onChange={(event) => {
+                setReasoningEffort(event.target.value as ReasoningEffort | '')
+                changed()
+              }}
+              data-testid="settings-reasoning-effort"
+              className={fieldClass}
+            >
+              <option value="">Model default</option>
+              <option value="low">Low · faster, cheaper</option>
+              <option value="medium">Medium</option>
+              <option value="high">High · slower, more thorough</option>
+            </select>
+          </label>
           <details className="group rounded-lg border border-border" open={Boolean(initial?.backgroundModel || initial?.temperature !== undefined || initial?.maxTokens !== undefined || initial?.headers || initial?.extraBody) || undefined}>
             <summary className="flex h-9 cursor-pointer list-none items-center justify-between rounded-lg px-3 text-[13px] text-muted-foreground hover:text-foreground">
               Advanced

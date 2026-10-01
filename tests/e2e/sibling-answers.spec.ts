@@ -36,11 +36,11 @@ test('regenerate keeps the earlier answer, and the pager switches between them',
 test('Try another model answers once with the chosen model; Settings keep theirs', async ({ page }) => {
   await restoreDemo(page)
   await page.getByTestId('try-model').last().click({ force: true })
-  await expect(page.getByRole('menuitem', { name: 'GPT-5.6 Luna' })).toHaveCount(0)
-  await page.getByRole('menuitem', { name: 'Claude Sonnet 5' }).click()
+  await expect(page.getByRole('menuitem', { name: 'GPT-6 Luna' })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: 'Claude Sonnet 5.5' }).click()
   await expect(lastReply(page)).toContainText('Demo answer standing in for anthropic/claude-sonnet-5.', { timeout: 15_000 })
-  await expect(page.getByTestId('answer-position')).toHaveText('2 of 2 · Claude Sonnet 5')
-  await expect.poll(async () => (await rootMessages(page)).at(-1)?.model).toBe('anthropic/claude-sonnet-5')
+  await expect(page.getByTestId('answer-position')).toHaveText('2 of 2 · Claude Sonnet 5.5')
+  await expect.poll(async () => (await rootMessages(page)).at(-1)?.model).toBe('anthropic/claude-sonnet-5.5')
   expect(await page.evaluate(() => localStorage.getItem('treechat:provider:v1'))).toBeNull()
 
   // The next request is the Settings model again.
@@ -63,7 +63,7 @@ test('Try another model answers once with the chosen model; Settings keep theirs
 
 test('with a key, the chosen model goes in the request, and only that one', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'request shape is covered on desktop')
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-6-luna' })))
   await page.reload()
   const models: string[] = []
   const sent: string[] = []
@@ -83,8 +83,8 @@ test('with a key, the chosen model goes in the request, and only that one', asyn
   await expect(page.getByTestId('composer-stop')).toHaveCount(0)
   await page.getByTestId('thread-composer').fill('And then?')
   await page.getByTestId('thread-composer').press('Enter')
-  await expect(lastReply(page)).toHaveText('Answer from openai/gpt-5.6-luna', { timeout: 15_000 })
-  expect(models).toEqual(['x-ai/grok-4.7', 'openai/gpt-5.6-luna'])
+  await expect(lastReply(page)).toHaveText('Answer from openai/gpt-6-luna', { timeout: 15_000 })
+  expect(models).toEqual(['x-ai/grok-4.7', 'openai/gpt-6-luna'])
   // Only the current answer is sent as history.
   expect(sent[1]).toContain('Answer from x-ai/grok-4.7')
   expect(sent[1]).not.toContain(ORIGINAL)
@@ -125,7 +125,7 @@ test('only the latest reply can switch', async ({ page }) => {
 
 test('answers kept by a failed regenerate do not end up on the next reply', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'the queue is the same on phones')
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-6-luna' })))
   await page.reload()
   let calls = 0
   await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {
@@ -150,7 +150,7 @@ test('answers kept by a failed regenerate do not end up on the next reply', asyn
 
 test('a failed regenerate keeps every answer, and Try again adds the new one beside them', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'the same on phones')
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-6-luna' })))
   await page.reload()
   let calls = 0
   await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {

@@ -104,7 +104,7 @@ test('on a phone, What did I learn? covers the lane being read', async ({ page }
 
 test('a failed summary says why and can be tried again', async ({ page }, testInfo) => {
   test.skip(Boolean(testInfo.project.use.isMobile), 'the drawer is the same on phones')
-  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-5.6-luna' })))
+  await page.evaluate(() => localStorage.setItem('treechat:provider:v1', JSON.stringify({ provider: 'openrouter', apiKey: 'test-key', model: 'openai/gpt-6-luna' })))
   await page.reload()
   let calls = 0
   await page.route('https://openrouter.ai/api/v1/chat/completions', async (route) => {

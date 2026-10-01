@@ -95,3 +95,9 @@ test('header lines and extra-body JSON parse strictly', () => {
   assert.deepEqual(parseExtraBody('{"top_p":0.9}'), { top_p: 0.9 })
   for (const bad of ['[1]', '"x"', '{oops', '3']) assert.equal(parseExtraBody(bad), undefined, bad)
 })
+
+test('reasoning effort survives a save and drops values it does not know', () => {
+  const saved = parseProviderConfig(serializeProviderConfig({ provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-6-luna', reasoningEffort: 'medium' }))
+  assert.equal(saved?.reasoningEffort, 'medium')
+  assert.equal(parseProviderConfig(JSON.stringify({ apiKey: 'k', reasoningEffort: 'turbo' }))?.reasoningEffort, undefined)
+})

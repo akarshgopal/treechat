@@ -257,6 +257,20 @@ test('a custom server sends its key, custom headers and extra options; extras ca
   assert.notDeepEqual(call.body.messages, [])
 })
 
+test('reasoning effort goes out in each API\'s own field, and not at all when unset', async () => {
+  const calls = captureFetch()
+  const send = (config: Parameters<typeof providerChatStream>[0]['config']) =>
+    collectAssistantText(providerChatStream({ messages: [{ role: 'user', content: 'hi' }], config, forwardedProps: {}, threadId: 't1', runId: 'r1' }))
+  await send({ provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-6-luna', reasoningEffort: 'high' })
+  await send({ provider: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', apiKey: 'k', model: 'gpt-6-luna', reasoningEffort: 'low' })
+  await send({ provider: 'openai-compatible', baseUrl: 'http://localhost:11434/v1', apiKey: '', model: 'llama3.2' })
+  assert.deepEqual(calls[0]!.body.reasoning, { effort: 'high' })
+  assert.equal('reasoning_effort' in calls[0]!.body, false)
+  assert.equal(calls[1]!.body.reasoning_effort, 'low')
+  assert.equal('reasoning' in calls[1]!.body, false)
+  for (const field of ['reasoning', 'reasoning_effort']) assert.equal(field in calls[2]!.body, false, field)
+})
+
 test('a custom server error names the server, and an unreachable one mentions CORS', async () => {
   const config = { provider: 'openai-compatible' as const, baseUrl: 'http://localhost:11434/v1', apiKey: '', model: 'llama3.2' }
   const input = { messages: [{ role: 'user', content: 'hi' }], config, forwardedProps: {}, threadId: 't1', runId: 'r1' }
